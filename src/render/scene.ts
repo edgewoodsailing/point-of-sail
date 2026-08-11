@@ -1,0 +1,273 @@
+/**
+ * The SVG root, the viewBox, and the coordinate story every other renderer
+ * inherits (DESIGN.md §4.1, §4.5, §6).
+ *
+ * **The SVG user unit is the metre, and the origin is the mast.** The
+ * world→user transform is the identity, so any `Vec2` the model produces —
+ * `STATIONS.bow`, `mainClewPosition()`, a force vector for the apparent-wind
+ * overlay — is drawing coordinates already, with no scale factor anywhere. That
+ * is the whole story, and it is worth the small oddity of path data reading
+ * `-2.1336`: a reviewer can recognise that as the 7 ft mast station, which is
+ * not true of any abstract scene unit.
+ *
+ * It works because two things in §9 are settled: the boat frame and the world
+ * frame share the mast as their origin, so they differ by a pure rotation and
+ * one `<g transform="rotate(…)">` converts between them; and the boat never
+ * translates, so that origin is fixed for the life of the page.
+ *
+ * Two rules follow, and everything downstream depends on them:
+ *
+ * 1. **A dimension *of the boat* is in metres** and scales with the drawing —
+ *    the mast dot, a sail's camber, a clew handle's visual radius.
+ * 2. **A *line weight* is in CSS pixels** and scales with the viewport, not
+ *    with the drawing (§4.5). `vector-effect="non-scaling-stroke"` is what makes
+ *    that possible inside a metre-valued viewBox; see `scene.css`.
+ *
+ * A note on §4.4's colour rule and its boundary: it bans *colour* presentation
+ * attributes, because `oklch()` in one only parses in Safari. Geometry
+ * attributes are not affected, and `transform` in particular should be the
+ * attribute rather than the CSS property — the CSS property rotates about the
+ * reference box's centre by default, not the user-space origin.
+ */
+
+import type { SimState } from "../model/simulation.ts";
+import { jibClewPosition, mainClewPosition, SWING_LIMIT } from "../model/boat.ts";
+import type { Meters, Radians, Vec2 } from "../model/units.ts";
+import { magnitude, radiansToDegrees } from "../model/units.ts";
+import { createHullLayer, outlineRadius } from "./hull.ts";
+import { formatNumber, svgElement } from "./svg.ts";
+import "./scene.css";
+
+// --- Extent -----------------------------------------------------------------
+
+/** The clew arcs, sampled at the ends and centre of their legal travel. */
+function clewRadius(): Meters {
+  let farthest = 0;
+  const steps = 64;
+  for (let i = 0; i <= steps; i += 1) {
+    const angle = -SWING_LIMIT + (2 * SWING_LIMIT * i) / steps;
+    farthest = Math.max(
+      farthest,
+      magnitude(mainClewPosition(angle)),
+      magnitude(jibClewPosition(angle)),
+    );
+  }
+  return farthest;
+}
+
+/**
+ * Concentric bands, as radii in metres from the mast. Everything but
+ * `boatRadius` is a reservation this bead makes on behalf of later ones, so
+ * that they inherit a budget instead of each inventing their own margin.
+ */
+export const SCENE = {
+  /**
+   * The disc the boat occupies at *any* heading and any legal trim, ≈ 3.74 m.
+   * Measured, not declared: the maximum is at the transom corners, which is
+   * further out than the stern station and further than either fully-eased
+   * clew. Because the origin is the mast, rotating the heading cannot change
+   * it.
+   */
+  boatRadius: Math.max(outlineRadius(), clewRadius()),
+
+  /**
+   * Outer limit for boat plus speed arrow. pos-qmk.3 clamps the arrow tip here
+   * and gets a hard guarantee it never reaches the wind ring.
+   *
+   * It leaves 3.07 m ahead of the bow, so at ≈ 1.05 m of arrow per m/s the
+   * arrow fills the forward band exactly at hull speed (2.90 m/s) — which is a
+   * scale worth writing down, because it makes the arrow's length a statement
+   * about the boat rather than an arbitrary choice. Astern it leaves 1.49 m,
+   * covering about −2.9 kt, well beyond any backing speed.
+   */
+  contentRadius: 5.2,
+
+  /** Centreline of the drawn wind ring (pos-qmk.3). */
+  windRingRadius: 5.65,
+
+  /** Half the span mapped across the surface's *shorter* dimension. */
+  shortRadius: 6.0,
+} as const;
+
+/**
+ * World metres across the surface's shorter dimension.
+ *
+ * Boat scale is pinned to the short axis, so the boat reads the same size on a
+ * phone in portrait as on a desktop in landscape. The longer axis simply gains
+ * world space — see {@link sceneExtent}.
+ */
+export const SHORT_SPAN: Meters = 2 * SCENE.shortRadius;
+
+/** The world rectangle a surface of a given pixel size shows. */
+export interface SceneExtent {
+  readonly halfWidth: Meters;
+  readonly halfHeight: Meters;
+  readonly metersPerPixel: number;
+}
+
+/**
+ * Maps a measured surface box onto the world rectangle it shows.
+ *
+ * The scale comes from the **shorter** side, so `SHORT_SPAN` metres always
+ * exactly span it; the longer side then shows more world than it strictly
+ * needs. That extra space is the point rather than waste: it is what lets the
+ * wind ring sit out near the real edge of a tall phone instead of being
+ * inscribed in the narrow dimension and stealing from the boat.
+ *
+ * A surface with no area yet — the first frame, before layout — falls back to a
+ * square, which keeps every consumer free of divide-by-zero checks.
+ */
+export function sceneExtent(widthPx: number, heightPx: number): SceneExtent {
+  const shortSide = Math.min(widthPx, heightPx);
+  if (!(shortSide > 0)) {
+    return {
+      halfWidth: SCENE.shortRadius,
+      halfHeight: SCENE.shortRadius,
+      metersPerPixel: 0,
+    };
+  }
+  const metersPerPixel = SHORT_SPAN / shortSide;
+  return {
+    halfWidth: (widthPx * metersPerPixel) / 2,
+    halfHeight: (heightPx * metersPerPixel) / 2,
+    metersPerPixel,
+  };
+}
+
+/** The `viewBox` attribute for an extent: origin centred, so the mast is mid-screen. */
+export function viewBoxAttribute(extent: SceneExtent): string {
+  return [
+    formatNumber(-extent.halfWidth),
+    formatNumber(-extent.halfHeight),
+    formatNumber(2 * extent.halfWidth),
+    formatNumber(2 * extent.halfHeight),
+  ].join(" ");
+}
+
+// --- Heading ----------------------------------------------------------------
+
+/**
+ * The transform that carries boat-frame geometry into the world frame.
+ *
+ * SVG's `rotate(a)` about the origin is `x' = x·cos a − y·sin a`,
+ * `y' = x·sin a + y·cos a` — character for character `units.rotateVector`. It
+ * turns visually clockwise because the axis is y-down, which is exactly §2's
+ * convention, so there is no sign flip here and, usefully, no trigonometry
+ * either: SVG does it, and `no-raw-trig.test.ts` stays satisfied for free.
+ *
+ * Heading 0 puts the bow screen-up; heading 90° puts it screen-right.
+ */
+export function headingTransform(heading: Radians): string {
+  return `rotate(${formatNumber(radiansToDegrees(heading))})`;
+}
+
+// --- The scene --------------------------------------------------------------
+
+/**
+ * A drawn layer. `update` is omitted by layers that do not read state — the
+ * hull is the whole boat's worth of geometry that never changes.
+ */
+export interface Layer {
+  readonly element: SVGElement;
+  update?(state: SimState): void;
+}
+
+export interface Scene {
+  /**
+   * The `<svg>` root. Note that **pointer listeners belong on the host
+   * element, not here**: an `<svg>` with no painted background receives events
+   * only over painted geometry, whereas the host is an HTML element and
+   * receives them over its whole box. The host already carries
+   * `touch-action: none` (§6.2).
+   */
+  readonly element: SVGSVGElement;
+  /** Mount point for world-frame layers: the wind ring, the apparent-wind overlay. */
+  readonly world: SVGGElement;
+  /** Mount point for boat-frame layers: the sails, the speed arrow. */
+  readonly boat: SVGGElement;
+
+  render(state: SimState): void;
+
+  /** Screen (`clientX`/`clientY`) to world metres — the inverse of everything above. */
+  toWorld(clientX: number, clientY: number): Vec2;
+  /** How many metres a CSS pixel is worth right now — for pos-bwd's touch-target sizes. */
+  pixelsToMeters(pixels: number): Meters;
+
+  /** Stops observing the host. */
+  destroy(): void;
+}
+
+/**
+ * Builds the scene into `host` and returns the handle every other layer mounts
+ * onto.
+ *
+ * Group order is document order is paint order, and it is deliberate: the speed
+ * arrow sits below the hull so a stern arrow can never paint over the boom, and
+ * the sails sit above it so the boom reads as lying on the deck.
+ */
+export function createScene(host: HTMLElement): Scene {
+  const element = svgElement("svg", { class: "pos-scene" });
+  const title = svgElement("title");
+  title.textContent = "Top-down view of a sailboat";
+
+  const world = svgElement("g", { class: "pos-world" });
+  const wind = svgElement("g", { class: "pos-wind" }); // pos-qmk.3
+  const boat = svgElement("g", { class: "pos-boat" });
+  const speed = svgElement("g", { class: "pos-speed" }); // pos-qmk.3
+  const sails = svgElement("g", { class: "pos-sails" }); // pos-qmk.2
+  const apparent = svgElement("g", { class: "pos-apparent" }); // §3.1 overlay, world frame
+
+  boat.append(speed, createHullLayer(), sails);
+  world.append(wind, boat, apparent);
+  element.append(title, world);
+  host.append(element);
+
+  function applyExtent(widthPx: number, heightPx: number): void {
+    element.setAttribute("viewBox", viewBoxAttribute(sceneExtent(widthPx, heightPx)));
+  }
+
+  applyExtent(host.clientWidth, host.clientHeight);
+
+  const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      applyExtent(entry.contentRect.width, entry.contentRect.height);
+    }
+  });
+  observer.observe(host);
+
+  /**
+   * Measured on the world group rather than the root, so any transform later
+   * applied to it comes along for free. `getScreenCTM` folds in the viewBox
+   * scale, the element's page position, scroll, and any ancestor CSS transform
+   * — which is why none of that is computed by hand anywhere in `render/` or
+   * `input/`.
+   */
+  function screenMatrix(): DOMMatrix {
+    const matrix = world.getScreenCTM();
+    if (matrix === null) {
+      throw new Error("Scene is not in the document, so it has no screen transform.");
+    }
+    return matrix;
+  }
+
+  return {
+    element,
+    world,
+    boat,
+    render(state: SimState): void {
+      boat.setAttribute("transform", headingTransform(state.motion.heading));
+    },
+    toWorld(clientX: number, clientY: number): Vec2 {
+      const point = new DOMPoint(clientX, clientY).matrixTransform(screenMatrix().inverse());
+      return { x: point.x, y: point.y };
+    },
+    pixelsToMeters(pixels: number): Meters {
+      // Uniform scale and no rotation, so `a` is simply pixels per metre.
+      return pixels / screenMatrix().a;
+    },
+    destroy(): void {
+      observer.disconnect();
+      element.remove();
+    },
+  };
+}

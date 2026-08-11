@@ -1,0 +1,64 @@
+/*
+ * The drawing's ink (DESIGN.md §4.4, §4.5). Imported by `render/scene.ts`, and
+ * scoped under `.pos-sim` the way `shell.css` establishes.
+ *
+ * Two rules govern everything here:
+ *
+ * 1. Colour never goes through an SVG presentation attribute — `oklch()` in one
+ *    only parses in Safari (§4.4). Everything below runs the CSS parser, so it
+ *    works everywhere at the support floor.
+ * 2. Line weights are in CSS pixels and scale with the *viewport*, while the
+ *    drawing itself is in metres and scales with the *boat*. What lets the two
+ *    coexist is `vector-effect: non-scaling-stroke`, which takes stroke width
+ *    out of user space. Without it, `1.4px` inside a metre-valued viewBox would
+ *    be read as 1.4 metres — so it is set as an *attribute* in `hull.ts` rather
+ *    than relying on CSS support for the property. That failure mode is loud
+ *    enough to be worth the belt as well as the braces.
+ */
+
+.pos-sim .pos-scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  /*
+   * Sub-linear by way of clamp(). Plain proportional scaling would land within
+   * about 10% of these values across mainstream phones and tablets; the clamp
+   * earns its keep at exactly two places, which are the two §4.5 names: the
+   * floor, so a phone held in one hand never goes hairline, and the ceiling, so
+   * a classroom TV or projector does not turn the boat into a cartoon.
+   *
+   * `vmin` is the viewport, not this element. §6.2 gives the simulator the
+   * whole viewport, so the two differ only by the control strip's height —
+   * measured across real layouts, `0.4vmin` holds at ~0.88% of the drawn boat's
+   * length from a 320 px phone to a 1440 px desktop. `cqmin` would make it
+   * exact, but it starts at Safari 16, above the §4.4 floor.
+   */
+  --pos-rule-hull: clamp(1.4px, 0.4vmin, 4px);
+  --pos-rule-rig: clamp(1px, 0.26vmin, 2.6px);
+  --pos-ink: oklch(38% 0.03 250deg);
+  --pos-rig-ink: oklch(55% 0.02 250deg);
+  --pos-deck: oklch(99% 0.004 250deg / 80%);
+}
+
+.pos-sim .pos-hull-outline {
+  /*
+   * Filled, not hollow. It reads as a deck rather than as an outline on the
+   * water, and it gives pos-bwd a hit target over the whole hull for the
+   * rotate-by-dragging gesture instead of only along the sheer line.
+   */
+  fill: var(--pos-deck);
+  stroke: var(--pos-ink);
+  stroke-width: var(--pos-rule-hull);
+  stroke-linejoin: round;
+}
+
+.pos-sim .pos-forestay {
+  stroke: var(--pos-rig-ink);
+  stroke-width: var(--pos-rule-rig);
+  stroke-linecap: round;
+}
+
+.pos-sim .pos-mast {
+  fill: var(--pos-ink);
+}

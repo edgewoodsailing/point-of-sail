@@ -66,27 +66,30 @@ The complete simulation state is small enough to fit on a napkin:
 
 ```ts
 interface SimState {
-  // Environment
-  trueWindFrom: Radians;      // direction wind blows FROM, world frame
-  trueWindSpeed: MetersPerSecond;
+  // Environment: direction the wind blows FROM, world frame, plus its speed
+  wind: TrueWind;             // { from: Radians, speed: MetersPerSecond }
 
-  // Boat
-  heading: Radians;           // direction the bow points, world frame
-  speed: MetersPerSecond;     // signed — negative means sailing backwards
+  // Boat: where the bow points, and the signed speed — negative is astern
+  motion: BoatMotion;         // { heading: Radians, speed: MetersPerSecond }
 
-  // Rig: is the jib set at all? Defaults false — main alone (§3.7)
-  jibSet: boolean;
-
-  // Trim: sail chord angle relative to boat centerline.
-  // Positive = clew to starboard. Zero = on the centerline.
-  mainAngle: Radians;
-  jibAngle: Radians;
+  // Trim: sail chord angle relative to boat centerline, positive = clew to
+  // starboard, zero = on the centerline. Plus whether the jib is set at all,
+  // which defaults false — main alone (§3.7).
+  trim: RigTrim;              // { mainAngle, jibAngle: Radians, jibSet: boolean }
 
   // Is the user physically forcing a sail against the wind right now?
   mainHeld: boolean;
   jibHeld: boolean;
 }
 ```
+
+The first three fields are **not** new types invented for the state. `TrueWind`
+and `BoatMotion` come from `model/wind.ts` and `RigTrim` from `model/sail.ts`,
+where they already exist as the argument types `apparentWind()` and `rigForce()`
+take. Grouping the state the same way means it can be handed to the physics
+without repacking at every call site, and there is one definition of "the wind"
+rather than two that could drift apart. An earlier draft of this section listed
+the same nine values flat; the grouping is the only difference.
 
 That's it. No history, no session, no stored client state. A bare URL opens on a
 fresh random problem, as the objectives require; a URL carrying parameters opens
@@ -484,6 +487,43 @@ region extending aft as the collapse spreads. A sail that is *just* starting to
 break shows a small ripple at the luff only, which is exactly what a student
 should learn to spot.
 
+#### The coordinate story
+
+**The SVG user unit is the metre, and the origin is the mast.** The world→user
+transform is the identity, so any `Vec2` the model produces — `STATIONS.bow`,
+`mainClewPosition()`, a force vector for the apparent-wind overlay — is already
+drawing coordinates. No renderer does unit arithmetic. It works because the boat
+frame and the world frame share the mast as their origin, so they differ by a
+pure rotation and one `<g transform="rotate(…)">` converts between them, and
+because the boat never translates.
+
+The viewBox tracks the drawing surface's real aspect ratio, and the scale is
+pinned to the **shorter** axis: `SHORT_SPAN` metres always exactly span it, so
+the boat reads the same size on a phone in portrait as on a desktop in
+landscape. The longer axis simply shows more world. That extra space is the
+point rather than waste — it is what lets the wind ring sit out near the real
+edge of a tall phone instead of being inscribed in the narrow dimension and
+stealing from the boat.
+
+Inside that, four concentric bands, as radii from the mast:
+
+| Band | Radius | What it is |
+| --- | --- | --- |
+| `boatRadius` | ≈ 3.74 m | The disc the boat occupies at any heading and any legal trim |
+| `contentRadius` | 5.2 m | Outer limit for boat plus speed arrow |
+| `windRingRadius` | 5.65 m | Centreline of the drawn wind ring |
+| `shortRadius` | 6.0 m | Half the span across the shorter axis |
+
+`boatRadius` is *measured* from the drawn outline rather than declared: the
+maximum is at the transom corners, which is further out than the stern station
+and further than either fully-eased clew. Refairing the hull moves it, and
+deriving it means the scene follows along instead of quietly letting the boat
+grow into the wind ring. The bands nest strictly, and a test says so.
+
+The reservation ahead of the bow works out at ≈ 1.05 m of speed arrow per m/s
+to fill the band exactly at hull speed — which makes the arrow's length a
+statement about the boat rather than an arbitrary choice.
+
 ### 4.2 The traffic light
 
 Green means **optimal**, and deteriorates through amber to red in *both*
@@ -608,6 +648,13 @@ anyway, so this costs nothing as long as it's a rule from day one. The palette
 module exposes computed colors only as CSS custom properties, which makes the
 rule structural rather than something to remember.
 
+The rule has a boundary worth stating, so nobody over-applies it: it bans
+*colour* presentation attributes. Geometry attributes — `d`, `transform`, `r`,
+`vector-effect` — are unaffected, and two of them are actively *preferable* to
+their CSS equivalents. CSS `transform` on an SVG group defaults to rotating
+about the reference box's centre rather than the user-space origin, which for a
+boat that rotates about its mast is simply the wrong point.
+
 Support floor is Safari 15.4 / Chrome 111 / Firefox 113, ~93–95% globally. The
 registrar app already ships OKLCH-only in production — its stylelint config bans
 hex and `rgb()`/`hsl()` outright — so that floor is one the school has already
@@ -618,6 +665,27 @@ accepted in practice, and we can inherit the decision rather than relitigate it.
 Line weights need to survive both a phone in someone's hand and an iPad flat on
 a table viewed by three students at an angle. Weights scale with viewport rather
 than being fixed.
+
+Concretely: **a dimension *of the boat* is in metres** and scales with the
+drawing — the mast dot, a sail's camber. **A *line weight* is in CSS pixels**
+and scales with the viewport. What lets the two coexist inside a metre-valued
+viewBox is `vector-effect: non-scaling-stroke`, which takes stroke width out of
+user space. Set it as an *attribute*, not only in CSS: if support for the
+property were ever missing, `1.4px` would be read as 1.4 *metres*, which is a
+loud enough failure to be worth the belt as well as the braces.
+
+The weights themselves are `clamp()` on `vmin`, e.g. `clamp(1.4px, 0.4vmin, 4px)`
+for the hull. `vmin` is the viewport rather than the drawing surface, but §6.2
+gives the simulator the whole viewport, so the two differ only by the control
+strip — across real layouts that expression holds at ~0.88% of the drawn boat's
+length from a 320 px phone to a 1440 px desktop. (`cqmin` would make it exact,
+but it starts at Safari 16, above our floor.)
+
+Worth recording *why* the clamp rather than plain proportional scaling, since
+proportional is the free behaviour of a scaled viewBox and the two agree within
+about 10% across mainstream devices: the clamp earns its keep at exactly the two
+ends this section names — the floor, so a phone never goes hairline, and the
+ceiling, so a classroom TV or projector doesn't turn the boat into a cartoon.
 
 ---
 
@@ -695,11 +763,26 @@ What remains:
    reserved, the entire silhouette is available — the conflict between hull and
    sail grabs is gone too.
 4. **Swing limits instead of arbitration.** The boom physically cannot pass the
-   shrouds (~90° of ease), and with trim clamped to that range the two discs
-   can never overlap — the ~109 px minimum above. Touchdown still tie-breaks on
+   shrouds (~90° of ease), and with trim clamped to that range the clews can
+   never coincide — the ~22% of LOA minimum above. Touchdown still tie-breaks on
    the nearer clew, and a sail already captured by another pointer isn't a
-   candidate, but these are cheap defensive rules rather than load-bearing
-   geometry.
+   candidate.
+
+**A correction to the pixel figures above.** They were written against a
+hypothetical 500 px boat, which the scene ([§4.1](#41-whats-drawn)) has since
+turned into a real number: at `shortRadius` = 6 m the boat is 48.7% of the
+scene's short axis, so it is ~190 px on a 390 px phone, ~406 px on an iPad and
+~438 px on a desktop. A 500 px boat needs a 1027 px scene — a large display, not
+the typical one.
+
+The proportions are unaffected — 45% of LOA at normal trim, 22% at the worst
+legal trim — but the pixels are not. On a phone that worst case is ~42 px, which
+is *narrower* than two 44 px discs side by side, so **the nearer-clew tie-break
+is load-bearing on small screens, not the cheap defensive rule this section
+called it.** Disc radius should be `min(22px, gap / 2)` rather than a flat 22 px.
+`scene.pixelsToMeters()` exists so the input layer can compute that at runtime
+instead of assuming a scale. At normal trim there is no ambiguity anywhere: 45%
+of a 190 px boat is still ~85 px.
 
 **Discoverability.** With no labels, the grab points have to announce themselves.
 A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
@@ -738,8 +821,10 @@ src/
     initialState.ts   bounded randomizer (§2.1)
     tuning.ts         every fudge factor, in one file
   render/
-    scene.ts          SVG root, viewBox, responsive layout
-    hull.ts
+    svg.ts            namespace-correct element factory, attribute formatting
+    scene.ts          SVG root, viewBox, responsive layout, screen↔world
+    scene.css         ink and line weights (§4.4, §4.5)
+    hull.ts           hull outline, mast, forestay
     sail.ts           Bézier camber + luff flutter
     wind.ts           perimeter arrow, apparent-wind overlay
     speed.ts
@@ -766,6 +851,11 @@ the running simulator. Collecting them in one file keeps them out of the physics
 makes the calibration phase a matter of turning knobs rather than hunting
 constants, and — since a fudge factor in a named tuning file is visibly a fudge
 factor — keeps us honest about which numbers are physics and which are taste.
+
+That file's remit is the *model*, though. Drawing decisions — the Bézier
+fractions that fair the hull, the scene's band radii — stay beside the code that
+draws with them. A render module reaching into model tuning for a curve handle
+would blur the very line `tuning.ts` exists to draw.
 
 TypeScript + Vite, building to static files.
 
