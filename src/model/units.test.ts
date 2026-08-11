@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { Radians, Vec2 } from "./units.ts";
 import {
+  acos,
   add,
   angleBetween,
   angleOfVector,
+  asin,
   componentAcross,
   componentAlong,
   degreesToRadians,
@@ -243,6 +245,29 @@ describe("vectors", () => {
     expect(componentAcross(force, deg(120))).toBeCloseTo(-10, PRECISION);
     // A force 60° off the heading drives with cos 60° of itself.
     expect(componentAlong(force, deg(-30))).toBeCloseTo(5, PRECISION);
+  });
+});
+
+describe("inverse trigonometry", () => {
+  it("inverts sine and cosine over their principal ranges", () => {
+    expectAngle(asin(0), 0);
+    expectAngle(asin(1), Math.PI / 2);
+    expectAngle(acos(1), 0);
+    expectAngle(acos(-1), Math.PI);
+    expectAngle(acos(0), Math.PI / 2);
+  });
+
+  it("absorbs rounding-sized overshoot, which is what the clamp is for", () => {
+    expectAngle(acos(1 + 1e-15), 0);
+    expectAngle(asin(-1 - 1e-15), -Math.PI / 2);
+  });
+
+  it("refuses input that is not a ratio at all, rather than inventing an angle", () => {
+    // Clamping 1.4 would hand back a confident π/2 and bury the real bug —
+    // a unit mix-up or an unnormalised vector — somewhere downstream.
+    expect(() => asin(1.4)).toThrow(/not a ratio/);
+    expect(() => acos(-2)).toThrow(/not a ratio/);
+    expect(() => acos(Number.NaN)).toThrow(/not a ratio/);
   });
 });
 

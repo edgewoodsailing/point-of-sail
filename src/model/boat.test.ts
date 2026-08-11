@@ -32,6 +32,21 @@ function clewGap(mainDegrees: number, jibDegrees: number): number {
   return magnitude(subtract(mainClewPosition(deg(mainDegrees)), jibClewPosition(deg(jibDegrees))));
 }
 
+/**
+ * The closest the two clews ever come, in metres, with both sails trimmed
+ * anywhere within ±`limitDegrees`. Swept at a fine step: the minimum sits in a
+ * shallow valley, so a coarse grid reports a value that is too optimistic.
+ */
+function closestApproach(limitDegrees: number): number {
+  let closest = Infinity;
+  for (let mainDegrees = -limitDegrees; mainDegrees <= limitDegrees; mainDegrees += 0.25) {
+    for (let jibDegrees = -limitDegrees; jibDegrees <= limitDegrees; jibDegrees += 0.25) {
+      closest = Math.min(closest, clewGap(mainDegrees, jibDegrees));
+    }
+  }
+  return closest;
+}
+
 describe("Rhodes 19 hull figures (DESIGN.md §3)", () => {
   it("matches the published dimensions", () => {
     expect(metersToFeet(HULL.loa)).toBeCloseTo(19 + 2 / 12, 6);
@@ -162,12 +177,18 @@ describe("clew positions (DESIGN.md §5)", () => {
     expect(flatGap / HULL.loa).toBeCloseTo(0.4, 2);
   });
 
-  it("keeps them a hand's width apart across the working trim range", () => {
-    for (let mainDegrees = -60; mainDegrees <= 60; mainDegrees += 5) {
-      for (let jibDegrees = -60; jibDegrees <= 60; jibDegrees += 5) {
-        expect(clewGap(mainDegrees, jibDegrees) / HULL.loa).toBeGreaterThan(0.29);
-      }
-    }
+  it("closes to a known minimum as trim widens, rather than staying comfortably apart", () => {
+    // Pinned as measured values, not as a threshold with slack: both minima sit
+    // *on* the edge of the range searched, at the main's limit, so the gap is
+    // still shrinking when the search stops. A margin-based assertion would
+    // read as a guarantee that holds a bit further out, and it doesn't.
+    //
+    // Within ±60° — normal working trim — the closest the clews come is
+    // 0.293·LOA, about 4.8 ft, ~150 px on a 500 px boat: still an easy target.
+    // Open both sails to ±90° and that falls to 0.166·LOA, ~85 px, and past the
+    // beam the two arcs cross outright (below).
+    expect(closestApproach(60) / HULL.loa).toBeCloseTo(0.29325, 5);
+    expect(closestApproach(90) / HULL.loa).toBeCloseTo(0.16573, 5);
   });
 
   it("lets the two swing arcs cross once a sail is eased past the beam", () => {

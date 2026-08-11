@@ -68,14 +68,40 @@ export function tan(angle: Radians): number {
   return Math.tan(angle);
 }
 
-/** Arcsine, returning an angle in [−π/2, π/2]. Input is clamped to [−1, 1]. */
-export function asin(ratio: number): Radians {
-  return Math.asin(Math.min(1, Math.max(-1, ratio)));
+/**
+ * How far outside [−1, 1] a ratio may stray before we call it a bug rather than
+ * rounding. Normalising a vector and dotting it can overshoot 1 by an ulp or
+ * two; nothing legitimate overshoots by 1e-6.
+ */
+const RATIO_TOLERANCE = 1e-6;
+
+/**
+ * Clamps a cosine/sine ratio into [−1, 1].
+ *
+ * Rounding-sized overshoot is silently absorbed, because that is exactly what
+ * the clamp is for. A gross overshoot is a different animal — a unit mix-up or
+ * an unnormalised vector upstream — and clamping it would return a confident,
+ * plausible, wrong angle. In dev and test builds that throws instead; in the
+ * production bundle the check is dropped and the clamp stands, since a student
+ * mid-lesson is better served by a slightly wrong sail than a blank page.
+ */
+function clampRatio(ratio: number, caller: string): number {
+  if (import.meta.env.DEV && !(Math.abs(ratio) <= 1 + RATIO_TOLERANCE)) {
+    throw new Error(
+      `${caller}() got ${ratio}, which is not a ratio — check for a unit mix-up or an unnormalised vector upstream.`,
+    );
+  }
+  return Math.min(1, Math.max(-1, ratio));
 }
 
-/** Arccosine, returning an angle in [0, π]. Input is clamped to [−1, 1]. */
+/** Arcsine, returning an angle in [−π/2, π/2]. See {@link clampRatio} for out-of-range input. */
+export function asin(ratio: number): Radians {
+  return Math.asin(clampRatio(ratio, "asin"));
+}
+
+/** Arccosine, returning an angle in [0, π]. See {@link clampRatio} for out-of-range input. */
 export function acos(ratio: number): Radians {
-  return Math.acos(Math.min(1, Math.max(-1, ratio)));
+  return Math.acos(clampRatio(ratio, "acos"));
 }
 
 // ---------------------------------------------------------------------------

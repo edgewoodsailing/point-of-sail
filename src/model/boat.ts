@@ -47,14 +47,23 @@ const HULL_SPEED_COEFFICIENT = 1.34;
 
 // --- Longitudinal stations, feet aft of the bow ----------------------------
 //
-// §5 pins the two figures a student's finger actually cares about: the main
+// §5 quotes the two figures a student's finger actually cares about: the main
 // clew rides the boom end ~16.7 ft aft of the bow, and the jib clew sheets to
-// the deck ~9 ft aft. The mast follows from the first (16.7 − E), and the
-// forestay from the mast (mast − J), landing half a foot aft of the stem —
-// which is why §4.1 can call it "the forestay at the bow".
+// the deck ~9 ft aft. Those are *consequences*, so only one of them is a
+// constant here.
+//
+// The mast is fixed where the boat has it — 16.7 ft less the 9.7 ft boom — and
+// the main clew then follows from the boom length, which is the honest
+// direction of the dependency: refitting a longer boom moves the clew aft, it
+// does not walk the mast forward. (boat.test.ts checks the clew still lands at
+// 16.7 ft.) The forestay follows the mast by J, the foretriangle base, landing
+// half a foot aft of the stem — which is why §4.1 can call it "the forestay at
+// the bow".
 
-const MAST_STATION_FT = 16.7 - E_FT;
+const MAST_STATION_FT = 7.0;
 const FORESTAY_STATION_FT = MAST_STATION_FT - J_FT;
+
+/** Where the jib sheets to the deck; with the tack at the forestay, this sets the foot. */
 const JIB_CLEW_STATION_FT = 9.0;
 
 /** The jib's foot: tack at the forestay, clew on the deck 9 ft aft. */
@@ -98,7 +107,7 @@ export const RIG: {
   e: feetToMeters(E_FT),
 };
 
-interface Sail {
+export interface Sail {
   readonly area: SquareMeters;
   /** Luff length — the leading edge, and the span in the aspect-ratio sense. */
   readonly luff: Meters;

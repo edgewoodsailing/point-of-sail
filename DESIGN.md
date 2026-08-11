@@ -642,13 +642,22 @@ to the world while trim belongs to the boat.
 
 **Sails are dragged by their clews**, and nothing else on the sail is draggable.
 
-This dissolves the overlap problem rather than working around it. The two clews
-are far apart even sheeted in hard, because they're attached to different parts
-of the boat: the main clew rides the end of the boom, roughly 16.7 ft aft of the
-bow, while the jib clew sheets to the deck around 9 ft aft. That's **~40% of the
-boat's length between them — about 200 px on a 500 px boat** — and the gap
-barely changes with trim, since both clews swing on arcs about widely separated
-pivots. No finger-width ambiguity exists to arbitrate.
+This dissolves the overlap problem at any normal trim, because the clews are
+attached to different parts of the boat: the main clew rides the end of the
+boom, roughly 16.7 ft aft of the bow, while the jib clew sheets to the deck
+around 9 ft aft. Sheeted flat that's **~40% of the boat's length between them —
+about 200 px on a 500 px boat** — and with both sails inside ±60° the gap never
+closes below ~29% of the boat's length. Across the trim a student spends nearly
+all their time in, there is no finger-width ambiguity to arbitrate.
+
+It does not hold everywhere, though, and the geometry is worth stating plainly
+rather than assuming: the main clew swings on a 9.7 ft radius about the mast,
+the jib clew on an 8.5 ft radius about the forestay 6.5 ft ahead of it, and
+**those two arcs intersect.** Open both sails to ±90° and the closest approach
+falls to ~17% of the boat's length; ease the main past the beam — which is
+exactly what backing it ([§3.4](#34-backing-a-sail)) requires — and the two
+clews can land on top of each other. The measurements are pinned as tests in
+`model/boat.ts`'s suite, and the input consequence is tracked as `pos-bwd.3`.
 
 It's also the physically honest choice: the clew is where the sheet attaches, so
 it is quite literally the point through which a sailor's control acts. The
@@ -666,6 +675,10 @@ What remains:
 3. **Everything else on the hull rotates the hull.** With only two small discs
    reserved, the entire silhouette is available — the conflict between hull and
    sail grabs is gone too.
+4. **Arbitration where the discs do overlap.** At wide eases they genuinely can,
+   so touchdown picks the nearer clew, and a sail already captured by another
+   pointer isn't a candidate. Two discs, one rule — not the boom-path hit
+   testing rejected above.
 
 **Discoverability.** With no labels, the grab points have to announce themselves.
 A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
