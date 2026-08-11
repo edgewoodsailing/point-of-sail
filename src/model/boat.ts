@@ -39,8 +39,28 @@ const E_FT = 9.7;
 
 /** Main area including roach, so a little more than P·E/2. */
 const MAIN_AREA_SQ_FT = 118.6;
-/** Jib area, essentially I·J/2 for this 100% jib. */
-const JIB_AREA_SQ_FT = 48.8;
+
+// --- Jib sail, class rules RB 21.02.04 --------------------------------------
+//
+// Unlike the main, the working jib is dimensioned directly by the class rule
+// book — luff 17'0", leech 15'1", foot 7'6" — so nothing about it needs to be
+// inferred from the foretriangle. The oft-published 48.75 sq ft jib "area" is
+// just I·J/2, the foretriangle figure; the class sail measures bigger (its
+// 17 ft luff even exceeds √(I² + J²) ≈ 16.4 ft, so the published I understates
+// the hoist), and its straight-edge area is what the model carries.
+
+const JIB_LUFF_FT = 17.0;
+const JIB_LEECH_FT = 15 + 1 / 12; // 15'1"
+const JIB_FOOT_FT = 7.5; // 7'6"
+
+/** Heron's formula: the straight-edge area of a triangular sail from its sides. */
+function triangleAreaFromSides(a: number, b: number, c: number): number {
+  const s = (a + b + c) / 2;
+  return Math.sqrt(s * (s - a) * (s - b) * (s - c));
+}
+
+/** ≈ 56.5 sq ft. */
+const JIB_AREA_SQ_FT = triangleAreaFromSides(JIB_LUFF_FT, JIB_LEECH_FT, JIB_FOOT_FT);
 
 /** The classic displacement-hull coefficient in `v_hull = 1.34·√LWL_ft` knots. */
 const HULL_SPEED_COEFFICIENT = 1.34;
@@ -49,8 +69,7 @@ const HULL_SPEED_COEFFICIENT = 1.34;
 //
 // §5 quotes the two figures a student's finger actually cares about: the main
 // clew rides the boom end ~16.7 ft aft of the bow, and the jib clew sheets to
-// the deck ~9 ft aft. Those are *consequences*, so only one of them is a
-// constant here.
+// the deck ~8 ft aft. Both are *consequences*, not constants.
 //
 // The mast is fixed where the boat has it — 16.7 ft less the 9.7 ft boom — and
 // the main clew then follows from the boom length, which is the honest
@@ -58,16 +77,12 @@ const HULL_SPEED_COEFFICIENT = 1.34;
 // does not walk the mast forward. (boat.test.ts checks the clew still lands at
 // 16.7 ft.) The forestay follows the mast by J, the foretriangle base, landing
 // half a foot aft of the stem — which is why §4.1 can call it "the forestay at
-// the bow".
+// the bow". The jib clew follows the forestay by the class-rule foot, landing
+// 8 ft aft of the bow. (An earlier draft ran that dependency backwards — it
+// assumed a 9 ft clew station and derived an 8.5 ft foot from it, overstating
+// the sail.)
 
 const MAST_STATION_FT = 7.0;
-const FORESTAY_STATION_FT = MAST_STATION_FT - J_FT;
-
-/** Where the jib sheets to the deck; with the tack at the forestay, this sets the foot. */
-const JIB_CLEW_STATION_FT = 9.0;
-
-/** The jib's foot: tack at the forestay, clew on the deck 9 ft aft. */
-const JIB_FOOT_FT = JIB_CLEW_STATION_FT - FORESTAY_STATION_FT;
 
 // --- Hull ------------------------------------------------------------------
 
@@ -128,10 +143,10 @@ export const MAIN: Sail = sail(
   feetToMeters(E_FT),
 );
 
-/** Aspect ratio ≈ 5.48. The luff is the forestay itself, hence √(I² + J²). */
+/** Aspect ratio ≈ 5.11. Dimensions straight off the class rule book (RB 21.02.04). */
 export const JIB: Sail = sail(
   squareFeetToSquareMeters(JIB_AREA_SQ_FT),
-  feetToMeters(Math.hypot(I_FT, J_FT)),
+  feetToMeters(JIB_LUFF_FT),
   feetToMeters(JIB_FOOT_FT),
 );
 

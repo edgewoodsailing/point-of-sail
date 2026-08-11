@@ -76,20 +76,22 @@ describe("rig and sails (DESIGN.md §3.2)", () => {
 
   it("converts both sail areas to SI", () => {
     expect(MAIN.area).toBeCloseTo(11.0, 1);
-    expect(JIB.area).toBeCloseTo(4.5, 1);
+    expect(JIB.area).toBeCloseTo(5.25, 2);
   });
 
-  it("preserves the 70/30 main:jib area split", () => {
-    expect(MAIN.area / (MAIN.area + JIB.area)).toBeCloseTo(0.708, 3);
+  it("keeps roughly the two-thirds/one-third main:jib area split", () => {
+    expect(MAIN.area / (MAIN.area + JIB.area)).toBeCloseTo(0.677, 3);
   });
 
   it("computes aspect ratio as luff²/area", () => {
     expect(MAIN.aspectRatio).toBeCloseTo(4.86, 2);
-    expect(JIB.aspectRatio).toBeCloseTo(5.48, 2);
+    expect(JIB.aspectRatio).toBeCloseTo(5.11, 2);
   });
 
-  it("takes the jib's luff along the forestay", () => {
-    expect(metersToFeet(JIB.luff)).toBeCloseTo(Math.hypot(15.0, 6.5), 6);
+  it("takes the jib's dimensions from the class rule book, not the foretriangle", () => {
+    // RB 21.02.04: luff 17'0", foot 7'6". Note the luff exceeds √(I² + J²) ≈ 16.4.
+    expect(metersToFeet(JIB.luff)).toBeCloseTo(17.0, 6);
+    expect(metersToFeet(JIB.foot)).toBeCloseTo(7.5, 6);
     expect(metersToFeet(MAIN.luff)).toBeCloseTo(24.0, 6);
   });
 });
@@ -145,10 +147,10 @@ describe("clew positions (DESIGN.md §5)", () => {
     expect(feetAftOfBow(clew)).toBeCloseTo(16.7, 6);
   });
 
-  it("sheets the jib clew to the deck 9 ft aft of the bow", () => {
+  it("sheets the jib clew to the deck 8 ft aft of the bow", () => {
     const clew = jibClewPosition(0);
     expect(clew.x).toBeCloseTo(0, 12);
-    expect(feetAftOfBow(clew)).toBeCloseTo(9.0, 6);
+    expect(feetAftOfBow(clew)).toBeCloseTo(8.0, 6);
   });
 
   it("swings each clew to starboard on positive trim, and mirrors on negative", () => {
@@ -169,12 +171,12 @@ describe("clew positions (DESIGN.md §5)", () => {
     }
   });
 
-  it("separates the clews by ~40% of the boat's length when both are sheeted flat", () => {
-    // §5's headline figure: 16.7 ft aft against 9 ft aft, so ~200 px apart on a
+  it("separates the clews by ~45% of the boat's length when both are sheeted flat", () => {
+    // §5's headline figure: 16.7 ft aft against 8 ft aft, so ~230 px apart on a
     // 500 px boat, which is what makes the grab points unambiguous at normal trim.
     const flatGap = clewGap(0, 0);
-    expect(metersToFeet(flatGap)).toBeCloseTo(7.7, 6);
-    expect(flatGap / HULL.loa).toBeCloseTo(0.4, 2);
+    expect(metersToFeet(flatGap)).toBeCloseTo(8.7, 6);
+    expect(flatGap / HULL.loa).toBeCloseTo(0.45, 2);
   });
 
   it("closes to a known minimum as trim widens, rather than staying comfortably apart", () => {
@@ -184,20 +186,20 @@ describe("clew positions (DESIGN.md §5)", () => {
     // read as a guarantee that holds a bit further out, and it doesn't.
     //
     // Within ±60° — normal working trim — the closest the clews come is
-    // 0.293·LOA, about 4.8 ft, ~150 px on a 500 px boat: still an easy target.
-    // Open both sails to ±90° and that falls to 0.166·LOA, ~85 px, and past the
-    // beam the two arcs cross outright (below).
-    expect(closestApproach(60) / HULL.loa).toBeCloseTo(0.29325, 5);
-    expect(closestApproach(90) / HULL.loa).toBeCloseTo(0.16573, 5);
+    // 0.345·LOA, about 6.6 ft, ~173 px on a 500 px boat: still an easy target.
+    // Open both sails to ±90° — as far as the shrouds let the boom go — and
+    // that falls to 0.218·LOA, ~109 px: still clear of two 44 px touch discs.
+    expect(closestApproach(60) / HULL.loa).toBeCloseTo(0.34542, 5);
+    expect(closestApproach(90) / HULL.loa).toBeCloseTo(0.2179, 5);
   });
 
-  it("lets the two swing arcs cross once a sail is eased past the beam", () => {
-    // Worth pinning down, because §5 reads as though the clews can never be
-    // confused: the main's arc (radius E about the mast) and the jib's (radius
-    // 8.5 ft about the forestay, 6.5 ft ahead of it) do intersect, and at wide
-    // eases — including the backed main of §3.4 — the two clews can land on top
-    // of each other. Hit arbitration is therefore the input layer's problem;
-    // geometry does not solve it everywhere. See pos-bwd.
-    expect(clewGap(120, 79)).toBeLessThan(0.05);
+  it("keeps the arcs' crossing beyond the boom's shroud-limited swing", () => {
+    // The main's arc (radius E about the mast) and the jib's (radius 7.5 ft
+    // about the forestay, 6.5 ft ahead of it) do intersect — but only with the
+    // main eased to ~129°, well past the ~90° where the boom fetches up on the
+    // shrouds. So once trim is clamped to the boom's physical swing (pos-bwd.3),
+    // the clews can never coincide; this pins where the crossing sits so the
+    // conclusion is re-checked if the stations or sail dimensions ever change.
+    expect(clewGap(129.43, 87.41)).toBeLessThan(0.05);
   });
 });

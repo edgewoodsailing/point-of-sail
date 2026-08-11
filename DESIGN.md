@@ -178,12 +178,13 @@ Rhodes 19 reference figures:
 | Draft (keel) | 3'3" |
 | Rig | I=15.0, J=6.5, P=24.0, E=9.7 |
 | Main area | ≈ 118.6 sq ft (11.0 m²) |
-| Jib area | ≈ 48.8 sq ft (4.5 m²) |
+| Jib (class rules RB 21.02.04) | luff 17'0", leech 15'1", foot 7'6" |
+| Jib area | ≈ 56.5 sq ft (5.3 m²) straight-edge; the oft-quoted 48.8 is just I·J/2 |
 | Hull speed | 1.34·√17.75 ≈ **5.65 kt** |
 
-The 70/30 main:jib area split matters — it sets how much of the feedback comes
-from each sail, and it means a badly trimmed main is much more punishing than a
-badly trimmed jib. That asymmetry is worth preserving.
+The roughly two-thirds/one-third main:jib area split matters — it sets how much
+of the feedback comes from each sail, and it means a badly trimmed main is much
+more punishing than a badly trimmed jib. That asymmetry is worth preserving.
 
 ### 3.1 Apparent wind
 
@@ -212,7 +213,7 @@ Each sail is treated as a thin cambered foil of finite span.
 **Aspect ratio** from `luff² / area`, the standard sail convention:
 
 - Main: `24² / 118.6` ≈ **4.9**
-- Jib: `√(15² + 6.5²)² / 48.8` ≈ **5.5**
+- Jib: `17² / 56.5` ≈ **5.1**
 
 **Lift-curve slope**, corrected for finite span:
 
@@ -394,7 +395,7 @@ six lessons and then had a jib added: the boat suddenly goes upwind
 removes area uniformly and the no-go zone doesn't widen at all, because the
 angle at which drive goes to zero is set by the foil's lift-to-drag ratio, not
 by how much sail you have. Main and jib have nearly the same aspect ratio here
-(4.9 and 5.5), so removing one barely shifts the average efficiency. The
+(4.9 and 5.1), so removing one barely shifts the average efficiency. The
 simulator would show main-only as *slower everywhere and no worse upwind*, which
 is precisely the wrong lesson for the class this feature exists to serve.
 
@@ -645,19 +646,22 @@ to the world while trim belongs to the boat.
 This dissolves the overlap problem at any normal trim, because the clews are
 attached to different parts of the boat: the main clew rides the end of the
 boom, roughly 16.7 ft aft of the bow, while the jib clew sheets to the deck
-around 9 ft aft. Sheeted flat that's **~40% of the boat's length between them —
-about 200 px on a 500 px boat** — and with both sails inside ±60° the gap never
-closes below ~29% of the boat's length. Across the trim a student spends nearly
+around 8 ft aft. Sheeted flat that's **~45% of the boat's length between them —
+about 230 px on a 500 px boat** — and with both sails inside ±60° the gap never
+closes below ~35% of the boat's length. Across the trim a student spends nearly
 all their time in, there is no finger-width ambiguity to arbitrate.
 
-It does not hold everywhere, though, and the geometry is worth stating plainly
-rather than assuming: the main clew swings on a 9.7 ft radius about the mast,
-the jib clew on an 8.5 ft radius about the forestay 6.5 ft ahead of it, and
-**those two arcs intersect.** Open both sails to ±90° and the closest approach
-falls to ~17% of the boat's length; ease the main past the beam — which is
-exactly what backing it ([§3.4](#34-backing-a-sail)) requires — and the two
-clews can land on top of each other. The measurements are pinned as tests in
-`model/boat.ts`'s suite, and the input consequence is tracked as `pos-bwd.3`.
+The geometry is worth stating plainly rather than assuming: the main clew
+swings on a 9.7 ft radius about the mast, the jib clew on a 7.5 ft radius about
+the forestay 6.5 ft ahead of it, and those two arcs do intersect — but only
+with the main eased to ~129°, well past the ~90° where the boom fetches up on
+the shrouds. **The swing limit is therefore what keeps the grab points apart:**
+with trim clamped to the boom's physical range, the closest the clews ever come
+is ~22% of the boat's length (~109 px on a 500 px boat), comfortably clear of
+two 44 px touch discs. Enforcing that clamp — noting that backing
+([§3.4](#34-backing-a-sail)) holds the sail on the *wrong side of the wind* but
+never past the shrouds — is tracked as `pos-bwd.3`. The measurements are pinned
+as tests in `model/boat.ts`'s suite.
 
 It's also the physically honest choice: the clew is where the sheet attaches, so
 it is quite literally the point through which a sailor's control acts. The
@@ -675,10 +679,12 @@ What remains:
 3. **Everything else on the hull rotates the hull.** With only two small discs
    reserved, the entire silhouette is available — the conflict between hull and
    sail grabs is gone too.
-4. **Arbitration where the discs do overlap.** At wide eases they genuinely can,
-   so touchdown picks the nearer clew, and a sail already captured by another
-   pointer isn't a candidate. Two discs, one rule — not the boom-path hit
-   testing rejected above.
+4. **Swing limits instead of arbitration.** The boom physically cannot pass the
+   shrouds (~90° of ease), and with trim clamped to that range the two discs
+   can never overlap — the ~109 px minimum above. Touchdown still tie-breaks on
+   the nearer clew, and a sail already captured by another pointer isn't a
+   candidate, but these are cheap defensive rules rather than load-bearing
+   geometry (`pos-bwd.3`).
 
 **Discoverability.** With no labels, the grab points have to announce themselves.
 A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
@@ -942,7 +948,7 @@ None outstanding. The design is ready to break into beads.
 - Backing a sail = holding the pointer down; release swings it to the mirrored
   trim angle over ~0.4 s, with the model running throughout
 - Acceleration lag is a tuning knob, starting at 10 s
-- Sails are grabbed by their clews, which are ~40% of LOA apart — no
+- Sails are grabbed by their clews, which are ~45% of LOA apart — no
   arbitration needed
 - All fudge factors collected in `tuning.ts`
 - This repo is the dev/test harness; deployment copies the build into the
