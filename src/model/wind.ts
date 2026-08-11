@@ -73,8 +73,14 @@ export function apparentWind(wind: TrueWind, boat: BoatMotion): ApparentWind {
   // outright. Report the true wind's angle off the bow, which is the direction
   // the apparent wind returns from: resistance always decelerates, so the boat
   // can only leave that knife-edge by slowing, and the apparent wind fills in
-  // from astern. Falling through to zero instead would read as head to wind and
-  // flick every sail to luffing for a frame.
+  // from astern.
+  //
+  // Without this branch the zero vector falls through `angleOfVector`, which
+  // reports a bearing of 0 for it, and the round trip out through
+  // `oppositeAngle` and `toBoatFrame` lands on `180° − heading` — an angle with
+  // nothing to do with the wind, which swings as the student turns the boat.
+  // Heading due north is the one case where it coincidentally lands on the
+  // right answer, so `wind.test.ts` sweeps the knife edge across headings.
   if (speed < CALM) {
     return { speed: 0, angle: trueWindAngle(wind, boat) };
   }

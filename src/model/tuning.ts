@@ -41,9 +41,16 @@ export const FOIL: {
   spanEfficiency: 0.9,
 
   /**
-   * Where attached flow gives up. Together with the lift-curve slope this sets
-   * `Cl_max` ≈ 1.4 on the main, a realistic figure for a soft sail — so moving
-   * this angle moves peak lift with it, and the two cannot be tuned separately.
+   * Where attached flow gives up. Together with the lift-curve slope it sets
+   * peak lift, so the two cannot be tuned separately — move this angle and peak
+   * lift moves with it.
+   *
+   * On the main, `Cl` reaches 1.40 here, the figure §3.2 quotes. That is not
+   * quite the maximum: the smoothstep blend leaves this angle with zero slope,
+   * so the attached limb keeps climbing for another degree or so and the curve
+   * actually tops out at ≈ 1.46 near 19.7°. Both are realistic for a soft sail,
+   * but the optimal-trim search will settle on the second one, so it is the
+   * number to have in mind when reading the calibration table.
    */
   stallAngle: degreesToRadians(18),
 

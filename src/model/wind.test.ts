@@ -71,11 +71,18 @@ describe("apparent wind (DESIGN.md §3.1)", () => {
    * The knife-edge the {@link apparentWind} `CALM` branch exists for. Direction
    * is undefined here, and the convention is that it reads as the true wind
    * angle — the bearing the apparent wind fills in from as the boat slows.
+   *
+   * Swept across headings deliberately. The unguarded fall-through returns
+   * `180° − heading`, which is right by coincidence at heading 0 and wrong
+   * everywhere else, so pinning this at a single northerly heading would pass
+   * with the guard deleted.
    */
   it("reports the true wind angle when running at exactly wind speed", () => {
-    const apparent = onPointOfSail(180, 10, 10);
-    expect(apparent.speed).toBe(0);
-    expect(Math.abs(apparent.angle)).toBeCloseTo(180, 9);
+    for (const headingDegrees of HEADINGS) {
+      const apparent = onPointOfSail(180, 10, 10, headingDegrees);
+      expect(apparent.speed).toBe(0);
+      expect(Math.abs(apparent.angle)).toBeCloseTo(180, 9);
+    }
   });
 
   /**
