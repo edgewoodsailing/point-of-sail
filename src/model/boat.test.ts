@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clampTrim,
   HULL,
   JIB,
   MAIN,
@@ -9,6 +10,7 @@ import {
   RIG,
   sailChordBearing,
   STATIONS,
+  SWING_LIMIT,
 } from "./boat.ts";
 import type { Vec2 } from "./units.ts";
 import {
@@ -17,6 +19,7 @@ import {
   metersPerSecondToKnots,
   metersToFeet,
   normalizeSigned,
+  radiansToDegrees,
   subtract,
 } from "./units.ts";
 
@@ -140,6 +143,39 @@ describe("sail chord bearing", () => {
   });
 });
 
+describe("swing limit (DESIGN.md §5)", () => {
+  it("stops the boom at the shrouds, dead abeam", () => {
+    expect(radiansToDegrees(SWING_LIMIT)).toBeCloseTo(90, 9);
+  });
+
+  it("passes legal trim through untouched, right out to the limit", () => {
+    for (const trimDegrees of [0, 15, -15, 45, -45, 90, -90]) {
+      expect(clampTrim(deg(trimDegrees))).toBeCloseTo(deg(trimDegrees), 12);
+    }
+  });
+
+  it("holds anything eased past the shrouds at the limit", () => {
+    expect(clampTrim(deg(129.43))).toBeCloseTo(SWING_LIMIT, 12);
+    expect(clampTrim(deg(-129.43))).toBeCloseTo(-SWING_LIMIT, 12);
+    expect(clampTrim(deg(180))).toBeCloseTo(SWING_LIMIT, 12);
+  });
+
+  it("normalises first, so a wound-up drag angle clamps on the side it points", () => {
+    // 350° is 10° to port, not something eased 260° past the shrouds.
+    expect(clampTrim(deg(350))).toBeCloseTo(deg(-10), 12);
+    expect(clampTrim(deg(-350))).toBeCloseTo(deg(10), 12);
+    expect(clampTrim(deg(360 + 129.43))).toBeCloseTo(SWING_LIMIT, 12);
+  });
+
+  it("is odd, which is what lets the swing-back mirror ignore clamping (§3.4)", () => {
+    // The mirror of a legal trim is legal, so `clampTrim(-angle)` and
+    // `-clampTrim(angle)` agree and the animation can use either.
+    for (const trimDegrees of [0, 30, 90, 129.43, 175]) {
+      expect(clampTrim(deg(-trimDegrees))).toBeCloseTo(-clampTrim(deg(trimDegrees)), 12);
+    }
+  });
+});
+
 describe("clew positions (DESIGN.md §5)", () => {
   it("puts the main clew at the boom end, 16.7 ft aft of the bow when sheeted flat", () => {
     const clew = mainClewPosition(0);
@@ -190,16 +226,28 @@ describe("clew positions (DESIGN.md §5)", () => {
     // Open both sails to ±90° — as far as the shrouds let the boom go — and
     // that falls to 0.218·LOA, ~109 px: still clear of two 44 px touch discs.
     expect(closestApproach(60) / HULL.loa).toBeCloseTo(0.34542, 5);
-    expect(closestApproach(90) / HULL.loa).toBeCloseTo(0.2179, 5);
+    expect(closestApproach(radiansToDegrees(SWING_LIMIT)) / HULL.loa).toBeCloseTo(0.2179, 5);
+  });
+
+  it("leaves the two 44 px touch discs clear at every trim the shrouds allow", () => {
+    // The acceptance criterion of §5, in the units the interaction is specified
+    // in: at the 500 px design scale, the worst reachable case still leaves
+    // ~109 px between clew centres, and two 44 px discs only overlap once their
+    // centres are within 44 px.
+    const minimumGapPx = (closestApproach(radiansToDegrees(SWING_LIMIT)) / HULL.loa) * 500;
+    expect(minimumGapPx).toBeCloseTo(108.95, 2);
+    expect(minimumGapPx).toBeGreaterThan(44);
   });
 
   it("keeps the arcs' crossing beyond the boom's shroud-limited swing", () => {
     // The main's arc (radius E about the mast) and the jib's (radius 7.5 ft
     // about the forestay, 6.5 ft ahead of it) do intersect — but only with the
-    // main eased to ~129°, well past the ~90° where the boom fetches up on the
-    // shrouds. So once trim is clamped to the boom's physical swing (pos-bwd.3),
-    // the clews can never coincide; this pins where the crossing sits so the
-    // conclusion is re-checked if the stations or sail dimensions ever change.
+    // main eased to ~129°, well past where the boom fetches up on the shrouds.
+    // Trim is clamped to that swing (`clampTrim`), so the clews can never
+    // coincide. This pins both halves of that argument: where the crossing
+    // sits, so it is re-checked if the stations or sail dimensions change, and
+    // that it stays out of reach, so raising SWING_LIMIT into it fails here.
     expect(clewGap(129.43, 87.41)).toBeLessThan(0.05);
+    expect(deg(129.43)).toBeGreaterThan(SWING_LIMIT);
   });
 });

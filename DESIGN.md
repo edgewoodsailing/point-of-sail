@@ -619,7 +619,7 @@ state exists**, touch targets must be large, and targets will overlap.
 | Hull | Drag to rotate | Rotates about the mast |
 | Wind direction | Drag the perimeter arrow | Large target, never overlaps the boat |
 | Wind speed | Slider | Separate control; easier than dragging arrow length on a phone |
-| Main | Drag the boom | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
+| Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
 | Jib | Drag the clew | Same; absent when the jib is struck |
 
 Two settings sit outside the drawing, in a minimal control strip: **apparent
@@ -658,10 +658,11 @@ with the main eased to ~129°, well past the ~90° where the boom fetches up on
 the shrouds. **The swing limit is therefore what keeps the grab points apart:**
 with trim clamped to the boom's physical range, the closest the clews ever come
 is ~22% of the boat's length (~109 px on a 500 px boat), comfortably clear of
-two 44 px touch discs. Enforcing that clamp — noting that backing
-([§3.4](#34-backing-a-sail)) holds the sail on the *wrong side of the wind* but
-never past the shrouds — is tracked as `pos-bwd.3`. The measurements are pinned
-as tests in `model/boat.ts`'s suite.
+two 44 px touch discs. The limit and the clamp live in `model/boat.ts` as
+`SWING_LIMIT` and `clampTrim`; every site that sets a sail angle routes through
+the clamp — including backing ([§3.4](#34-backing-a-sail)), which holds the sail
+on the *wrong side of the wind* but never past the shrouds. The measurements are
+pinned as tests in that module's suite.
 
 It's also the physically honest choice: the clew is where the sheet attaches, so
 it is quite literally the point through which a sailor's control acts. The
@@ -684,7 +685,7 @@ What remains:
    can never overlap — the ~109 px minimum above. Touchdown still tie-breaks on
    the nearer clew, and a sail already captured by another pointer isn't a
    candidate, but these are cheap defensive rules rather than load-bearing
-   geometry (`pos-bwd.3`).
+   geometry.
 
 **Discoverability.** With no labels, the grab points have to announce themselves.
 A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
