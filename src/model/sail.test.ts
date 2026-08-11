@@ -309,12 +309,16 @@ describe("mirror symmetry (DESIGN.md §3.3)", () => {
 });
 
 describe("optimal trim (DESIGN.md §3.2)", () => {
-  /** What the search is checked against: every legal trim, at 0.01°. */
-  function bruteForceOptimum(apparent: ApparentWind): { angle: Radians; driving: number } {
+  /** What the search is checked against: every legal trim, at a fine step. */
+  function bruteForceOptimum(
+    apparent: ApparentWind,
+    sail = MAIN,
+    step = 0.01,
+  ): { angle: Radians; driving: number } {
     let bestAngle = -SWING_LIMIT;
     let bestDriving = -Infinity;
-    for (let degrees = -SWING_LIMIT_DEGREES; degrees <= SWING_LIMIT_DEGREES; degrees += 0.01) {
-      const force = driving(degrees, apparent);
+    for (let degrees = -SWING_LIMIT_DEGREES; degrees <= SWING_LIMIT_DEGREES; degrees += step) {
+      const force = driving(degrees, apparent, sail);
       if (force > bestDriving) {
         bestDriving = force;
         bestAngle = deg(degrees);
@@ -347,6 +351,49 @@ describe("optimal trim (DESIGN.md §3.2)", () => {
       const brute = bruteForceOptimum(wind(awa));
       expect(Math.abs(radiansToDegrees(found.angle - brute.angle))).toBeLessThan(1);
       expect(Math.abs(found.driving / brute.driving - 1)).toBeLessThan(1e-3);
+    }
+  });
+
+  /**
+   * Coming out of the no-go zone the drive at the best possible trim passes
+   * through zero, so the *window* of trims that drive forward at all opens from
+   * nothing. At AWA 4.5° only trims between about +0.75° and +4.2° drive at all,
+   * and the sweep's samples at 0° and +5° both sit outside it — this is not a
+   * trim a 5° grid could have stumbled on, at any spacing (a finer grid only
+   * moves the band where the window is narrower than a step). What finds it is
+   * the closed-form optimum of the attached limb, α* = π·AR·e·tan(AWA)/(2a).
+   */
+  it("catches the sliver of positive drive at the edge of the no-go zone", () => {
+    const alphaStar =
+      (Math.PI * AR * FOIL.spanEfficiency * Math.tan(deg(4.5))) / (2 * ((TAU * AR) / (AR + 2)));
+    expect(radiansToDegrees(alphaStar)).toBeCloseTo(6.96, 2);
+
+    expect(driving(0, wind(4.5))).toBeLessThan(0);
+    expect(driving(5, wind(4.5))).toBeLessThan(0);
+
+    const best = optimalTrim(MAIN, wind(4.5));
+    expect(best.driving).toBeGreaterThan(0);
+    expect(radiansToDegrees(best.angle)).toBeCloseTo(radiansToDegrees(alphaStar) - 4.5, 1);
+  });
+
+  /**
+   * And the same, swept: wherever *any* legal trim drives the boat forward, the
+   * search has to come back with one. Reporting a luffing trim and a flat zero
+   * there would not be the honest in-irons answer — it would be a real trim
+   * missed, and a zero denominator handed to the §4.2 ramp.
+   */
+  it("never reports zero drive where a trim exists that drives", () => {
+    for (const sail of [MAIN, JIB]) {
+      for (let awa = 3.5; awa <= 12; awa += 0.2) {
+        for (const tack of [1, -1]) {
+          const apparent = wind(tack * awa);
+          const found = optimalTrim(sail, apparent);
+          const brute = bruteForceOptimum(apparent, sail, 0.05);
+
+          if (brute.driving > 0) expect(found.driving).toBeGreaterThan(0);
+          expect(Math.abs(radiansToDegrees(found.angle - brute.angle))).toBeLessThan(1);
+        }
+      }
     }
   });
 

@@ -28,19 +28,21 @@
  */
 
 import type { Sail } from "./boat.ts";
-import { JIB, MAIN, sailChordBearing, SWING_LIMIT } from "./boat.ts";
-import { foilCoefficients } from "./foil.ts";
-import { LUFF } from "./tuning.ts";
+import { clampTrim, JIB, MAIN, sailChordBearing, SWING_LIMIT } from "./boat.ts";
+import { foilCoefficients, liftCurveSlope } from "./foil.ts";
+import { FOIL, LUFF } from "./tuning.ts";
 import type { ApparentWind } from "./wind.ts";
 import type { MetersPerSecond, Newtons, Radians } from "./units.ts";
 import {
   add,
   angleBetween,
   componentAlong,
+  cos,
   oppositeAngle,
   perpendicular,
   scale,
   smoothstep,
+  tan,
   unitVector,
 } from "./units.ts";
 
@@ -185,12 +187,17 @@ const REFINE_PASSES = 2;
  * their true summits are not. Keeping only the best sample would let a rounding
  * difference decide which side of the boat the answer came from. The peaks are
  * few — `Cl` and `Cd` each turn over just once across the range, and the luff
- * notch at α = 0 can split one — so at 37 coarse samples plus 18 per peak this
- * runs to some 60 to 100 evaluations. Nothing beside a frame of rendering.
+ * notch at α = 0 can split one — so at 37 coarse samples, 18 per peak and 19
+ * for the seed below, this runs to some 60 to 130 evaluations, around 30 µs.
+ * Nothing beside a frame of rendering.
+ *
+ * The sweep is joined by one analytic candidate, {@link attachedTrimSeed},
+ * which covers the one place a grid of any spacing is unsafe. See there.
  *
  * Two cases are reported honestly rather than special-cased:
  *
- * - **In irons.** Near head to wind every trim gives `driving ≤ 0`; this
+ * - **In irons.** Inside the no-go zone every trim gives `driving ≤ 0` — the
+ *   sail cannot make enough forward lift to cover its own drag — and this
  *   returns the least-bad angle and a non-positive force. What the colour ramp
  *   does with a non-positive denominator is §4.2's problem (pos-dmg.1), not
  *   this module's. With zero apparent wind every trim ties at zero force and
@@ -228,7 +235,67 @@ export function optimalTrim(
     if (refined.driving > best.driving) best = refined;
   }
 
+  const seed = attachedTrimSeed(sail, apparent);
+  if (seed !== null) {
+    const refined = refine(sail, apparent, seed, sailForce(sail, seed, apparent).driving);
+    if (refined.driving > best.driving) best = refined;
+  }
+
   return best;
+}
+
+/**
+ * The attached limb's optimum trim, worked out in closed form — or null where
+ * that formula has nothing to say.
+ *
+ * **Why the sweep needs help here.** Coming out of the no-go zone the drive at
+ * the best possible trim passes through zero, so the *window* of trims that
+ * drive forward at all opens from nothing: for the main it is about 1.7° wide
+ * at AWA 4.4° and does not reach 5° until AWA 4.7°. A 5° sweep can step over a
+ * window that narrow and report a luffing trim on the wrong side of the boat
+ * with `driving` of exactly zero — which is not the honest in-irons answer, and
+ * which hands §4.2 a zero denominator when a real trim was available. Halving
+ * the step would not fix it, only move the band: the window passes through
+ * every width on its way open, including whatever the step happens to be.
+ *
+ * **The closed form.** On the attached limb `Cl = a·α` and
+ * `Cd = Cd0 + a²α²/(π·AR·e)`, so §3.2's drive is a downward parabola in α:
+ *
+ * ```text
+ * Cl·sin(AWA) − Cd·cos(AWA) = a·sin(AWA)·α − cos(AWA)·(Cd0 + a²α²/(π·AR·e))
+ * ```
+ *
+ * whose peak sits at
+ *
+ * ```text
+ * α* = π·AR·e·tan(AWA) / (2a)
+ * ```
+ *
+ * — the exact answer wherever the flow is attached and the luff is drawing,
+ * which is precisely the regime the sweep struggles with. Two conditions bound
+ * it, and outside them the sweep is already comfortable:
+ *
+ * - `cos(AWA) > 0`. With the wind abaft the beam drag *helps*, the parabola
+ *   opens upward, and `α*` is its minimum rather than its maximum.
+ * - `|α*|` below the stall. Past it the true optimum is on the blend or the
+ *   plate, whose features are tens of degrees wide — nothing a 5° sweep can
+ *   step over. For the main this holds out to AWA ≈ 11.5°.
+ *
+ * It is only ever an extra candidate: `optimalTrim` keeps whichever of the
+ * sweep's peaks and this one refines highest, so a seed that misjudges — it
+ * ignores the luff reduction, which still bites a little below α = 7° — costs
+ * accuracy nowhere and 19 evaluations near the bow.
+ */
+function attachedTrimSeed(sail: Sail, apparent: ApparentWind): Radians | null {
+  if (!(cos(apparent.angle) > 0)) return null;
+
+  const alpha =
+    (Math.PI * sail.aspectRatio * FOIL.spanEfficiency * tan(apparent.angle)) /
+    (2 * liftCurveSlope(sail.aspectRatio));
+  if (Math.abs(alpha) > FOIL.stallAngle) return null;
+
+  // Inverting α = normalizeSigned(AWA + sailAngle), then held to a legal trim.
+  return clampTrim(alpha - apparent.angle);
 }
 
 /**
