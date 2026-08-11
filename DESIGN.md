@@ -717,38 +717,49 @@ factor — keeps us honest about which numbers are physics and which are taste.
 
 TypeScript + Vite, building to static files.
 
-### 6.1 Deployment: iframe, into two different hosts
+### 6.1 Deployment: static assets in the registrar app
 
-The ESS site is mid-migration — Drupal 6 today, being replaced incrementally by
-the Swift 6 / Hummingbird 2 `registrar` app at
-`/Volumes/Campfire/Sites/registrar`. The simulator has to work in both, possibly
-for years, which makes the decision easy: **embed as an `<iframe>`.**
+**This repo is the development and testing harness.** When the simulator reaches
+a deployable state, its build output is added to the `registrar` app
+(`/Volumes/Campfire/Sites/registrar`, Swift 6 / Hummingbird 2) as static assets
+with a small router entry. Nothing else serves it.
 
-An iframe is the only embedding that is genuinely identical across a Drupal 6
-theme and a Plot/HTMX page. It also isolates the simulator from a global
-`styles.css` it has no reason to inherit — and given the page is a boat rather
-than a document, not inheriting site styling is a feature. The cost is
-committing to an aspect ratio, which a fixed-frame drawing was always going to
-do anyway.
+Although the ESS site is mid-migration from Drupal 6, that never becomes this
+project's problem: both live behind the same domain, with Nginx ingress routing
+by path to separate K8s containers, and the simulator is served exclusively by
+the registrar side. It's a native page there, not an embedded widget.
 
-For the Hummingbird side, the app already serves static assets:
+Two things about the existing setup are worth pinning down, because both are
+easy to get wrong:
 
-```swift
-router.add(middleware: FileMiddleware(getStaticFilesPath(), urlBasePath: "/registrar"))
-```
+**The static URL prefix is `/registrar/public/`, not `/registrar/`.**
+`FileMiddleware` is mounted at `urlBasePath: "/registrar"` over
+`getStaticFilesPath()`, which resolves to the bundled `Static` directory — so
+`Static/public/css/styles.css` is served at `/registrar/public/css/styles.css`,
+as the existing `PageLayout.swift` and `page.mustache` both confirm. Build
+output landing in `Static/public/point-of-sail/` is therefore served at
+`/registrar/public/point-of-sail/` by the existing middleware, with no route
+needed for the assets themselves. `Package.swift` already declares
+`.copy("Static")`, so adding a subdirectory needs no manifest change either.
 
-so the Vite build drops into `Sources/registrar/Static/public/point-of-sail/`
-and is served at `/registrar/point-of-sail/` with no routing work at all. Drupal
-6 embeds the same URL. One deployed copy, two hosts, no divergence.
+**Vite's `base` has to agree with wherever `index.html` is served from.** This
+is the trap: the natural router entry gives the page a clean URL like
+`/registrar/point-of-sail`, while its assets sit under
+`/registrar/public/point-of-sail/`. Vite's default `base: '/'` emits
+`/assets/index-abc123.js` and 404s immediately. The obvious fix, `base: './'`,
+*also* fails in that arrangement — relative URLs resolve against the clean page
+URL, not the asset directory. Either set `base` to the explicit absolute asset
+path, or have the route serve `index.html` from the same prefix as the assets.
+Worth deciding when the route is written rather than debugging later.
 
-This composes with the URL parameters below: a lesson page embeds
-`<iframe src="/registrar/point-of-sail/?jib=off">` and gets the Level 1 boat
-without the simulator knowing anything about lessons.
+A deploy script should also clear the target directory before copying, since
+hashed filenames otherwise accumulate stale bundles on every deploy.
 
-Building inside the registrar repo as a second npm-driven artifact is the
-alternative, and it's worth revisiting once this lands, but keeping it a
-standalone repo means the sim can ship on its own schedule while the Drupal
-migration proceeds on its own.
+**[Q9]** Should the page be wrapped in the site's `PageLayout` (Plot), or served
+bare? Chrome costs vertical space that an iPad flat on a table can't spare, and
+the drawing wants the viewport — but a bare page gives a student no way back to
+the lesson. Either way the simulator's own CSS should be scoped under a single
+root class so the site's global `styles.css` can't leak into the drawing.
 
 ### 6.2 URL parameters as the configuration surface
 
@@ -765,8 +776,8 @@ session:
 ?seed=…         fixed opening problem (§2.1, [Q6])
 ```
 
-The Level 1 lesson page embeds `?jib=off`; a later page embeds the full sloop.
-Same build, same URL, different lesson. Reload is now safe, because the
+A Level 1 lesson links to `?jib=off`; a later lesson links to the full sloop.
+Same build, same route, different lesson. Reload is now safe, because the
 configuration lives in the link rather than in state we're not allowed to keep.
 
 This costs almost nothing — parse once at startup, feed the initial state — and
@@ -856,6 +867,8 @@ release.
   students something false. I recommend yes.
 - **[Q8]** [§3.7](#37-sailing-under-main-alone) — Should main-only be the
   *default*, given it's the boat the first six lessons actually sail?
+- **[Q9]** [§6.1](#61-deployment-static-assets-in-the-registrar-app) — Wrap the
+  page in the site's `PageLayout`, or serve it bare?
 
 ### Settled
 
@@ -868,9 +881,9 @@ release.
 - Sails are grabbed by their clews, which are ~40% of LOA apart — no
   arbitration needed
 - All fudge factors collected in `tuning.ts`
-- Deployed as static files embedded via `<iframe>`, served by the registrar
-  app's existing `FileMiddleware` at `/registrar/point-of-sail/`, embedded
-  identically from Drupal 6 and from Plot/HTMX pages
+- This repo is the dev/test harness; deployment copies the build into the
+  registrar app as static assets plus a small router entry. Served only by
+  registrar, never by Drupal
 - Trim ramp ends on a conventional green (hue 145); it need not match the rest
   of the site, and where the drawing and the site's look diverge, the drawing
   wins
