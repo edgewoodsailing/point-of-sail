@@ -1,10 +1,9 @@
 # Point of Sail — Design
 
-Working design document. Expands on [OBJECTIVES.md](OBJECTIVES.md). This is a
-living document — we edit it together until we're both happy, then break it into
-beads for implementation.
+Working design document. Expands on [OBJECTIVES.md](OBJECTIVES.md).
 
-Open questions are collected at the end and marked **[Q]** inline.
+All open questions are resolved; [§9](#9-open-questions) records what was
+settled. Ready to break into beads.
 
 ---
 
@@ -75,7 +74,7 @@ interface SimState {
   heading: Radians;           // direction the bow points, world frame
   speed: MetersPerSecond;     // signed — negative means sailing backwards
 
-  // Rig: is the jib set at all? False = sailing under main alone (§3.7)
+  // Rig: is the jib set at all? Defaults false — main alone (§3.7)
   jibSet: boolean;
 
   // Trim: sail chord angle relative to boat centerline.
@@ -89,8 +88,10 @@ interface SimState {
 }
 ```
 
-That's it. No history, no session, no persistence — reload resets to defaults, as
-the objectives require.
+That's it. No history, no session, no stored client state. A bare URL opens on a
+fresh random problem, as the objectives require; a URL carrying parameters opens
+on exactly what it describes — see
+[§6.3](#63-url-parameters-as-the-configuration-surface).
 
 ### Conventions
 
@@ -135,12 +136,12 @@ failure. An overtrimmed opening state presents a boat whose sails look perfectly
 fine and which is nonetheless slow. That's the harder lesson and it deserves
 equal billing.
 
-**Often only one sail is wrong**, chosen at random. It teaches that the two are
-trimmed independently, and it makes the main-versus-jib asymmetry felt: a
-mistrimmed main costs far more than a mistrimmed jib, because it's 70% of the
-sail area. Under main alone ([§3.7](#37-sailing-under-main-alone)) this collapses
-to the obvious — the main is always the mistrimmed one — which is the right first
-problem for a Level 1 student anyway: one sail, one variable, one fix.
+**By default there's only one sail to get wrong.** Main-only is the default rig
+([§3.7](#37-sailing-under-main-alone)), so the opening problem is a single
+mistrimmed main — one variable, one fix, which is the right first problem. With
+the jib set, often only one of the two is wrong, chosen at random: it teaches
+that they're trimmed independently, and makes the asymmetry felt, since a
+mistrimmed main costs far more than a mistrimmed jib at 70% of the sail area.
 
 **The boat starts at the steady speed for its bad trim, not at zero.** Otherwise
 everything ramps from zero at once on load and the initial reading is muddy —
@@ -156,9 +157,9 @@ A nice classroom side effect: three iPads on a table means three different
 problems. Students can't copy each other, but they can compare — which is a
 better conversation anyway.
 
-**[Q6]** An optional `?seed=` URL parameter would let an instructor put a whole
-room on the same problem. It's a few lines and adds no UI, but it edges toward
-the presets we ruled out. Worth having?
+All of this applies to the **bare** URL. A URL carrying state parameters restores
+that state instead of randomizing — see
+[§6.3](#63-url-parameters-as-the-configuration-surface).
 
 ---
 
@@ -350,12 +351,15 @@ Constants get tuned until the polar hits roughly these marks in 10 kt true:
 | Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt |
 | Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt |
 | Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt |
+| **Closest useful angle** | — | **≈ 45°** | **≈ 55°** |
 
 Beam reach fastest, run notably slower, and a no-go zone that simply *is* rather
 than being drawn on. These become the model layer's unit tests.
 
-Note the main-only column falls off *hardest close hauled* — roughly 24% down at
-45° versus 15% at a beam reach — which is the whole point of [§3.7](#37-sailing-under-main-alone).
+The last row matters as much as the speeds. Main-only falls off *hardest close
+hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
+point as high at all. Both are the job of [§3.7](#37-sailing-under-main-alone),
+and the pointing figure is the one a student actually sees.
 
 ### 3.7 Sailing under main alone
 
@@ -364,6 +368,16 @@ the student on the helm has complete control of the boat and their feedback
 isn't confounded by someone else's trimming. The simulator must be able to match
 that boat. `jibSet: false` strikes the jib entirely: not drawn, not draggable,
 contributing no force.
+
+**Main-only is the default.** It's the boat six of the first lessons actually
+sail, and it opens on the simplest possible problem: one sail, one variable, one
+fix. The discoverability worry — that a student might never find the jib toggle
+— answers itself, because the students who want a jib are exactly the ones with
+enough experience to notice it's missing and go looking for it. The control
+doesn't have to advertise itself to beginners who wouldn't know what to do with
+it; it only has to be findable by someone already asking the question. That's a
+much weaker requirement, and it means the toggle can stay as quiet as the rest
+of the UI.
 
 This is not a rendering toggle. Three things change, and one of them requires
 reopening a decision.
@@ -386,23 +400,26 @@ is precisely the wrong lesson for the class this feature exists to serve.
 
 The reason a real boat behaves otherwise is the **slot effect** — the jib's
 leading edge sits in undisturbed air and the flow through the slot keeps the
-main attached — which [§7](#7-deliberately-out-of-scope) currently rules out. I
-think that ruling was right in general and wrong here, and I'd like to reverse
-it in minimal form:
+main attached — which [§7](#7-deliberately-out-of-scope) rules out in general.
+That ruling is reversed here, in minimal form:
 
 > A single scalar bonus on the main's lift when the jib is set and drawing,
 > largest close hauled and tapering to nothing by a broad reach.
 
 Perhaps ten lines. It is unashamedly a fudge — no flow is being modeled — but
 it's a fudge in service of the fidelity target, which is that every lesson the
-simulator teaches must be a true lesson. It buys two:
+simulator teaches must be a true lesson.
 
-- Main-only points worse, matching the boat the Level 1 student is actually on.
-- Adding the jib visibly improves upwind performance, which is the payoff at
-  lesson seven.
+**Why this constant must never be tuned to zero.** Students ask, in so many
+words, *why bother with the jib if I can sail perfectly well without it?* This
+bonus is the entire answer. Without it the simulator not only fails to answer
+the question, it actively corroborates the wrong conclusion — jib and no jib
+would differ by a bit of speed and nothing else, and a student comparing the two
+would come away confirmed in the belief the feature exists to correct.
 
-Without it, both of those are silently false. **[Q7]** — flagging it rather than
-just doing it, since it reverses a stated scope decision.
+So it should be tuned to be **plainly visible, not subtle**: on the numbers in
+[§3.6](#36-calibration-targets), setting the jib is worth ~24% upwind speed and
+about 10° of pointing. A student who toggles it should not have to squint.
 
 **Weather helm we don't show — and at Edgewood, largely don't need to.**
 Striking the jib moves the center of effort aft, and a stock Rhodes 19 responds
@@ -556,10 +573,11 @@ is a nice property to have fallen into: protanopes and deuteranopes read it on
 blue–yellow, while tritanopes — for whom blue–yellow is the failing axis — read
 it on the red-green hue sweep that's still there for them.
 
-**[Q5]** The optimal endpoint at hue 170 is a mint/aqua green. It has the
-cleanest CVD separation, but it's arguably not "traffic-light green." Pulling the
-endpoint to ~155 gives a more convincing green and keeps most of the separation.
-I lean toward 155–160. Your call — you're the one showing it to students.
+An earlier candidate ended on a mint green at hue 170, on the assumption that
+buying CVD separation meant giving up traffic-light green. Testing said
+otherwise: the conventional green at 145 keeps the blue axis monotonic *and*
+spaces the five steps more evenly (gaps of 30/40/31/47, against the mint
+version's lopsided 24/44/75/38). The ordinary choice was simply the better one.
 
 #### OKLCH in SVG: one real constraint
 
@@ -708,7 +726,7 @@ One rule holds the whole thing together:
 
 **Everything tunable lives in `tuning.ts`.** Resistance constants, the
 acceleration time constant ([§3.5](#35-hull-resistance-and-integration)), stall
-and luff thresholds, the swing-back duration, the upwind jib bonus (**[Q7]**),
+and luff thresholds, the swing-back duration, the upwind jib bonus (§3.7),
 and the color ramp anchors are all feel decisions that will be adjusted against
 the running simulator. Collecting them in one file keeps them out of the physics,
 makes the calibration phase a matter of turning knobs rather than hunting
@@ -755,13 +773,39 @@ Worth deciding when the route is written rather than debugging later.
 A deploy script should also clear the target directory before copying, since
 hashed filenames otherwise accumulate stale bundles on every deploy.
 
-**[Q9]** Should the page be wrapped in the site's `PageLayout` (Plot), or served
-bare? Chrome costs vertical space that an iPad flat on a table can't spare, and
-the drawing wants the viewport — but a bare page gives a student no way back to
-the lesson. Either way the simulator's own CSS should be scoped under a single
-root class so the site's global `styles.css` can't leak into the drawing.
+### 6.2 A bare page, owning the whole viewport
 
-### 6.2 URL parameters as the configuration surface
+The page is **not** wrapped in the site's `PageLayout`. Navigation back to the
+lesson is what the browser's back button is for, and giving up the template buys
+something the simulator genuinely needs: complete control of positioning and
+scrolling. That's the difference between feeling solid and feeling fiddly, and on
+a touch device it's not a matter of taste.
+
+A drag on an SVG inside an ordinary scrolling page fights the scroller. On an
+iPad, pulling a boom toward the top of the screen can rubber-band the page,
+trigger pull-to-refresh, or start a momentum scroll that hijacks the gesture
+halfway through — and three students pawing at one screen will find every one of
+those failure modes in the first minute. Concretely:
+
+- `height: 100dvh` with the page itself never scrolling
+- `overscroll-behavior: none` to kill rubber-banding and pull-to-refresh
+- `touch-action: none` on the drawing surface, so the browser hands us every
+  pointer event instead of speculatively treating it as a scroll or a zoom
+- no double-tap-to-zoom delay to work around, since `touch-action` disposes of it
+
+Serving bare also disposes of the CSS-isolation problem from
+[§6.1](#61-deployment-static-assets-in-the-registrar-app) — there's no global
+`styles.css` in the document to leak in. Scoping the simulator's styles under a
+single root class stays worthwhile anyway, since it costs nothing and keeps the
+door open to embedding later.
+
+The trade is that pinch-zoom goes away on the drawing surface. For a
+direct-manipulation diagram whose entire content is always on screen by
+construction, that's the right call — there is nothing to zoom *to*. Worth
+revisiting only if the line weights turn out to be too fine on a phone, which is
+a rendering problem to fix at the source rather than by making students pinch.
+
+### 6.3 URL parameters as the configuration surface
 
 The objectives forbid persistence — reload resets everything — which creates a
 problem the jib toggle exposes. If an instructor sets up a main-only boat for a
@@ -771,18 +815,34 @@ The answer is to let **the embedding page carry the configuration**, not the
 session:
 
 ```text
-?jib=off        strike the jib (§3.7)
-?apparent=on    show the apparent wind triangle (§3.1)
-?seed=…         fixed opening problem (§2.1, [Q6])
+?jib=on              set the jib (§3.7 — main-only is the default)
+?apparent=on         show the apparent wind triangle (§3.1)
+?wind=12&twa=60&…    a fully specified situation
 ```
 
-A Level 1 lesson links to `?jib=off`; a later lesson links to the full sloop.
-Same build, same route, different lesson. Reload is now safe, because the
-configuration lives in the link rather than in state we're not allowed to keep.
+A Level 1 lesson links to the bare URL and gets a main-only boat; a later lesson
+links to `?jib=on`. Same build, same route, different lesson. Reload is safe,
+because the configuration lives in the link rather than in state we're not
+allowed to keep.
 
-This costs almost nothing — parse once at startup, feed the initial state — and
-it resolves [Q6] as a side effect. Every parameter still has an in-page control,
-so the URL sets the starting point without locking anything.
+**Serialize the whole state, not a random seed.** The original proposal was a
+`?seed=` parameter reproducing a random opening problem, which turns out to
+answer a question nobody asks: an instructor wanting a specific situation
+doesn't hunt for a random one that happens to match, they *build* it and then
+bookmark or share it. So the URL carries the actual state — wind, heading, trim,
+rig — and the page updates it via `history.replaceState` at the end of each drag.
+No affordance, no button, nothing to teach: the address bar just always describes
+what's on screen, so bookmarking and sharing work the way they do everywhere
+else. Debounced to drag-end so the URL doesn't churn mid-gesture, and
+`replaceState` rather than `pushState` so the back button still leaves the page.
+
+This reads as a conflict with the objectives' *"page resets to default settings
+whenever it is reloaded"* and isn't one. The rule exists to keep hidden state out
+of the app; a URL is not hidden state — it's visible, portable, and the user's to
+edit or discard. The bare URL still resets to a fresh random problem, which is
+what the lesson pages link to. A URL carrying parameters restores exactly what it
+says. Reloading after ten minutes of work now returns your boat instead of
+destroying it, which is what a reload should do anyway.
 
 ---
 
@@ -815,7 +875,6 @@ the student the answer; the traffic light lets them find it.
   the model will say — worth reconsidering if runs feel wrong)
 - Slot effect between main and jib, *except* for the single scalar upwind bonus
   that makes main-only point worse — see [§3.7](#37-sailing-under-main-alone)
-  and **[Q7]**
 - Weather helm. Unreachable without a rudder, and largely absent from the
   school's own boats anyway ([§1](#1-the-core-idea), [§3.7](#37-sailing-under-main-alone))
 - Sail twist, draft position, halyard/outhaul/cunningham controls
@@ -858,17 +917,7 @@ release.
 
 ## 9. Open questions
 
-- **[Q6]** [§2.1](#21-initial-state-a-random-solvable-problem) — Add a `?seed=`
-  URL parameter so an instructor can put a room on the same problem?
-  ([§6.2](#62-url-parameters-as-the-configuration-surface) argues yes, near-free)
-- **[Q7]** [§3.7](#37-sailing-under-main-alone) — Reverse the "no slot effect"
-  decision far enough to add a single upwind lift bonus when the jib is set,
-  so that main-only points worse? Without it the simulator tells Level 1
-  students something false. I recommend yes.
-- **[Q8]** [§3.7](#37-sailing-under-main-alone) — Should main-only be the
-  *default*, given it's the boat the first six lessons actually sail?
-- **[Q9]** [§6.1](#61-deployment-static-assets-in-the-registrar-app) — Wrap the
-  page in the site's `PageLayout`, or serve it bare?
+None outstanding. The design is ready to break into beads.
 
 ### Settled
 
@@ -887,6 +936,14 @@ release.
 - Trim ramp ends on a conventional green (hue 145); it need not match the rest
   of the site, and where the drawing and the site's look diverge, the drawing
   wins
+- **Main-only is the default rig.** The jib is opt-in, discoverable by the
+  students experienced enough to miss it
+- The slot-effect upwind bonus is in, and must stay plainly visible — it is the
+  answer to "why bother with the jib?"
+- Served bare, without `PageLayout`, so the simulator owns positioning,
+  scrolling, and every touch gesture
+- The URL carries the full state rather than a random seed; bookmarking and
+  sharing work with no affordance at all
 - Colors authored in OKLCH, applied via CSS only, never as SVG presentation
   attributes
 - Opening state is randomized and mistrimmed, within bounds
