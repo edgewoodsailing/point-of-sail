@@ -102,7 +102,7 @@ describe("rig and sails (DESIGN.md §3.2)", () => {
 describe("stations (DESIGN.md §4.1, §5)", () => {
   it("measures from the mast, on the centreline", () => {
     expect(STATIONS.mast).toEqual({ x: 0, y: 0 });
-    for (const station of [STATIONS.bow, STATIONS.stern, STATIONS.forestay]) {
+    for (const station of [STATIONS.bow, STATIONS.stern, STATIONS.jibTack]) {
       expect(station.x).toBe(0);
     }
   });
@@ -113,13 +113,29 @@ describe("stations (DESIGN.md §4.1, §5)", () => {
     expect(STATIONS.stern.y).toBeGreaterThan(0);
   });
 
-  it("puts the mast 7 ft aft of the bow, one J ahead of the forestay", () => {
+  it("puts the mast 7 ft aft of the bow, one J ahead of the jib's tack", () => {
     expect(feetAftOfBow(STATIONS.mast)).toBeCloseTo(7.0, 6);
-    expect(metersToFeet(STATIONS.mast.y - STATIONS.forestay.y)).toBeCloseTo(6.5, 6);
+    expect(metersToFeet(STATIONS.mast.y - STATIONS.jibTack.y)).toBeCloseTo(6.5, 6);
   });
 
-  it("lands the forestay just aft of the stem, so the boat still reads as a sloop", () => {
-    expect(feetAftOfBow(STATIONS.forestay)).toBeCloseTo(0.5, 6);
+  it("puts the pivot at mid-length, abaft the mast, where the keel is", () => {
+    // Where the boat turns is a different question from where its rig is
+    // measured from, and the origin answers only the second.
+    expect(feetAftOfBow(STATIONS.pivot)).toBeCloseTo(19.1667 / 2, 3);
+    expect(metersToFeet(STATIONS.pivot.y - STATIONS.mast.y)).toBeCloseTo(2.583, 3);
+    expect(STATIONS.pivot.y).toBeGreaterThan(STATIONS.mast.y);
+    expect(STATIONS.pivot.x).toBe(0);
+    // Equidistant from both ends, which is what makes the drawing's fore-and-aft
+    // budget symmetric (§4.1).
+    expect(STATIONS.pivot.y - STATIONS.bow.y).toBeCloseTo(STATIONS.stern.y - STATIONS.pivot.y, 9);
+  });
+
+  it("sets the jib's tack half a foot abaft the stem, where its tack height puts it", () => {
+    // Not where the forestay lands — that is the stemhead, an inch or so from
+    // the tip. The tack rides about a foot up a stay that rakes aft, which is
+    // what carries it aft of the stem and what J actually measures.
+    expect(feetAftOfBow(STATIONS.jibTack)).toBeCloseTo(0.5, 6);
+    expect(feetAftOfBow(STATIONS.bow)).toBeCloseTo(0, 6);
   });
 });
 
@@ -203,7 +219,7 @@ describe("clew positions (DESIGN.md §5)", () => {
     for (const trimDegrees of [-120, -90, -45, 0, 15, 45, 90, 120]) {
       const trim = deg(trimDegrees);
       expect(magnitude(subtract(mainClewPosition(trim), STATIONS.mast))).toBeCloseTo(MAIN.foot, 9);
-      expect(magnitude(subtract(jibClewPosition(trim), STATIONS.forestay))).toBeCloseTo(JIB.foot, 9);
+      expect(magnitude(subtract(jibClewPosition(trim), STATIONS.jibTack))).toBeCloseTo(JIB.foot, 9);
     }
   });
 
@@ -241,7 +257,7 @@ describe("clew positions (DESIGN.md §5)", () => {
 
   it("keeps the arcs' crossing beyond the boom's shroud-limited swing", () => {
     // The main's arc (radius E about the mast) and the jib's (radius 7.5 ft
-    // about the forestay, 6.5 ft ahead of it) do intersect — but only with the
+    // about the jib's tack, 6.5 ft ahead of it) do intersect — but only with the
     // main eased to ~129°, well past where the boom fetches up on the shrouds.
     // Trim is clamped to that swing (`clampTrim`), so the clews can never
     // coincide. This pins both halves of that argument: where the crossing

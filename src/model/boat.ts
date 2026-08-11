@@ -29,9 +29,24 @@ const BEAM_FT = 7;
 const DRAFT_FT = 3 + 3 / 12; // 3'3", keel down
 const DISPLACEMENT_LB = 1325;
 
-/** Foretriangle height: forestay deck fitting to the jib halyard sheave. */
+/** Foretriangle height: deck to the jib halyard sheave. */
 const I_FT = 15.0;
-/** Foretriangle base: mast to the forestay deck fitting. */
+/**
+ * Foretriangle base: mast to the foot of the foretriangle.
+ *
+ * Not to where the forestay meets the deck. The stay lands on the stemhead
+ * fitting, an inch or so from the tip of the bow — 7 ft from the mast, not 6.5.
+ * What sits 6.5 ft out is the **jib's tack**, which rides about a foot up the
+ * stay on its fitting and pendant; since the stay rakes aft as it climbs, that
+ * foot of height carries the tack half a foot abaft the stem. Taking the class
+ * luff and this J as given, the head is 15.71 ft above the tack, and a stay from
+ * the stemhead to that head passes 6.5 ft forward of the mast at 14 inches of
+ * height — which is exactly a stemhead fitting plus a shackle.
+ *
+ * This is also what explains the {@link JIB_LUFF_FT} anomaly noted below: with
+ * the tack a foot off the deck, the head is nearer 16.9 ft up, so the published
+ * I understates the hoist by about the tack height.
+ */
 const J_FT = 6.5;
 /** Mainsail hoist, tack to head along the mast. */
 const P_FT = 24.0;
@@ -87,9 +102,10 @@ const SWING_LIMIT_DEG = 90;
 // the main clew then follows from the boom length, which is the honest
 // direction of the dependency: refitting a longer boom moves the clew aft, it
 // does not walk the mast forward. (boat.test.ts checks the clew still lands at
-// 16.7 ft.) The forestay follows the mast by J, the foretriangle base, landing
-// half a foot aft of the stem — which is why §4.1 can call it "the forestay at
-// the bow". The jib clew follows the forestay by the class-rule foot, landing
+// 16.7 ft.) The jib's tack follows the mast by J, the foretriangle base,
+// landing half a foot aft of the stem — because it rides a foot up a stay that
+// rakes aft, not because the stay lands there; the stay itself goes to the
+// stemhead, which is the bow. The jib clew follows the tack by the class foot,
 // 8 ft aft of the bow. (An earlier draft ran that dependency backwards — it
 // assumed a 9 ft clew station and derived an 8.5 ft foot from it, overstating
 // the sail.)
@@ -166,20 +182,56 @@ export const JIB: Sail = sail(
 
 /**
  * Fixed points of the boat, as boat-frame vectors in metres: +x to starboard,
- * −y forward. **The origin is the mast**, because that is what the hull rotates
- * about (§5) and what the boom swings on, so the rig geometry needs no offset.
+ * −y forward. **The origin is the mast**, because that is what the boom swings
+ * on, so the rig geometry needs no offset.
+ *
+ * The origin is deliberately *not* {@link STATIONS.pivot} — where the boat
+ * turns is a different question from where its rig is measured from, and the
+ * model is better off answering only the second. The renderer composes the two.
  */
 export const STATIONS: {
   readonly mast: Vec2;
   readonly bow: Vec2;
   readonly stern: Vec2;
-  /** Where the forestay meets the deck — the jib's tack, half a foot aft of the stem. */
-  readonly forestay: Vec2;
+  /**
+   * The jib's tack: the fixed end of its luff, and the centre its clew swings
+   * about. Half a foot aft of the stem, for the reason given at {@link J_FT} —
+   * it rides a foot up a stay that rakes aft.
+   *
+   * **Not where the forestay meets the deck.** That is the stemhead, which is
+   * {@link STATIONS.bow} to within an inch, and it is what the drawing runs the
+   * stay to (§4.1). Conflating the two draws a forestay that stops half a foot
+   * short of the bow and looks like a mistake, because it is one.
+   */
+  readonly jibTack: Vec2;
+  /**
+   * The point the boat turns about: the midpoint of bow and stern, 9.58 ft aft
+   * of the stem and 2.58 ft abaft the mast.
+   *
+   * **Not the origin.** The frame's origin is the mast, because that is what
+   * the rig geometry hangs off; this is a separate fact about how the boat
+   * behaves, and the two are only conflated at the cost of a boat that swings
+   * its stern through an arc no keelboat ever swings. A sailboat turns about
+   * its centre of lateral resistance, which is well aft of the mast — for this
+   * boat, somewhere around 45–50% of the waterline, which the midpoint of LOA
+   * approximates closely enough for a drawing that is abstract anyway.
+   *
+   * Taken as the LOA midpoint rather than the drawn hull's area centroid.
+   * The centroid sits at 55% of LOA, because the hull carries its beam aft, and
+   * it is worse on both counts that matter: it pushes the swept radius back
+   * above the mast's (the jib clew at full ease swings out near the bow), and
+   * it leaves more room astern of the pivot than ahead of it, which is
+   * backwards for a boat that mostly goes forwards. The midpoint is
+   * equidistant from bow and stern by construction, so whatever the speed
+   * indicator ends up being (§4.3) gets the same room either way.
+   */
+  readonly pivot: Vec2;
 } = {
   mast: ZERO_VECTOR,
   bow: { x: 0, y: -feetToMeters(MAST_STATION_FT) },
   stern: { x: 0, y: feetToMeters(LOA_FT - MAST_STATION_FT) },
-  forestay: { x: 0, y: -feetToMeters(J_FT) },
+  jibTack: { x: 0, y: -feetToMeters(J_FT) },
+  pivot: { x: 0, y: feetToMeters(LOA_FT / 2 - MAST_STATION_FT) },
 };
 
 // --- Rig geometry ----------------------------------------------------------
@@ -236,8 +288,8 @@ export function mainClewPosition(mainAngle: Radians): Vec2 {
 
 /**
  * Where the jib's clew sits for a given trim. With no boom it swings about the
- * tack at the forestay, on a radius of the jib's foot.
+ * tack — {@link STATIONS.jibTack}, not the stemhead — on a radius of its foot.
  */
 export function jibClewPosition(jibAngle: Radians): Vec2 {
-  return add(STATIONS.forestay, vectorFromAngle(sailChordBearing(jibAngle), JIB.foot));
+  return add(STATIONS.jibTack, vectorFromAngle(sailChordBearing(jibAngle), JIB.foot));
 }

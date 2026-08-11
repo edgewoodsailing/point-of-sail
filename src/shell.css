@@ -55,4 +55,13 @@ body {
 /* Minimal control strip (§5) — empty until the settings bead fills it. */
 .pos-sim .controls {
   flex: 0 0 auto;
+  padding: 0.5rem 1rem;
+}
+
+/*
+ * SCAFFOLDING — remove with the slider in main.ts when pos-bwd.1 lands hull
+ * dragging. Here only so the heading can be swept by hand.
+ */
+.pos-sim .heading-scaffold {
+  width: 100%;
 }
