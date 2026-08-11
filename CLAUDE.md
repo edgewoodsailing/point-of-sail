@@ -60,12 +60,13 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+npm install        # once, after clone
+npm run dev        # Vite dev server (untranspiled; browser floor applies to builds only)
+npm run build      # tsc --noEmit + vite build → dist/
+npm run preview    # serve the production build locally
+npm test           # vitest run (single pass)
+npm run lint       # stylelint on src/**/*.css + tsc --noEmit
 ```
 
 ## Architecture Overview

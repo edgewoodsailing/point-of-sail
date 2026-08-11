@@ -1,0 +1,21 @@
+{
+  "name": "point-of-sail",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "stylelint \"src/**/*.css\" && tsc --noEmit"
+  },
+  "devDependencies": {
+    "stylelint": "^16.26.1",
+    "stylelint-config-standard": "^39.0.1",
+    "stylelint-gamut": "^1.3.4",
+    "typescript": "~5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.4"
+  }
+}

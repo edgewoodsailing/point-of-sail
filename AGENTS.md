@@ -125,3 +125,14 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Build & Test
+
+```bash
+npm install        # once, after clone
+npm run dev        # Vite dev server (untranspiled; browser floor applies to builds only)
+npm run build      # tsc --noEmit + vite build → dist/
+npm run preview    # serve the production build locally
+npm test           # vitest run (single pass)
+npm run lint       # stylelint on src/**/*.css + tsc --noEmit
+```
