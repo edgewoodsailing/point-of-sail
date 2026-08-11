@@ -31,26 +31,23 @@
  */
 
 import type { SimState } from "../model/simulation.ts";
-import { jibClewPosition, mainClewPosition, SWING_LIMIT } from "../model/boat.ts";
+import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
-import { magnitude, radiansToDegrees } from "../model/units.ts";
+import { magnitude, radiansToDegrees, subtract } from "../model/units.ts";
 import { createHullLayer, outlineRadius } from "./hull.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 import "./scene.css";
 
 // --- Extent -----------------------------------------------------------------
 
-/** The clew arcs, sampled at the ends and centre of their legal travel. */
+/** The clew arcs across their legal travel, measured from the pivot. */
 function clewRadius(): Meters {
+  const from = (point: Vec2): number => magnitude(subtract(point, STATIONS.pivot));
   let farthest = 0;
   const steps = 64;
   for (let i = 0; i <= steps; i += 1) {
     const angle = -SWING_LIMIT + (2 * SWING_LIMIT * i) / steps;
-    farthest = Math.max(
-      farthest,
-      magnitude(mainClewPosition(angle)),
-      magnitude(jibClewPosition(angle)),
-    );
+    farthest = Math.max(farthest, from(mainClewPosition(angle)), from(jibClewPosition(angle)));
   }
   return farthest;
 }
@@ -62,23 +59,27 @@ function clewRadius(): Meters {
  */
 export const SCENE = {
   /**
-   * The disc the boat occupies at *any* heading and any legal trim, ≈ 3.74 m.
-   * Measured, not declared: the maximum is at the transom corners, which is
-   * further out than the stern station and further than either fully-eased
-   * clew. Because the origin is the mast, rotating the heading cannot change
-   * it.
+   * The disc the boat sweeps at *any* heading and any legal trim, ≈ 3.59 m,
+   * measured from {@link STATIONS.pivot} rather than the mast. Measured, not
+   * declared: the binding point is the jib clew at full ease, which swings out
+   * abeam near the bow — further from the pivot than the transom corners.
+   * Because the boat turns about the pivot, rotating the heading cannot change
+   * this.
    */
   boatRadius: Math.max(outlineRadius(), clewRadius()),
 
   /**
-   * Outer limit for boat plus speed arrow. pos-qmk.3 clamps the arrow tip here
-   * and gets a hard guarantee it never reaches the wind ring.
+   * How far the speed indicator can reach *without overlapping the wind ring*.
+   * It leaves 2.28 m clear of the bow and, because the pivot is the midpoint of
+   * LOA, exactly the same astern — so sternway is no longer the cramped case it
+   * was when the boat turned about the mast.
    *
-   * It leaves 3.07 m ahead of the bow, so at ≈ 1.05 m of arrow per m/s the
-   * arrow fills the forward band exactly at hull speed (2.90 m/s) — which is a
-   * scale worth writing down, because it makes the arrow's length a statement
-   * about the boat rather than an arbitrary choice. Astern it leaves 1.49 m,
-   * covering about −2.9 kt, well beyond any backing speed.
+   * A reservation, not a clamp. The speed indicator is not directly
+   * manipulable, so pos-qmk.3 may legitimately draw past this and let it pass
+   * behind the ring; overlapping the ring costs nothing as long as it cannot
+   * intercept a drag meant for it. That also leaves room for the indicator to
+   * become a wake at the stern rather than an arrow off the bow (§4.3), which
+   * the symmetric budget now supports either way.
    */
   contentRadius: 5.2,
 
@@ -160,7 +161,14 @@ export function viewBoxAttribute(extent: SceneExtent): string {
 // --- Heading ----------------------------------------------------------------
 
 /**
- * The transform that carries boat-frame geometry into the world frame.
+ * The transform that carries boat-frame geometry into the world frame:
+ * `world = rotate(heading) · (boat − pivot)`.
+ *
+ * Read right to left, as SVG applies it. The translate slides the boat frame so
+ * that {@link STATIONS.pivot} — not the mast — lands on the scene origin; the
+ * rotate then turns about that origin. So the boat turns about a point near its
+ * keel, the way a keelboat does, while the model goes on measuring its rig from
+ * the mast. Those are two different questions and this is where they meet.
  *
  * SVG's `rotate(a)` about the origin is `x' = x·cos a − y·sin a`,
  * `y' = x·sin a + y·cos a` — character for character `units.rotateVector`. It
@@ -170,8 +178,10 @@ export function viewBoxAttribute(extent: SceneExtent): string {
  *
  * Heading 0 puts the bow screen-up; heading 90° puts it screen-right.
  */
-export function headingTransform(heading: Radians): string {
-  return `rotate(${formatNumber(radiansToDegrees(heading))})`;
+export function boatTransform(heading: Radians): string {
+  const rotate = `rotate(${formatNumber(radiansToDegrees(heading))})`;
+  const translate = `translate(${formatNumber(-STATIONS.pivot.x)} ${formatNumber(-STATIONS.pivot.y)})`;
+  return `${rotate} ${translate}`;
 }
 
 // --- The scene --------------------------------------------------------------
@@ -220,7 +230,14 @@ export interface Scene {
 
   render(state: SimState): void;
 
-  /** Screen (`clientX`/`clientY`) to world metres — the inverse of everything above. */
+  /**
+   * Screen (`clientX`/`clientY`) to world metres — the inverse of everything
+   * above. The world origin is the boat's **pivot**, so getting from here to
+   * the boat frame, whose origin is the mast, is
+   * `add(rotateVector(p, -heading), STATIONS.pivot)`. Left to the caller
+   * deliberately: that is model arithmetic, testable in node, and reading it
+   * off the boat group's CTM instead would bury it in the DOM.
+   */
   toWorld(clientX: number, clientY: number): Vec2;
   /** How many metres a CSS pixel is worth right now — for pos-bwd's touch-target sizes. */
   pixelsToMeters(pixels: number): Meters;
@@ -288,7 +305,7 @@ export function createScene(host: HTMLElement): Scene {
     element,
     layers,
     render(state: SimState): void {
-      boat.setAttribute("transform", headingTransform(state.motion.heading));
+      boat.setAttribute("transform", boatTransform(state.motion.heading));
     },
     toWorld(clientX: number, clientY: number): Vec2 {
       const point = new DOMPoint(clientX, clientY).matrixTransform(screenMatrix().inverse());

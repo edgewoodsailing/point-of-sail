@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT, HULL } from "../model/boat.ts";
 import type { Radians, Vec2 } from "../model/units.ts";
-import { degreesToRadians, magnitude, rotateVector } from "../model/units.ts";
-import { headingTransform, SCENE, sceneExtent, SHORT_SPAN, viewBoxAttribute } from "./scene.ts";
+import { degreesToRadians, magnitude, rotateVector, subtract } from "../model/units.ts";
+import { boatTransform, SCENE, sceneExtent, SHORT_SPAN, viewBoxAttribute } from "./scene.ts";
 
 const deg = degreesToRadians;
 
 /** Metres. */
 const PRECISION = 4;
+
+/** Distance from the point the boat turns about — what every extent is measured from. */
+function fromPivot(point: Vec2): number {
+  return magnitude(subtract(point, STATIONS.pivot));
+}
 
 describe("scene extent (DESIGN.md §4.1)", () => {
   it("pins the short axis to SHORT_SPAN whichever way round the surface is", () => {
@@ -69,7 +74,7 @@ describe("scene extent (DESIGN.md §4.1)", () => {
     }
   });
 
-  it("centres the origin — and therefore the mast — in the viewBox", () => {
+  it("centres the origin — and therefore the boat's pivot — in the viewBox", () => {
     expect(viewBoxAttribute(sceneExtent(500, 500))).toBe("-6 -6 12 12");
     const [minX, minY, width, height] = viewBoxAttribute(sceneExtent(1600, 900))
       .split(" ")
@@ -94,59 +99,94 @@ describe("scene bands", () => {
     expect(SCENE.windRingRadius).toBeLessThan(SCENE.shortRadius);
   });
 
-  it("contains the whole boat at every legal trim", () => {
+  it("contains the whole boat at every legal trim, measured from the pivot", () => {
     const points: Vec2[] = [STATIONS.bow, STATIONS.stern, STATIONS.jibTack, STATIONS.mast];
     for (let d = -90; d <= 90; d += 1) {
       points.push(mainClewPosition(deg(d)), jibClewPosition(deg(d)));
     }
     for (const point of points) {
-      expect(magnitude(point)).toBeLessThanOrEqual(SCENE.boatRadius);
+      expect(fromPivot(point)).toBeLessThanOrEqual(SCENE.boatRadius);
     }
     expect(SWING_LIMIT).toBeCloseTo(deg(90), 10);
   });
 
-  it("reserves enough room ahead of the bow for the speed arrow", () => {
-    // ≈ 1.05 m of arrow per m/s reaches contentRadius at hull speed and no further.
-    const ahead = SCENE.contentRadius - magnitude(STATIONS.bow);
-    expect(ahead / HULL.hullSpeed).toBeCloseTo(1.05, 1);
-    expect(SCENE.contentRadius - magnitude(STATIONS.stern)).toBeGreaterThan(1);
+  it("is bound by the jib clew at full ease, not by the hull", () => {
+    // Worth pinning, because it is not the obvious answer and it changed when
+    // the pivot moved: about the mast the transom corners bound it; about the
+    // pivot the jib clew swings out abeam near the bow and reaches further.
+    expect(fromPivot(jibClewPosition(SWING_LIMIT))).toBeCloseTo(SCENE.boatRadius, 6);
+    expect(fromPivot(STATIONS.stern)).toBeLessThan(SCENE.boatRadius);
+  });
+
+  it("reserves the same room for the speed indicator ahead and astern", () => {
+    // The pivot is the midpoint of LOA, so this is symmetric by construction —
+    // sternway is no longer the cramped case it was about the mast, and a wake
+    // at the stern (§4.3) would have as much room as an arrow off the bow.
+    const ahead = SCENE.contentRadius - fromPivot(STATIONS.bow);
+    const astern = SCENE.contentRadius - fromPivot(STATIONS.stern);
+    expect(ahead).toBeCloseTo(astern, 9);
+    expect(ahead).toBeGreaterThan(2);
+    // Still at least ¾ of a boat length per m/s at hull speed, if it is an arrow.
+    expect(ahead / HULL.hullSpeed).toBeGreaterThan(0.75);
   });
 });
 
-describe("heading transform", () => {
-  /** SVG's rotate(a) about the origin, applied by hand. */
-  function svgRotate(v: Vec2, degrees: number): Vec2 {
-    const a = (degrees * Math.PI) / 180;
-    return { x: v.x * Math.cos(a) - v.y * Math.sin(a), y: v.x * Math.sin(a) + v.y * Math.cos(a) };
-  }
-
-  function degreesIn(transform: string): number {
-    const match = /^rotate\((-?[\d.]+)\)$/.exec(transform);
+describe("boat transform", () => {
+  /**
+   * Applies `rotate(d) translate(tx ty)` by hand, exactly as SVG would: the
+   * rightmost transform first. Parsing the string rather than trusting it is
+   * the point — this is the one test that proves the coordinate story instead
+   * of restating it.
+   */
+  function applyTransform(v: Vec2, transform: string): Vec2 {
+    const match = /^rotate\((-?[\d.]+)\) translate\((-?[\d.]+) (-?[\d.]+)\)$/.exec(transform);
     if (match === null) throw new Error(`Unexpected transform: ${transform}`);
-    return Number(match[1]);
+    const [, degrees, tx, ty] = match as unknown as [string, string, string, string];
+    const moved = { x: v.x + Number(tx), y: v.y + Number(ty) };
+    const a = (Number(degrees) * Math.PI) / 180;
+    return {
+      x: moved.x * Math.cos(a) - moved.y * Math.sin(a),
+      y: moved.x * Math.sin(a) + moved.y * Math.cos(a),
+    };
   }
 
-  it("is exactly units.rotateVector, which is what makes the two frames one story", () => {
-    const probes: Vec2[] = [STATIONS.bow, STATIONS.stern, mainClewPosition(deg(35))];
+  it("is exactly rotateVector about the pivot, which makes the two frames one story", () => {
+    const probes: Vec2[] = [STATIONS.bow, STATIONS.stern, STATIONS.mast, mainClewPosition(deg(35))];
     for (const heading of [0, 17, 90, 143, -60, 179] as Radians[]) {
       const radians = deg(heading);
-      const applied = degreesIn(headingTransform(radians));
       for (const probe of probes) {
-        const bySvg = svgRotate(probe, applied);
-        const byModel = rotateVector(probe, radians);
+        const bySvg = applyTransform(probe, boatTransform(radians));
+        const byModel = rotateVector(subtract(probe, STATIONS.pivot), radians);
         expect(bySvg.x).toBeCloseTo(byModel.x, 6);
         expect(bySvg.y).toBeCloseTo(byModel.y, 6);
       }
     }
   });
 
+  it("holds the pivot still at every heading, and only the pivot", () => {
+    for (const heading of [0, 30, 90, 200, -45] as Radians[]) {
+      const fixed = applyTransform(STATIONS.pivot, boatTransform(deg(heading)));
+      expect(magnitude(fixed)).toBeCloseTo(0, 9);
+    }
+    // The mast is no longer the still point — that is the whole change.
+    const mast = applyTransform(STATIONS.mast, boatTransform(deg(90)));
+    expect(magnitude(mast)).toBeCloseTo(magnitude(STATIONS.pivot), 9);
+    expect(magnitude(STATIONS.pivot)).toBeGreaterThan(0.5);
+  });
+
   it("puts the bow screen-up at heading zero and screen-right at ninety", () => {
-    const up = svgRotate(STATIONS.bow, degreesIn(headingTransform(0)));
+    const up = applyTransform(STATIONS.bow, boatTransform(0));
     expect(up.x).toBeCloseTo(0, 6);
     expect(up.y).toBeLessThan(0); // −y is up in SVG
 
-    const right = svgRotate(STATIONS.bow, degreesIn(headingTransform(deg(90))));
+    const right = applyTransform(STATIONS.bow, boatTransform(deg(90)));
     expect(right.x).toBeGreaterThan(0);
     expect(right.y).toBeCloseTo(0, 6);
+  });
+
+  it("swings bow and stern through equal arcs, which the mast never did", () => {
+    const swing = (p: Vec2) => magnitude(subtract(p, STATIONS.pivot));
+    expect(swing(STATIONS.bow)).toBeCloseTo(swing(STATIONS.stern), 9);
+    expect(swing(STATIONS.bow)).toBeCloseTo(HULL.loa / 2, 9);
   });
 });

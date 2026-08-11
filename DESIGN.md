@@ -522,13 +522,28 @@ drawn, because the jib's clew swings about the tack. It lives in
 
 #### The coordinate story
 
-**The SVG user unit is the metre, and the origin is the mast.** The world→user
-transform is the identity, so any `Vec2` the model produces — `STATIONS.bow`,
+**The SVG user unit is the metre.** The world→user transform is a rigid motion
+with no scaling, so any `Vec2` the model produces — `STATIONS.bow`,
 `mainClewPosition()`, a force vector for the apparent-wind overlay — is already
-drawing coordinates. No renderer does unit arithmetic. It works because the boat
-frame and the world frame share the mast as their origin, so they differ by a
-pure rotation and one `<g transform="rotate(…)">` converts between them, and
-because the boat never translates.
+in drawing units. No renderer does unit arithmetic.
+
+**The boat frame's origin is the mast; the world frame's is the pivot.** These
+answer different questions and it is worth keeping them apart. The mast is where
+the *rig* is measured from — the boom swings there, so the rig geometry needs no
+offset — while the pivot is where the boat *turns*, which for a keelboat is its
+centre of lateral resistance, well aft of the mast. Conflating them makes the
+stern swing an arc no boat ever swings, and wastes scene doing it.
+
+`STATIONS.pivot` is taken as the midpoint of LOA, 9.58 ft aft of the stem. That
+approximates the CLR closely enough for a drawing this abstract, and being
+equidistant from bow and stern it makes the fore-and-aft budget symmetric. The
+drawn hull's *area* centroid was the other candidate and is worse: it sits at
+55% of LOA, which pushes the swept radius back above the mast's and leaves more
+room astern than ahead — backwards for a boat that mostly goes forwards.
+
+The two frames therefore differ by a rotation and a fixed translation, which one
+group carries: `transform="rotate(heading) translate(−pivot)"`. The boat still
+never translates, so the pivot sits on the scene origin for the life of the page.
 
 The viewBox tracks the drawing surface's real aspect ratio, and the scale is
 pinned to the **shorter** axis: `SHORT_SPAN` metres always exactly span it, so
@@ -538,24 +553,32 @@ point rather than waste — it is what lets the wind ring sit out near the real
 edge of a tall phone instead of being inscribed in the narrow dimension and
 stealing from the boat.
 
-Inside that, four concentric bands, as radii from the mast:
+Inside that, four concentric bands, as radii from the pivot:
 
 | Band | Radius | What it is |
 | --- | --- | --- |
-| `boatRadius` | ≈ 3.74 m | The disc the boat occupies at any heading and any legal trim |
-| `contentRadius` | 5.2 m | Outer limit for boat plus speed arrow |
+| `boatRadius` | ≈ 3.59 m | The disc the boat sweeps at any heading and any legal trim |
+| `contentRadius` | 5.2 m | How far the speed indicator reaches clear of the ring |
 | `windRingRadius` | 5.65 m | Centreline of the drawn wind ring |
 | `shortRadius` | 6.0 m | Half the span across the shorter axis |
 
-`boatRadius` is *measured* from the drawn outline rather than declared: the
-maximum is at the transom corners, which is further out than the stern station
-and further than either fully-eased clew. Refairing the hull moves it, and
-deriving it means the scene follows along instead of quietly letting the boat
-grow into the wind ring. The bands nest strictly, and a test says so.
+`boatRadius` is *measured* rather than declared, and the measurement is not the
+obvious one: the binding point is the **jib clew at full ease**, which swings
+out abeam near the bow, further from the pivot than the transom corners.
+Refairing the hull or changing the rig moves it, and deriving it means the scene
+follows along instead of quietly letting the boat grow into the wind ring. The
+bands nest strictly, and a test says so.
 
-The reservation ahead of the bow works out at ≈ 1.05 m of speed arrow per m/s
-to fill the band exactly at hull speed — which makes the arrow's length a
-statement about the boat rather than an arbitrary choice.
+`contentRadius` leaves 2.28 m clear of the bow and, because the pivot is the
+midpoint of LOA, exactly the same astern — so sternway is no longer the cramped
+case it was when the boat turned about the mast.
+
+It is a **reservation, not a clamp.** The speed indicator is not directly
+manipulable, so it may legitimately be drawn past this and allowed to pass
+behind the wind ring; overlapping the ring costs nothing so long as it cannot
+intercept a drag meant for the ring. That also keeps the door open to the
+indicator becoming a wake at the stern rather than an arrow off the bow
+([§4.3](#43-the-speed-arrow)) — which the symmetric budget supports either way.
 
 ### 4.2 The traffic light
 
@@ -731,7 +754,7 @@ state exists**, touch targets must be large, and targets will overlap.
 
 | Element | Gesture | Notes |
 | --- | --- | --- |
-| Hull | Drag to rotate | Rotates about the mast |
+| Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
 | Wind direction | Drag the perimeter arrow | Large target, never overlaps the boat |
 | Wind speed | Slider | Separate control; easier than dragging arrow length on a phone |
 | Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |

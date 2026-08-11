@@ -103,18 +103,29 @@ describe("hull outline (DESIGN.md §4.1)", () => {
 });
 
 describe("hull extent", () => {
-  it("is set by the transom corners, not by the stern station", () => {
-    const corner = Math.hypot(HULL_OUTLINE.transomCorner.x, HULL_OUTLINE.transomCorner.y);
-    expect(outlineRadius()).toBeCloseTo(corner, 3);
-    // The point of measuring rather than declaring: the corner is further out
-    // than anything boat.ts names.
-    expect(outlineRadius()).toBeGreaterThan(Math.abs(STATIONS.stern.y));
+  /** Distance from the pivot, which is what outlineRadius measures by default. */
+  const fromPivot = (p: Vec2): number => Math.hypot(p.x - STATIONS.pivot.x, p.y - STATIONS.pivot.y);
+
+  it("is set by the transom corners, not by either end of the centreline", () => {
+    expect(outlineRadius()).toBeCloseTo(fromPivot(HULL_OUTLINE.transomCorner), 3);
+    // The point of measuring rather than declaring. About the pivot the corner
+    // beats the bow by only ~4 cm, where about the mast it led by 1.6 m — so a
+    // refairing could take the lead away, and the scene should follow it.
+    expect(outlineRadius()).toBeGreaterThan(fromPivot(HULL_OUTLINE.bow));
+    expect(outlineRadius() - fromPivot(HULL_OUTLINE.bow)).toBeLessThan(0.1);
+  });
+
+  it("swings a smaller circle about the pivot than about the mast", () => {
+    // The reason the pivot moved: about the mast the boat sweeps its own length
+    // aft of the rig, which wastes scene the wind ring could have had.
+    expect(outlineRadius()).toBeLessThan(outlineRadius(HULL_OUTLINE, STATIONS.mast));
+    expect(outlineRadius()).toBeCloseTo(HULL.loa / 2, 1);
   });
 
   it("contains every sampled point of the outline", () => {
     const radius = outlineRadius();
     for (const point of starboardPoints()) {
-      expect(Math.hypot(point.x, point.y)).toBeLessThanOrEqual(radius + 1e-9);
+      expect(fromPivot(point)).toBeLessThanOrEqual(radius + 1e-9);
     }
   });
 });

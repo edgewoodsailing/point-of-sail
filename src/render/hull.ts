@@ -15,7 +15,7 @@
 
 import { HULL, STATIONS } from "../model/boat.ts";
 import type { Meters, Vec2 } from "../model/units.ts";
-import { magnitude } from "../model/units.ts";
+import { magnitude, subtract } from "../model/units.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- Fairing: the drawing's taste, isolated ---------------------------------
@@ -181,24 +181,32 @@ export function cubicPoint(start: Vec2, segment: CubicSegment, t: number): Vec2 
 const EXTENT_SAMPLES = 512;
 
 /**
- * The farthest any point of the outline lies from the mast.
+ * The farthest any point of the outline lies from `about` — by default the
+ * pivot, since what the scene needs is the disc the hull sweeps as it turns.
  *
- * This is what the scene's extent is built on, and the reason it is *measured*
- * rather than declared: the maximum is at the transom corners (≈ 3.74 m), which
- * is neither the stern station nor anything else `boat.ts` names. Refairing the
- * hull moves it, and deriving it here means the scene follows along instead of
- * quietly letting the boat grow into the wind ring.
+ * The reason this is *measured* rather than declared: the maximum sits at the
+ * transom corners, which is neither the stern station nor anything else
+ * `boat.ts` names, and it stays there only by a couple of centimetres once the
+ * pivot moves to mid-length. Refairing the hull moves it, and deriving it here
+ * means the scene follows along instead of quietly letting the boat grow into
+ * the wind ring.
+ *
+ * `about` must lie on the centreline; the port half is taken as the mirror
+ * image rather than swept, which is only sound for a centred pivot.
  */
-export function outlineRadius(outline: HullOutline = HULL_OUTLINE): Meters {
-  let farthest = Math.max(magnitude(outline.bow), magnitude(outline.transomCorner));
+export function outlineRadius(
+  outline: HullOutline = HULL_OUTLINE,
+  about: Vec2 = STATIONS.pivot,
+): Meters {
+  const from = (point: Vec2): number => magnitude(subtract(point, about));
+  let farthest = Math.max(from(outline.bow), from(outline.transomCorner));
   let start = outline.bow;
   for (const segment of outline.starboard) {
     for (let i = 1; i <= EXTENT_SAMPLES; i += 1) {
-      farthest = Math.max(farthest, magnitude(cubicPoint(start, segment, i / EXTENT_SAMPLES)));
+      farthest = Math.max(farthest, from(cubicPoint(start, segment, i / EXTENT_SAMPLES)));
     }
     start = segment.end;
   }
-  // The port half is the mirror image, so its distances are identical.
   return farthest;
 }
 

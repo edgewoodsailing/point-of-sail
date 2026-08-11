@@ -182,8 +182,12 @@ export const JIB: Sail = sail(
 
 /**
  * Fixed points of the boat, as boat-frame vectors in metres: +x to starboard,
- * −y forward. **The origin is the mast**, because that is what the hull rotates
- * about (§5) and what the boom swings on, so the rig geometry needs no offset.
+ * −y forward. **The origin is the mast**, because that is what the boom swings
+ * on, so the rig geometry needs no offset.
+ *
+ * The origin is deliberately *not* {@link STATIONS.pivot} — where the boat
+ * turns is a different question from where its rig is measured from, and the
+ * model is better off answering only the second. The renderer composes the two.
  */
 export const STATIONS: {
   readonly mast: Vec2;
@@ -200,11 +204,34 @@ export const STATIONS: {
    * short of the bow and looks like a mistake, because it is one.
    */
   readonly jibTack: Vec2;
+  /**
+   * The point the boat turns about: the midpoint of bow and stern, 9.58 ft aft
+   * of the stem and 2.58 ft abaft the mast.
+   *
+   * **Not the origin.** The frame's origin is the mast, because that is what
+   * the rig geometry hangs off; this is a separate fact about how the boat
+   * behaves, and the two are only conflated at the cost of a boat that swings
+   * its stern through an arc no keelboat ever swings. A sailboat turns about
+   * its centre of lateral resistance, which is well aft of the mast — for this
+   * boat, somewhere around 45–50% of the waterline, which the midpoint of LOA
+   * approximates closely enough for a drawing that is abstract anyway.
+   *
+   * Taken as the LOA midpoint rather than the drawn hull's area centroid.
+   * The centroid sits at 55% of LOA, because the hull carries its beam aft, and
+   * it is worse on both counts that matter: it pushes the swept radius back
+   * above the mast's (the jib clew at full ease swings out near the bow), and
+   * it leaves more room astern of the pivot than ahead of it, which is
+   * backwards for a boat that mostly goes forwards. The midpoint is
+   * equidistant from bow and stern by construction, so whatever the speed
+   * indicator ends up being (§4.3) gets the same room either way.
+   */
+  readonly pivot: Vec2;
 } = {
   mast: ZERO_VECTOR,
   bow: { x: 0, y: -feetToMeters(MAST_STATION_FT) },
   stern: { x: 0, y: feetToMeters(LOA_FT - MAST_STATION_FT) },
   jibTack: { x: 0, y: -feetToMeters(J_FT) },
+  pivot: { x: 0, y: feetToMeters(LOA_FT / 2 - MAST_STATION_FT) },
 };
 
 // --- Rig geometry ----------------------------------------------------------

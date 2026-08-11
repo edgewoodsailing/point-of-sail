@@ -118,6 +118,18 @@ describe("stations (DESIGN.md §4.1, §5)", () => {
     expect(metersToFeet(STATIONS.mast.y - STATIONS.jibTack.y)).toBeCloseTo(6.5, 6);
   });
 
+  it("puts the pivot at mid-length, abaft the mast, where the keel is", () => {
+    // Where the boat turns is a different question from where its rig is
+    // measured from, and the origin answers only the second.
+    expect(feetAftOfBow(STATIONS.pivot)).toBeCloseTo(19.1667 / 2, 3);
+    expect(metersToFeet(STATIONS.pivot.y - STATIONS.mast.y)).toBeCloseTo(2.583, 3);
+    expect(STATIONS.pivot.y).toBeGreaterThan(STATIONS.mast.y);
+    expect(STATIONS.pivot.x).toBe(0);
+    // Equidistant from both ends, which is what makes the drawing's fore-and-aft
+    // budget symmetric (§4.1).
+    expect(STATIONS.pivot.y - STATIONS.bow.y).toBeCloseTo(STATIONS.stern.y - STATIONS.pivot.y, 9);
+  });
+
   it("sets the jib's tack half a foot abaft the stem, where its tack height puts it", () => {
     // Not where the forestay lands — that is the stemhead, an inch or so from
     // the tip. The tack rides about a foot up a stay that rakes aft, which is
