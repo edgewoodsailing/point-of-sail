@@ -25,6 +25,26 @@ The intended interaction is play. A student pushes the boat around, sees the
 sails go red, pulls them in, sees green, and forms the connection themselves. We
 deliberately do not label, annotate, or instruct — see [§7](#7-deliberately-out-of-scope).
 
+### The central abstraction happens to match Edgewood's boats
+
+"Set the boat on a heading and it stays there" is the assumption the whole test
+tank rests on. On most boats it's a convenient fiction — you hold a heading by
+working against weather helm, and the helm is part of the feel of every point of
+sail.
+
+The school's boats carry RudderCraft rudders that are not class legal but are
+computer-optimized for the hull, and weather helm is nearly eliminated: at
+almost all points of sail you can release the tiller and the boat tracks
+straight. So the simulator's central simplification isn't an abstraction these
+students have to translate — it's close to a description of the boat they sail.
+It also means a student at the helm has attention free to watch the sails, which
+is the same narrowing of focus the simulator is built around.
+
+Worth recording because it makes several later decisions cheaper: no rudder, no
+weather helm, and a heading that simply holds are all more defensible here than
+they would be at another school. The exceptions — overpowered, heavily heeled,
+or unstable dead downwind — are cases we've scoped out for independent reasons.
+
 ### Why heading and wind are separate gestures
 
 Physically, rotating the hull and rotating the wind are the same operation —
@@ -368,11 +388,21 @@ simulator teaches must be a true lesson. It buys two:
 Without it, both of those are silently false. **[Q7]** — flagging it rather than
 just doing it, since it reverses a stated scope decision.
 
-**Weather helm we still can't show.** Striking the jib moves the center of
-effort aft, and a real boat responds by rounding up into the wind. Our boat has
-no rudder and its heading is whatever the student sets, so there is nowhere for
-that force to go. It stays out of scope, but it's worth naming: main-only is
-harder to steer on the water in a way this simulator will not reproduce.
+**Weather helm we don't show — and at Edgewood, largely don't need to.**
+Striking the jib moves the center of effort aft, and a stock Rhodes 19 responds
+by rounding up into the wind. Our boat has no rudder and its heading is whatever
+the student sets, so there is nowhere for that force to go.
+
+On most boats that would be a real gap between the simulator and the water. It
+mostly isn't here: the school's RudderCraft rudders — not class legal, but
+heavily optimized for the hull — have nearly eliminated weather helm, and at
+almost all points of sail the boat tracks straight with the tiller released.
+The balance shift from striking the jib is largely absorbed. A student who
+sails main-only at Edgewood does not experience it as *harder to steer*, which
+is exactly what the simulator will show them.
+
+This doesn't touch **[Q7]**: losing the jib's pointing ability is aerodynamic,
+not a question of helm balance, and it still needs modeling.
 
 **A pleasing coherence.** Backing the boom to get off a mooring
 ([§3.4](#34-backing-a-sail)) is taught in Level 1 — on a main-only boat. The two
@@ -680,8 +710,8 @@ the student the answer; the traffic light lets them find it.
 - Slot effect between main and jib, *except* for the single scalar upwind bonus
   that makes main-only point worse — see [§3.7](#37-sailing-under-main-alone)
   and **[Q7]**
-- Weather helm from the center of effort moving aft under main alone. Real,
-  pedagogically relevant, and unreachable without a rudder
+- Weather helm. Unreachable without a rudder, and largely absent from the
+  school's own boats anyway ([§1](#1-the-core-idea), [§3.7](#37-sailing-under-main-alone))
 - Sail twist, draft position, halyard/outhaul/cunningham controls
 - Spinnaker
 - Crew weight and movement
