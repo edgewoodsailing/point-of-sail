@@ -472,9 +472,15 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Mast** — a dot at the hull's mast station.
 - **Main** — the boom drawn as a straight line from mast to clew (the chord),
   with the sail bulging leeward of it as a Bézier arc.
-- **Jib** — no boom, so just a curve from the forestay at the bow to the clew.
-  Absent entirely when `jibSet` is false; the forestay stays, so the boat still
-  reads as a sloop with its jib struck rather than as a different boat.
+- **Jib** — no boom, so just a curve from its tack to the clew. Absent entirely
+  when `jibSet` is false; the forestay stays, so the boat still reads as a sloop
+  with its jib struck rather than as a different boat.
+- **Forestay** — mast to the **stemhead**, which is the bow. Note that this is
+  *not* the jib's tack, and conflating the two is an easy mistake that draws a
+  stay stopping half a foot short of the stem. `J` = 6.5 ft measures the tack,
+  which rides about a foot up a stay that rakes aft as it climbs; the stay
+  itself lands within an inch of the tip. The half-foot offset is a fact about
+  tack height, not about where the wire goes.
 - **Wind arrow** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)).
 - **Speed arrow** — off the bow, or off the stern when speed is negative. Length
   grows with speed; colored per [§4.3](#43-the-speed-arrow).
@@ -735,7 +741,7 @@ all their time in, there is no finger-width ambiguity to arbitrate.
 
 The geometry is worth stating plainly rather than assuming: the main clew
 swings on a 9.7 ft radius about the mast, the jib clew on a 7.5 ft radius about
-the forestay 6.5 ft ahead of it, and those two arcs do intersect — but only
+the jib's tack 6.5 ft ahead of it, and those two arcs do intersect — but only
 with the main eased to ~129°, well past the ~90° where the boom fetches up on
 the shrouds. **The swing limit is therefore what keeps the grab points apart:**
 with trim clamped to the boom's physical range, the closest the clews ever come

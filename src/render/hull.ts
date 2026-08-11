@@ -221,12 +221,17 @@ export function createHullLayer(): SVGGElement {
       d: hullPathData(),
       "vector-effect": "non-scaling-stroke",
     }),
+    // To the stem, not to STATIONS.jibTack. The stay lands on the stemhead
+    // fitting, an inch or so from the tip of the bow; what sits half a foot
+    // abaft the stem is the jib's *tack*, which rides about a foot up the stay
+    // — and the stay rakes aft as it climbs. Drawing to the tack leaves a gap
+    // at the bow that reads as a mistake, because it is one.
     svgElement("line", {
       class: "pos-forestay",
       x1: STATIONS.mast.x,
       y1: STATIONS.mast.y,
-      x2: STATIONS.forestay.x,
-      y2: STATIONS.forestay.y,
+      x2: STATIONS.bow.x,
+      y2: STATIONS.bow.y,
       "vector-effect": "non-scaling-stroke",
     }),
     svgElement("circle", {

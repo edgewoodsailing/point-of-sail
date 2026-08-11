@@ -81,7 +81,7 @@ describe("scene bands", () => {
   });
 
   it("contains the whole boat at every legal trim", () => {
-    const points: Vec2[] = [STATIONS.bow, STATIONS.stern, STATIONS.forestay, STATIONS.mast];
+    const points: Vec2[] = [STATIONS.bow, STATIONS.stern, STATIONS.jibTack, STATIONS.mast];
     for (let d = -90; d <= 90; d += 1) {
       points.push(mainClewPosition(deg(d)), jibClewPosition(deg(d)));
     }
