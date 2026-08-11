@@ -1,0 +1,94 @@
+/**
+ * Lift and drag coefficients for a sail treated as a thin cambered foil of
+ * finite span (DESIGN.md §3.2).
+ *
+ * Two limbs joined by a blend:
+ *
+ * - **Attached flow**, near zero incidence, where the sail behaves like a wing:
+ *   lift rises linearly with angle of attack and drag is profile drag plus the
+ *   induced drag that lift costs.
+ * - **The flat plate**, past the stall, where the sail is simply an obstruction:
+ *   `Cl = 2 sinα cosα`, `Cd = Cd0 + 2 sin²α`.
+ *
+ * The flat-plate limb is not a detail — it is what makes downwind sailing work
+ * at all. On a dead run the sail sits square to the apparent wind at α = 90°,
+ * where lift is zero and `Cd ≈ 2.0`: the boat is being pushed, not lifted, and
+ * the model has to say so.
+ *
+ * This module knows nothing about the Rhodes 19. Aspect ratio is a parameter,
+ * so the curves can be exercised at any span and `sail.ts` supplies
+ * `MAIN.aspectRatio` or `JIB.aspectRatio` from `boat.ts` at the call site.
+ */
+
+import type { Radians } from "./units.ts";
+import { cos, normalizeSigned, sin, TAU } from "./units.ts";
+import { FOIL } from "./tuning.ts";
+
+export interface FoilCoefficients {
+  /** `Cl`. Odd in the angle of attack: flow on the other face reverses it. */
+  readonly lift: number;
+  /** `Cd`. Even in the angle of attack — drag does not care which face. */
+  readonly drag: number;
+}
+
+/**
+ * The lift-curve slope `a = 2π·AR / (AR + 2)`, in per-radian.
+ *
+ * Thin-aerofoil theory gives 2π for a wing of infinite span; the correction
+ * accounts for the tip losses of a real one. A Rhodes 19 main (AR ≈ 4.86)
+ * comes out at ≈ 4.45 /rad, about 0.078 /deg.
+ */
+export function liftCurveSlope(aspectRatio: number): number {
+  return (TAU * aspectRatio) / (aspectRatio + 2);
+}
+
+/**
+ * Hermite smoothstep on [0, 1], clamped outside it.
+ *
+ * Chosen over a linear ramp for the derivative, not the values. Its slope
+ * vanishes at both ends, so the blended curve below is C¹ at *both* junctions —
+ * it meets the attached limb at the stall with the attached limb's slope, and
+ * the flat plate at the far end with the plate's slope. A linear ramp would be
+ * continuous but visibly kinked, and the trim-quality colour ramp downstream
+ * (§4.2) reads driving-force gradients, so a crease at 18° would show.
+ */
+function smoothstep(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * `Cl` and `Cd` for an angle of attack and an aspect ratio.
+ *
+ * The angle of attack is the signed angle from the apparent wind to the sail's
+ * chord: positive and negative describe flow on opposite faces, and the
+ * coefficients carry that through — lift reverses sign, drag does not.
+ *
+ * **Past 90° is flat plate all the way to 180°.** The blend depends only on
+ * `|α|`, so everything beyond the stall plus the blend width sits on the plate
+ * limb, and the plate formulae are already antisymmetric about 90° in lift and
+ * symmetric in drag. That covers the case where the flow arrives at the leech —
+ * a boom eased to starboard with the wind on the starboard beam, say — without
+ * any special handling. We deliberately do *not* blend back into a reversed
+ * attached limb near 180°: a soft sail cannot hold a foil shape backwards, so
+ * modelling one would invent lift the boat does not have.
+ */
+export function foilCoefficients(angleOfAttack: Radians, aspectRatio: number): FoilCoefficients {
+  const alpha = normalizeSigned(angleOfAttack);
+
+  const attachedLift = liftCurveSlope(aspectRatio) * alpha;
+  const attachedDrag =
+    FOIL.profileDrag + (attachedLift * attachedLift) / (Math.PI * aspectRatio * FOIL.spanEfficiency);
+
+  const sinAlpha = sin(alpha);
+  const plateLift = 2 * sinAlpha * cos(alpha);
+  const plateDrag = FOIL.profileDrag + 2 * sinAlpha * sinAlpha;
+
+  const stalled = smoothstep((Math.abs(alpha) - FOIL.stallAngle) / FOIL.stallBlendWidth);
+
+  return {
+    lift: attachedLift + stalled * (plateLift - attachedLift),
+    drag: attachedDrag + stalled * (plateDrag - attachedDrag),
+  };
+}
