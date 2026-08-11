@@ -16,7 +16,7 @@
  * way, so that a tuning pass can never quietly restate a measurement.
  */
 
-import type { Radians } from "./units.ts";
+import type { Radians, Seconds } from "./units.ts";
 import { degreesToRadians } from "./units.ts";
 
 /**
@@ -94,4 +94,84 @@ export const LUFF: {
    * the knob to move if the shake looks too abrupt or too mushy.
    */
   drawingAbove: degreesToRadians(7),
+};
+
+/**
+ * Hull resistance (§3.5), in
+ *
+ * ```text
+ * R(v) = A·v² + B·v²·(v / v_hull)⁶
+ * ```
+ *
+ * Both coefficients are in N·s²/m², and `v_hull` is a *measurement* — it lives
+ * in `boat.ts` as `HULL.hullSpeed`, ≈ 2.90 m/s — so it is not a knob and is not
+ * restated here.
+ *
+ * **These are starting values, not calibrated ones.** pos-fo1.4 tunes them until
+ * the polar hits §3.6; what this file fixes now is the shape and the units, so
+ * that the tuning pass has knobs to turn rather than constants to hunt.
+ */
+export const RESISTANCE: {
+  readonly quadratic: number;
+  readonly hullSpeedWall: number;
+  readonly asternFactor: number;
+} = {
+  /**
+   * `A` — ordinary resistance, quadratic in speed, which is what the boat feels
+   * everywhere below hull speed.
+   *
+   * It is also the one constant the acceleration lag is derived through (see
+   * `hull.ts`), so it cannot be moved without moving the effective mass with
+   * it. That is deliberate: the *felt* lag is what §3.5 pins, not the mass.
+   */
+  quadratic: 22.5,
+
+  /**
+   * `B` — the wall. Reads as *the extra resistance at exactly hull speed*,
+   * since the sixth-power factor is 1 there: starting equal to `A`, so
+   * resistance doubles at 5.65 kt and has nearly tripled 20% past it.
+   *
+   * The sixth power is a shape, not a theory. What it has to produce is the
+   * wall a displacement hull hits — no amount of sail area gets a Rhodes 19 to
+   * 9 knots — and it is the exponent, not this coefficient, that makes the
+   * curve turn up hard. Move this to set *where* the wall bites; the exponent
+   * in `hull.ts` is not a knob.
+   */
+  hullSpeedWall: 22.5,
+
+  /**
+   * How much draggier the boat is going backwards. Multiplies the whole curve,
+   * both terms.
+   *
+   * Transom-first with a stalled keel and rudder genuinely is much worse than
+   * this figure would suggest for a fair hull, and that is the point: a student
+   * backing off a mooring (§3.4) should feel that sternway is slow and hard
+   * won. The wall term comes along for the ride, which costs nothing — the boat
+   * cannot get near hull speed astern.
+   */
+  asternFactor: 2.5,
+};
+
+/**
+ * How long the boat takes to get going (§3.5).
+ *
+ * **Expressed as a time, not as a mass.** §3.5 quotes `m_effective` ≈ 880 kg —
+ * boat, two crew, and ~15% added mass — but the mass is not what anyone can
+ * judge by watching the simulator. The lag is: trim in properly and the speed
+ * arrow takes its time. So the knob is the observable, `hull.ts` derives the
+ * mass from it, and a calibration pass that changes {@link RESISTANCE.quadratic}
+ * keeps the same felt lag instead of silently changing it.
+ */
+export const ACCELERATION: {
+  readonly timeToTerminal: Seconds;
+} = {
+  /**
+   * Time from rest to ~63% (1 − 1/e) of terminal speed, under a steady drive.
+   *
+   * About right for a keelboat, and the lag is itself a lesson — trim changes
+   * do not pay off instantly. If it reads as sluggish when comparing two trim
+   * settings back to back, shorten it; this is a feel decision to be made
+   * against the running thing.
+   */
+  timeToTerminal: 10,
 };
