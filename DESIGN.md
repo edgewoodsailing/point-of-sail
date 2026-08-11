@@ -278,13 +278,23 @@ holding. So:
   `jibHeld`), the flow attacks the other face, and the force reverses.
 - Driving force goes negative, `speed` integrates negative, and the speed arrow
   flips to the stern — exactly as the objectives describe.
-- **On release the sail swings back**, animated, to where the wind puts it.
+- **On release the sail swings across**, animated.
 
 Holding your finger down to hold the boom out is an unusually direct mapping
-between the gesture and the real physical act. **[Q1]** Should release really
-swing it back, or should a backed sail stay put until dragged back? Swinging
-back is more honest, but it means the boat can't be left sitting in the
-backwards state for discussion, which may matter for group use around a table.
+between the gesture and the real physical act.
+
+**Where it swings to.** The sail returns to the *mirror* of the angle it was at
+before being pushed across — same trim, other side. This is what the sheet does
+on the real boat: its length hasn't changed, so it stops the boom at the same
+angle it would have on the other tack. The full mooring departure then plays out
+in one continuous gesture: push the boom across, boat gathers sternway, release,
+boom swings over, sail fills, boat sails off on the trim it already had.
+
+The swing takes ~0.4 s, and **the model keeps running normally throughout** —
+the sail angle is simply animating. Backward drive dies, forward drive builds,
+and the speed arrow shrinks, flips, and grows again on its own. Nothing needs
+special-casing, and the student sees the whole reversal as one continuous
+physical event.
 
 The jib backs by the same mechanism, which is the other classic way off a
 mooring.
@@ -319,9 +329,15 @@ to integrate rather than solve for equilibrium:
    accelerate to hull speed, and that lag is itself a lesson — trim changes don't
    pay off instantly.
 
-The boat still doesn't *translate*; only the speed number evolves. **[Q2]** Does
-the ramp-up read as sluggish when you just want to compare two trim settings
-side by side? We could shorten the time constant below reality if it hurts play.
+The boat still doesn't *translate*; only the speed number evolves.
+
+**The lag is a tuning knob, not a derived constant.** `m_effective` is exposed
+in [`tuning.ts`](#6-architecture) alongside a documented mapping to what we
+actually care about — *time to reach ~63% of terminal speed from rest.* Starting
+value **10 s**, which is about right for a keelboat. If it reads as sluggish
+when comparing two trim settings back to back, we shorten it; the number is a
+feel decision to be made against the running thing, not something to argue about
+now.
 
 ### 3.6 Calibration targets
 
@@ -586,26 +602,47 @@ construction. It gives the wind an enormous, always-reachable target that can
 never collide with the sails, and it reinforces the idea that the wind belongs
 to the world while trim belongs to the boat.
 
-### Overlap arbitration
+### Grab points: the clews
 
-The hard case is close hauled, where main and jib are both near the centerline,
-on top of each other, and on top of the hull. Approach:
+**Sails are dragged by their clews**, and nothing else on the sail is draggable.
 
-1. **Fat invisible hit paths.** Each draggable gets a transparent stroke of
-   ~44 CSS px regardless of its visible line weight.
-2. **Nearest-target-within-radius**, not strict topmost-hit. On pointer-down,
-   measure distance to each candidate's grab point and take the nearest, with a
-   priority tiebreak: jib clew > main boom > hull.
-3. **Pointer capture.** Once a drag starts it owns that pointer until release, so
-   overlap only matters in the instant of touchdown, never during the drag.
-4. **Hull grab excludes the sails' zone.** The quarters and bow are usually
-   clear even when everything is sheeted in hard.
+This dissolves the overlap problem rather than working around it. The two clews
+are far apart even sheeted in hard, because they're attached to different parts
+of the boat: the main clew rides the end of the boom, roughly 16.7 ft aft of the
+bow, while the jib clew sheets to the deck around 9 ft aft. That's **~40% of the
+boat's length between them — about 200 px on a 500 px boat** — and the gap
+barely changes with trim, since both clews swing on arcs about widely separated
+pivots. No finger-width ambiguity exists to arbitrate.
 
-**[Q3]** Rule 2 will sometimes guess wrong when main and jib are within a
-finger-width of each other. Options: bias toward whichever was grabbed last, or
-add a small visual offset so the two clews never render exactly coincident. I
-lean toward the offset — a lie in the drawing, but one that keeps the thing
-usable.
+It's also the physically honest choice: the clew is where the sheet attaches, so
+it is quite literally the point through which a sailor's control acts. The
+earlier plan — fat hit paths along the whole boom, arbitrated by nearest grab
+point — would actually have been *worse* than useless here, since the midpoint of
+the main boom sits closer to the jib clew than to its own, and touching the main
+would sometimes have grabbed the jib.
+
+What remains:
+
+1. **Generous invisible discs.** ~44 CSS px centered on each clew, independent of
+   the visible handle size.
+2. **Pointer capture.** A drag owns its pointer until release, so hit-testing
+   only happens at touchdown.
+3. **Everything else on the hull rotates the hull.** With only two small discs
+   reserved, the entire silhouette is available — the conflict between hull and
+   sail grabs is gone too.
+
+**Discoverability.** With no labels, the grab points have to announce themselves.
+A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
+rather than as UI chrome, so it signals the affordance without violating the
+no-scaffolding position. That rule was about not handing students the answer, not
+about hiding the controls. The opening state helps too: the mistrimmed sail is
+usually luffing, and the motion draws the eye straight to the thing worth
+touching.
+
+One consequence for [§3.4](#34-backing-a-sail): backing the main means dragging
+the clew forward rather than shoving the boom amidships as you would on the
+water. The geometry is identical — the boom rotates about the mast either way —
+so the loss is a small one in physical metaphor only.
 
 ### Multi-touch
 
@@ -629,6 +666,7 @@ src/
     boat.ts           Rhodes 19 constants
     simulation.ts     state + step(dt), including the ghost boat
     initialState.ts   bounded randomizer (§2.1)
+    tuning.ts         every fudge factor, in one file
   render/
     scene.ts          SVG root, viewBox, responsive layout
     hull.ts
@@ -649,6 +687,15 @@ One rule holds the whole thing together:
   as tests instead of eyeballing it.
 - **`render/` reads state, never writes it.**
 - **`input/` writes state, never renders.**
+
+**Everything tunable lives in `tuning.ts`.** Resistance constants, the
+acceleration time constant ([§3.5](#35-hull-resistance-and-integration)), stall
+and luff thresholds, the swing-back duration, the upwind jib bonus (**[Q7]**),
+and the color ramp anchors are all feel decisions that will be adjusted against
+the running simulator. Collecting them in one file keeps them out of the physics,
+makes the calibration phase a matter of turning knobs rather than hunting
+constants, and — since a fudge factor in a named tuning file is visibly a fudge
+factor — keeps us honest about which numbers are physics and which are taste.
 
 TypeScript + Vite, building to static files for embedding in the ESS site.
 **[Q4]** Embedding: an `<iframe>` is the safe answer for a WordPress-style host
@@ -752,15 +799,6 @@ release.
 
 ## 9. Open questions
 
-- **[Q1]** [§3.4](#34-backing-a-sail) — On release, should a backed sail swing
-  back to its natural position, or stay put so the group can discuss the
-  backwards state?
-- **[Q2]** [§3.5](#35-hull-resistance-and-integration) — Is realistic
-  acceleration lag (~10 s to hull speed) too sluggish for quick A/B comparison
-  of trim settings?
-- **[Q3]** [§5](#5-direct-manipulation) — How to disambiguate main and jib when
-  they're within a finger-width close hauled. Visual offset, or last-grabbed
-  bias?
 - **[Q4]** [§6](#6-architecture) — What does the ESS site run on, and is an
   iframe embed acceptable?
 - **[Q5]** [§4.4](#44-color) — Optimal-end hue: 170 (mint, best CVD separation)
@@ -780,7 +818,12 @@ release.
 - Apparent wind is modeled always, shown behind a toggle (default off)
 - Trim quality is keyed to driving-force loss, deteriorating in both directions
 - Speed is integrated over time; the boat still never translates
-- Backing a sail = holding the pointer down; release swings it back
+- Backing a sail = holding the pointer down; release swings it to the mirrored
+  trim angle over ~0.4 s, with the model running throughout
+- Acceleration lag is a tuning knob, starting at 10 s
+- Sails are grabbed by their clews, which are ~40% of LOA apart — no
+  arbitration needed
+- All fudge factors collected in `tuning.ts`
 - Colors authored in OKLCH, applied via CSS only, never as SVG presentation
   attributes
 - Opening state is randomized and mistrimmed, within bounds
