@@ -55,6 +55,9 @@ interface SimState {
   heading: Radians;           // direction the bow points, world frame
   speed: MetersPerSecond;     // signed — negative means sailing backwards
 
+  // Rig: is the jib set at all? False = sailing under main alone (§3.7)
+  jibSet: boolean;
+
   // Trim: sail chord angle relative to boat centerline.
   // Positive = clew to starboard. Zero = on the centerline.
   mainAngle: Radians;
@@ -115,7 +118,9 @@ equal billing.
 **Often only one sail is wrong**, chosen at random. It teaches that the two are
 trimmed independently, and it makes the main-versus-jib asymmetry felt: a
 mistrimmed main costs far more than a mistrimmed jib, because it's 70% of the
-sail area.
+sail area. Under main alone ([§3.7](#37-sailing-under-main-alone)) this collapses
+to the obvious — the main is always the mistrimmed one — which is the right first
+problem for a Level 1 student anyway: one sail, one variable, one fix.
 
 **The boat starts at the steady speed for its bad trim, not at zero.** Otherwise
 everything ramps from zero at once on load and the initial reading is muddy —
@@ -163,7 +168,7 @@ badly trimmed jib. That asymmetry is worth preserving.
 
 Modeled always; **displayed only behind a toggle** (default off).
 
-```
+```text
 V_apparent = V_trueWind − V_boat
 ```
 
@@ -190,13 +195,13 @@ Each sail is treated as a thin cambered foil of finite span.
 
 **Lift-curve slope**, corrected for finite span:
 
-```
+```text
 a = 2π·AR / (AR + 2)        // main: ≈ 4.45 /rad  (0.078 /deg)
 ```
 
 **Attached flow** (|α| below stall, α_stall ≈ 18°):
 
-```
+```text
 Cl = a · α
 Cd = Cd0 + Cl² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
 ```
@@ -205,7 +210,7 @@ giving `Cl_max ≈ 1.4` at the stall — a realistic figure for a soft sail.
 
 **Past stall**, blend over ~10° into the flat-plate model:
 
-```
+```text
 Cl = 2 · sin α · cos α
 Cd = Cd0 + 2 · sin²α
 ```
@@ -228,7 +233,7 @@ it (see [§4.2](#42-the-traffic-light)).
 A cambered sail needs some positive incidence to hold its shape. As α drops, the
 luff breaks first and the collapse propagates aft:
 
-```
+```text
 α ≥ α_full  (≈ +2°)   → sail fully drawing, no flutter
 α_luff < α < α_full   → partial luff, breaking from the luff aft
 α ≤ α_luff  (≈ −5°)   → fully luffing, no drive
@@ -268,7 +273,7 @@ mooring.
 
 Resistance rises steeply approaching hull speed:
 
-```
+```text
 R(v) = A·v² + B·v²·(v / v_hull)⁶        v_hull = 2.91 m/s (5.65 kt)
 ```
 
@@ -279,7 +284,7 @@ genuinely much draggier, and students should feel that backing up is slow.
 
 **Speed is integrated, not solved.** Each frame:
 
-```
+```text
 a = (F_drive − R(v)) / m_effective
 v += a · dt
 ```
@@ -302,16 +307,77 @@ side by side? We could shorten the time constant below reality if it hurts play.
 
 Constants get tuned until the polar hits roughly these marks in 10 kt true:
 
-| Point of sail | TWA | Target speed |
-| --- | --- | --- |
-| Head to wind | 0° | 0 (in irons) |
-| Close hauled | 45° | ≈ 4.2 kt |
-| Beam reach | 90° | ≈ 5.4 kt |
-| Broad reach | 135° | ≈ 5.2 kt |
-| Run | 180° | ≈ 3.5 kt |
+| Point of sail | TWA | Sloop | Main only |
+| --- | --- | --- | --- |
+| Head to wind | 0° | 0 (in irons) | 0 (in irons) |
+| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt |
+| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt |
+| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt |
+| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt |
 
 Beam reach fastest, run notably slower, and a no-go zone that simply *is* rather
 than being drawn on. These become the model layer's unit tests.
+
+Note the main-only column falls off *hardest close hauled* — roughly 24% down at
+45° versus 15% at a beam reach — which is the whole point of [§3.7](#37-sailing-under-main-alone).
+
+### 3.7 Sailing under main alone
+
+Edgewood's Level 1 class teaches its first six lessons with **no jib**, so that
+the student on the helm has complete control of the boat and their feedback
+isn't confounded by someone else's trimming. The simulator must be able to match
+that boat. `jibSet: false` strikes the jib entirely: not drawn, not draggable,
+contributing no force.
+
+This is not a rendering toggle. Three things change, and one of them requires
+reopening a decision.
+
+**Area.** Main-only drops the rig from ~167 to ~118.6 sq ft, about 71%. Since
+resistance goes as v², speed scales roughly as √0.71 ≈ 0.84 — the boat is
+noticeably but not dramatically slower. That much falls out of the model for
+free.
+
+**Pointing — and this is where the model as designed would lie.** A real sloop
+under main alone cannot point as high. Ask any student who has sailed the first
+six lessons and then had a jib added: the boat suddenly goes upwind
+*better*, not just faster. But in the model as specified, striking the jib
+removes area uniformly and the no-go zone doesn't widen at all, because the
+angle at which drive goes to zero is set by the foil's lift-to-drag ratio, not
+by how much sail you have. Main and jib have nearly the same aspect ratio here
+(4.9 and 5.5), so removing one barely shifts the average efficiency. The
+simulator would show main-only as *slower everywhere and no worse upwind*, which
+is precisely the wrong lesson for the class this feature exists to serve.
+
+The reason a real boat behaves otherwise is the **slot effect** — the jib's
+leading edge sits in undisturbed air and the flow through the slot keeps the
+main attached — which [§7](#7-deliberately-out-of-scope) currently rules out. I
+think that ruling was right in general and wrong here, and I'd like to reverse
+it in minimal form:
+
+> A single scalar bonus on the main's lift when the jib is set and drawing,
+> largest close hauled and tapering to nothing by a broad reach.
+
+Perhaps ten lines. It is unashamedly a fudge — no flow is being modeled — but
+it's a fudge in service of the fidelity target, which is that every lesson the
+simulator teaches must be a true lesson. It buys two:
+
+- Main-only points worse, matching the boat the Level 1 student is actually on.
+- Adding the jib visibly improves upwind performance, which is the payoff at
+  lesson seven.
+
+Without it, both of those are silently false. **[Q7]** — flagging it rather than
+just doing it, since it reverses a stated scope decision.
+
+**Weather helm we still can't show.** Striking the jib moves the center of
+effort aft, and a real boat responds by rounding up into the wind. Our boat has
+no rudder and its heading is whatever the student sets, so there is nowhere for
+that force to go. It stays out of scope, but it's worth naming: main-only is
+harder to steer on the water in a way this simulator will not reproduce.
+
+**A pleasing coherence.** Backing the boom to get off a mooring
+([§3.4](#34-backing-a-sail)) is taught in Level 1 — on a main-only boat. The two
+features land in the same lesson, and the sim can now show that lesson exactly
+as it's taught.
 
 ---
 
@@ -326,6 +392,8 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Main** — the boom drawn as a straight line from mast to clew (the chord),
   with the sail bulging leeward of it as a Bézier arc.
 - **Jib** — no boom, so just a curve from the forestay at the bow to the clew.
+  Absent entirely when `jibSet` is false; the forestay stays, so the boat still
+  reads as a sloop with its jib struck rather than as a different boat.
 - **Wind arrow** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)).
 - **Speed arrow** — off the bow, or off the stern when speed is negative. Length
   grows with speed; colored per [§4.3](#43-the-speed-arrow).
@@ -346,7 +414,7 @@ quiet, and slow; without this, it would look identical to a well-trimmed one.
 
 The scale is driven by **driving-force ratio, not angular error**:
 
-```
+```text
 quality = F_drive(current angle) / F_drive(best angle at this apparent wind)
 ```
 
@@ -469,7 +537,18 @@ state exists**, touch targets must be large, and targets will overlap.
 | Wind direction | Drag the perimeter arrow | Large target, never overlaps the boat |
 | Wind speed | Slider | Separate control; easier than dragging arrow length on a phone |
 | Main | Drag the boom | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
-| Jib | Drag the clew | Same |
+| Jib | Drag the clew | Same; absent when the jib is struck |
+
+Two settings sit outside the drawing, in a minimal control strip: **apparent
+wind** ([§3.1](#31-apparent-wind)) and **jib on/off**
+([§3.7](#37-sailing-under-main-alone)). Both are switches rather than
+manipulations, both are things a student sets once and forgets, and neither
+belongs on the boat. Striking the jib by dragging it overboard would be
+charming and undiscoverable.
+
+Striking the jib also *helps* the hardest interaction problem below — with one
+sail there is nothing to disambiguate close hauled — which means the Level 1
+configuration is also the most forgiving one on a phone.
 
 Putting the **wind arrow on the perimeter** — a ring around the whole scene
 rather than a vector near the boat — solves the worst of the overlap problem by
@@ -509,7 +588,7 @@ rather than treating as a bonus.
 
 ## 6. Architecture
 
-```
+```text
 src/
   model/
     units.ts          angle/speed helpers, conversions, sign conventions
@@ -546,6 +625,29 @@ TypeScript + Vite, building to static files for embedding in the ESS site.
 (no CSS collisions, no script conflicts) but needs a fixed aspect ratio. Do you
 know what the ESS site runs on?
 
+### 6.1 URL parameters as the configuration surface
+
+The objectives forbid persistence — reload resets everything — which creates a
+problem the jib toggle exposes. If an instructor sets up a main-only boat for a
+Level 1 group and a student reloads, they're back to a sloop.
+
+The answer is to let **the embedding page carry the configuration**, not the
+session:
+
+```text
+?jib=off        strike the jib (§3.7)
+?apparent=on    show the apparent wind triangle (§3.1)
+?seed=…         fixed opening problem (§2.1, [Q6])
+```
+
+The Level 1 lesson page embeds `?jib=off`; a later page embeds the full sloop.
+Same build, same URL, different lesson. Reload is now safe, because the
+configuration lives in the link rather than in state we're not allowed to keep.
+
+This costs almost nothing — parse once at startup, feed the initial state — and
+it resolves [Q6] as a side effect. Every parameter still has an in-page control,
+so the URL sets the starting point without locking anything.
+
 ---
 
 ## 7. Deliberately out of scope
@@ -575,7 +677,11 @@ the student the answer; the traffic light lets them find it.
 
 - Main blanketing the jib downwind (real, and the reason a run is slower than
   the model will say — worth reconsidering if runs feel wrong)
-- Slot effect between main and jib
+- Slot effect between main and jib, *except* for the single scalar upwind bonus
+  that makes main-only point worse — see [§3.7](#37-sailing-under-main-alone)
+  and **[Q7]**
+- Weather helm from the center of effort moving aft under main alone. Real,
+  pedagogically relevant, and unreachable without a rudder
 - Sail twist, draft position, halyard/outhaul/cunningham controls
 - Spinnaker
 - Crew weight and movement
@@ -597,11 +703,20 @@ Each phase leaves something demonstrable, which is what makes this bead-able.
 4. **Feedback** — trim-quality color, luff fraction, flutter animation, ghost
    boat, speed-arrow color.
 5. **Backing** — held sails, reversed force, sailing astern, release animation.
-6. **Polish and ship** — wind speed control, apparent wind toggle, touch tuning
-   on real hardware, colorblind check, embed.
+6. **Main-only rig** — `jibSet` through model, render, and input; the upwind
+   bonus; main-only calibration targets.
+7. **Polish and ship** — wind speed control, toggles, URL parameters, touch
+   tuning on real hardware, colorblind check, embed.
 
 Phases 1–2 are pure UI and phase 3 is pure model, so they're independent and
 could be built in either order — or in parallel.
+
+Phase 6 is placed late because it's cheap once the model is calibrated, but it
+delivers the configuration Level 1 actually uses. If the class needs something
+before the full sloop is polished, phases 1–4 plus 6 are a complete and honest
+Level 1 tool on their own — one sail, correct trim feedback, correct speeds —
+and phase 5 adds the mooring-departure lesson. That's a defensible early
+release.
 
 ---
 
@@ -622,6 +737,13 @@ could be built in either order — or in parallel.
   or ~155 (more convincingly "green")? I lean 155–160.
 - **[Q6]** [§2.1](#21-initial-state-a-random-solvable-problem) — Add a `?seed=`
   URL parameter so an instructor can put a room on the same problem?
+  ([§6.1](#61-url-parameters-as-the-configuration-surface) argues yes, near-free)
+- **[Q7]** [§3.7](#37-sailing-under-main-alone) — Reverse the "no slot effect"
+  decision far enough to add a single upwind lift bonus when the jib is set,
+  so that main-only points worse? Without it the simulator tells Level 1
+  students something false. I recommend yes.
+- **[Q8]** [§3.7](#37-sailing-under-main-alone) — Should main-only be the
+  *default*, given it's the boat the first six lessons actually sail?
 
 ### Settled
 
