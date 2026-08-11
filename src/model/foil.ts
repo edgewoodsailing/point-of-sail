@@ -21,7 +21,7 @@
  */
 
 import type { Radians } from "./units.ts";
-import { cos, normalizeSigned, sin, TAU } from "./units.ts";
+import { cos, normalizeSigned, sin, smoothstep, TAU } from "./units.ts";
 import { FOIL } from "./tuning.ts";
 
 export interface FoilCoefficients {
@@ -40,22 +40,6 @@ export interface FoilCoefficients {
  */
 export function liftCurveSlope(aspectRatio: number): number {
   return (TAU * aspectRatio) / (aspectRatio + 2);
-}
-
-/**
- * Hermite smoothstep on [0, 1], clamped outside it.
- *
- * Chosen over a linear ramp for the derivative, not the values. Its slope
- * vanishes at both ends, so the blended curve below is C¹ at *both* junctions —
- * it meets the attached limb at the stall with the attached limb's slope, and
- * the flat plate at the far end with the plate's slope. A linear ramp would be
- * continuous but visibly kinked, and the trim-quality colour ramp downstream
- * (§4.2) reads driving-force gradients, so a crease at 18° would show.
- */
-function smoothstep(t: number): number {
-  if (t <= 0) return 0;
-  if (t >= 1) return 1;
-  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -85,6 +69,10 @@ export function foilCoefficients(angleOfAttack: Radians, aspectRatio: number): F
   const plateLift = 2 * sinAlpha * cos(alpha);
   const plateDrag = FOIL.profileDrag + 2 * sinAlpha * sinAlpha;
 
+  // Smoothstep rather than a linear ramp so the blended curve leaves the
+  // attached limb at the stall with the attached limb's slope and joins the
+  // plate at the far end with the plate's: C¹ at both junctions, not merely
+  // continuous. A kink at 18° would show up in the §4.2 colour ramp.
   const stalled = smoothstep((Math.abs(alpha) - FOIL.stallAngle) / FOIL.stallBlendWidth);
 
   return {

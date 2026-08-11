@@ -105,6 +105,32 @@ export function acos(ratio: number): Radians {
 }
 
 // ---------------------------------------------------------------------------
+// Interpolation
+// ---------------------------------------------------------------------------
+
+/**
+ * Hermite smoothstep on [0, 1], clamped outside it.
+ *
+ * Not a unit conversion, but it lives here for the same reason the trigonometry
+ * does: it is shared vocabulary, and two copies could drift apart. Every soft
+ * threshold in the model is one of these — the stall blend in `foil.ts`, the
+ * luff fraction in `sail.ts`, the colour ramp later on.
+ *
+ * Chosen over a linear ramp for the derivative, not the values. Its slope
+ * vanishes at both ends, so a curve blended with it is C¹ at *both* junctions
+ * rather than merely continuous. The trim-quality colour ramp downstream (§4.2)
+ * reads driving-force gradients, so a crease anywhere upstream would show.
+ *
+ * The clamp is what lets callers skip the two-limb branch: feed it a raw
+ * `(x − low) / (high − low)` and the ends take care of themselves.
+ */
+export function smoothstep(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return t * t * (3 - 2 * t);
+}
+
+// ---------------------------------------------------------------------------
 // Angle normalisation and comparison
 // ---------------------------------------------------------------------------
 
