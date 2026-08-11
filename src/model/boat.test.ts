@@ -1,0 +1,182 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  HULL,
+  JIB,
+  MAIN,
+  mainClewPosition,
+  jibClewPosition,
+  RIG,
+  sailChordBearing,
+  STATIONS,
+} from "./boat.ts";
+import type { Vec2 } from "./units.ts";
+import {
+  degreesToRadians,
+  magnitude,
+  metersPerSecondToKnots,
+  metersToFeet,
+  normalizeSigned,
+  subtract,
+} from "./units.ts";
+
+const deg = degreesToRadians;
+
+/** How far aft of the bow a boat-frame point sits, in feet — the way §3/§5 quote it. */
+function feetAftOfBow(point: Vec2): number {
+  return metersToFeet(point.y - STATIONS.bow.y);
+}
+
+/** Distance between the two clews, in metres, for a pair of trim angles in degrees. */
+function clewGap(mainDegrees: number, jibDegrees: number): number {
+  return magnitude(subtract(mainClewPosition(deg(mainDegrees)), jibClewPosition(deg(jibDegrees))));
+}
+
+describe("Rhodes 19 hull figures (DESIGN.md §3)", () => {
+  it("matches the published dimensions", () => {
+    expect(metersToFeet(HULL.loa)).toBeCloseTo(19 + 2 / 12, 6);
+    expect(metersToFeet(HULL.lwl)).toBeCloseTo(17 + 9 / 12, 6);
+    expect(metersToFeet(HULL.beam)).toBeCloseTo(7, 6);
+    expect(metersToFeet(HULL.draft)).toBeCloseTo(3 + 3 / 12, 6);
+    expect(HULL.displacement).toBeCloseTo(601, 0);
+  });
+
+  it("keeps the 7:19 beam-to-length proportion the drawing is built on (§4.1)", () => {
+    expect(HULL.beam / HULL.loa).toBeCloseTo(7 / 19.167, 3);
+  });
+
+  it("puts hull speed at 5.65 kt", () => {
+    expect(metersPerSecondToKnots(HULL.hullSpeed)).toBeCloseTo(5.65, 2);
+    expect(HULL.hullSpeed).toBeCloseTo(2.9, 1);
+  });
+});
+
+describe("rig and sails (DESIGN.md §3.2)", () => {
+  it("carries the I/J/P/E dimensions", () => {
+    expect(metersToFeet(RIG.i)).toBeCloseTo(15.0, 6);
+    expect(metersToFeet(RIG.j)).toBeCloseTo(6.5, 6);
+    expect(metersToFeet(RIG.p)).toBeCloseTo(24.0, 6);
+    expect(metersToFeet(RIG.e)).toBeCloseTo(9.7, 6);
+  });
+
+  it("converts both sail areas to SI", () => {
+    expect(MAIN.area).toBeCloseTo(11.0, 1);
+    expect(JIB.area).toBeCloseTo(4.5, 1);
+  });
+
+  it("preserves the 70/30 main:jib area split", () => {
+    expect(MAIN.area / (MAIN.area + JIB.area)).toBeCloseTo(0.708, 3);
+  });
+
+  it("computes aspect ratio as luff²/area", () => {
+    expect(MAIN.aspectRatio).toBeCloseTo(4.86, 2);
+    expect(JIB.aspectRatio).toBeCloseTo(5.48, 2);
+  });
+
+  it("takes the jib's luff along the forestay", () => {
+    expect(metersToFeet(JIB.luff)).toBeCloseTo(Math.hypot(15.0, 6.5), 6);
+    expect(metersToFeet(MAIN.luff)).toBeCloseTo(24.0, 6);
+  });
+});
+
+describe("stations (DESIGN.md §4.1, §5)", () => {
+  it("measures from the mast, on the centreline", () => {
+    expect(STATIONS.mast).toEqual({ x: 0, y: 0 });
+    for (const station of [STATIONS.bow, STATIONS.stern, STATIONS.forestay]) {
+      expect(station.x).toBe(0);
+    }
+  });
+
+  it("spans the full LOA from bow to stern", () => {
+    expect(magnitude(subtract(STATIONS.stern, STATIONS.bow))).toBeCloseTo(HULL.loa, 9);
+    expect(STATIONS.bow.y).toBeLessThan(0); // forward is −y
+    expect(STATIONS.stern.y).toBeGreaterThan(0);
+  });
+
+  it("puts the mast 7 ft aft of the bow, one J ahead of the forestay", () => {
+    expect(feetAftOfBow(STATIONS.mast)).toBeCloseTo(7.0, 6);
+    expect(metersToFeet(STATIONS.mast.y - STATIONS.forestay.y)).toBeCloseTo(6.5, 6);
+  });
+
+  it("lands the forestay just aft of the stem, so the boat still reads as a sloop", () => {
+    expect(feetAftOfBow(STATIONS.forestay)).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("sail chord bearing", () => {
+  it("lies dead aft when sheeted flat", () => {
+    expect(sailChordBearing(0)).toBeCloseTo(Math.PI, 10);
+  });
+
+  it("swings toward the beam it is eased to", () => {
+    // Positive trim = clew to starboard, and starboard is +90° off the bow.
+    expect(sailChordBearing(deg(90))).toBeCloseTo(deg(90), 10);
+    expect(sailChordBearing(deg(-90))).toBeCloseTo(deg(-90), 10);
+    expect(sailChordBearing(deg(30))).toBeCloseTo(deg(150), 10);
+    expect(sailChordBearing(deg(-30))).toBeCloseTo(deg(-150), 10);
+  });
+
+  it("stays normalised when trim is backed past the beam", () => {
+    const bearing = sailChordBearing(deg(150));
+    expect(bearing).toBeCloseTo(deg(30), 10);
+    expect(bearing).toBe(normalizeSigned(bearing));
+  });
+});
+
+describe("clew positions (DESIGN.md §5)", () => {
+  it("puts the main clew at the boom end, 16.7 ft aft of the bow when sheeted flat", () => {
+    const clew = mainClewPosition(0);
+    expect(clew.x).toBeCloseTo(0, 12);
+    expect(feetAftOfBow(clew)).toBeCloseTo(16.7, 6);
+  });
+
+  it("sheets the jib clew to the deck 9 ft aft of the bow", () => {
+    const clew = jibClewPosition(0);
+    expect(clew.x).toBeCloseTo(0, 12);
+    expect(feetAftOfBow(clew)).toBeCloseTo(9.0, 6);
+  });
+
+  it("swings each clew to starboard on positive trim, and mirrors on negative", () => {
+    for (const clewAt of [mainClewPosition, jibClewPosition]) {
+      const starboard = clewAt(deg(25));
+      const port = clewAt(deg(-25));
+      expect(starboard.x).toBeGreaterThan(0);
+      expect(port.x).toBeCloseTo(-starboard.x, 12);
+      expect(port.y).toBeCloseTo(starboard.y, 12);
+    }
+  });
+
+  it("swings on a fixed radius about its own pivot", () => {
+    for (const trimDegrees of [-120, -90, -45, 0, 15, 45, 90, 120]) {
+      const trim = deg(trimDegrees);
+      expect(magnitude(subtract(mainClewPosition(trim), STATIONS.mast))).toBeCloseTo(MAIN.foot, 9);
+      expect(magnitude(subtract(jibClewPosition(trim), STATIONS.forestay))).toBeCloseTo(JIB.foot, 9);
+    }
+  });
+
+  it("separates the clews by ~40% of the boat's length when both are sheeted flat", () => {
+    // §5's headline figure: 16.7 ft aft against 9 ft aft, so ~200 px apart on a
+    // 500 px boat, which is what makes the grab points unambiguous at normal trim.
+    const flatGap = clewGap(0, 0);
+    expect(metersToFeet(flatGap)).toBeCloseTo(7.7, 6);
+    expect(flatGap / HULL.loa).toBeCloseTo(0.4, 2);
+  });
+
+  it("keeps them a hand's width apart across the working trim range", () => {
+    for (let mainDegrees = -60; mainDegrees <= 60; mainDegrees += 5) {
+      for (let jibDegrees = -60; jibDegrees <= 60; jibDegrees += 5) {
+        expect(clewGap(mainDegrees, jibDegrees) / HULL.loa).toBeGreaterThan(0.29);
+      }
+    }
+  });
+
+  it("lets the two swing arcs cross once a sail is eased past the beam", () => {
+    // Worth pinning down, because §5 reads as though the clews can never be
+    // confused: the main's arc (radius E about the mast) and the jib's (radius
+    // 8.5 ft about the forestay, 6.5 ft ahead of it) do intersect, and at wide
+    // eases — including the backed main of §3.4 — the two clews can land on top
+    // of each other. Hit arbitration is therefore the input layer's problem;
+    // geometry does not solve it everywhere. See pos-bwd.
+    expect(clewGap(120, 79)).toBeLessThan(0.05);
+  });
+});
