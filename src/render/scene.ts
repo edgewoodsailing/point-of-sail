@@ -102,6 +102,16 @@ export const SHORT_SPAN: Meters = 2 * SCENE.shortRadius;
 export interface SceneExtent {
   readonly halfWidth: Meters;
   readonly halfHeight: Meters;
+  /**
+   * Metres per CSS pixel — **or exactly `0`** when the surface has no area yet
+   * and there is therefore no scale to report. A real scale is always positive,
+   * so zero is unambiguous as a sentinel, but it is a sentinel: dividing by it
+   * yields `Infinity` and multiplying by it yields zero-sized everything.
+   * Check it before doing either.
+   *
+   * At runtime, prefer `Scene.pixelsToMeters`, which measures the live screen
+   * transform and so cannot be consulted before there is one.
+   */
   readonly metersPerPixel: number;
 }
 
@@ -115,7 +125,10 @@ export interface SceneExtent {
  * inscribed in the narrow dimension and stealing from the boat.
  *
  * A surface with no area yet — the first frame, before layout — falls back to a
- * square, which keeps every consumer free of divide-by-zero checks.
+ * square of `SHORT_SPAN`, so the viewBox is usable immediately and there is
+ * never a frame painted without one. The ResizeObserver replaces it as soon as
+ * the box is measured. Note that the fall-back reports `metersPerPixel: 0`,
+ * because a scale onto zero pixels does not exist; see {@link SceneExtent}.
  */
 export function sceneExtent(widthPx: number, heightPx: number): SceneExtent {
   const shortSide = Math.min(widthPx, heightPx);
@@ -172,6 +185,27 @@ export interface Layer {
   update?(state: SimState): void;
 }
 
+/**
+ * Where each later bead hangs its drawing. One named group per layer, created
+ * and ordered by the scene, so paint order is a property of this module rather
+ * than of the order beads happen to land in.
+ *
+ * The scene deliberately does **not** expose the world or boat groups
+ * themselves. Appending to those would put the new layer last, which is exactly
+ * the mistake the ordering exists to prevent: a speed arrow appended after the
+ * hull paints over the boom on sternway.
+ */
+export interface SceneLayers {
+  /** World frame. The perimeter wind ring (pos-qmk.3). */
+  readonly wind: SVGGElement;
+  /** Boat frame, **below** the hull, so a stern arrow never paints over the boom. */
+  readonly speed: SVGGElement;
+  /** Boat frame, **above** the hull, so the boom reads as lying on the deck. */
+  readonly sails: SVGGElement;
+  /** World frame, on top. The apparent-wind overlay (§3.1). */
+  readonly apparent: SVGGElement;
+}
+
 export interface Scene {
   /**
    * The `<svg>` root. Note that **pointer listeners belong on the host
@@ -181,10 +215,8 @@ export interface Scene {
    * `touch-action: none` (§6.2).
    */
   readonly element: SVGSVGElement;
-  /** Mount point for world-frame layers: the wind ring, the apparent-wind overlay. */
-  readonly world: SVGGElement;
-  /** Mount point for boat-frame layers: the sails, the speed arrow. */
-  readonly boat: SVGGElement;
+  /** Mount points, already in paint order. Append to the one your layer belongs to. */
+  readonly layers: SceneLayers;
 
   render(state: SimState): void;
 
@@ -211,14 +243,16 @@ export function createScene(host: HTMLElement): Scene {
   title.textContent = "Top-down view of a sailboat";
 
   const world = svgElement("g", { class: "pos-world" });
-  const wind = svgElement("g", { class: "pos-wind" }); // pos-qmk.3
   const boat = svgElement("g", { class: "pos-boat" });
-  const speed = svgElement("g", { class: "pos-speed" }); // pos-qmk.3
-  const sails = svgElement("g", { class: "pos-sails" }); // pos-qmk.2
-  const apparent = svgElement("g", { class: "pos-apparent" }); // §3.1 overlay, world frame
+  const layers: SceneLayers = {
+    wind: svgElement("g", { class: "pos-wind" }),
+    speed: svgElement("g", { class: "pos-speed" }),
+    sails: svgElement("g", { class: "pos-sails" }),
+    apparent: svgElement("g", { class: "pos-apparent" }),
+  };
 
-  boat.append(speed, createHullLayer(), sails);
-  world.append(wind, boat, apparent);
+  boat.append(layers.speed, createHullLayer(), layers.sails);
+  world.append(layers.wind, boat, layers.apparent);
   element.append(title, world);
   host.append(element);
 
@@ -252,8 +286,7 @@ export function createScene(host: HTMLElement): Scene {
 
   return {
     element,
-    world,
-    boat,
+    layers,
     render(state: SimState): void {
       boat.setAttribute("transform", headingTransform(state.motion.heading));
     },
@@ -262,8 +295,13 @@ export function createScene(host: HTMLElement): Scene {
       return { x: point.x, y: point.y };
     },
     pixelsToMeters(pixels: number): Meters {
-      // Uniform scale and no rotation, so `a` is simply pixels per metre.
-      return pixels / screenMatrix().a;
+      // The length of the matrix's x basis vector, not `a` alone. Under a pure
+      // scale they are the same, and `a` reads more simply — but `screenMatrix`
+      // above deliberately folds in any transform on the world group or on an
+      // ancestor, and under a rotation `a` is s·cos θ: 41% high at 45°, and
+      // infinite at 90°. Taking the vector's length is right for any of them.
+      const matrix = screenMatrix();
+      return pixels / Math.hypot(matrix.a, matrix.b);
     },
     destroy(): void {
       observer.disconnect();

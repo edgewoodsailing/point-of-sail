@@ -46,7 +46,10 @@ if (controls !== null) {
   slider.step = "1";
   slider.value = String(Math.round(radiansToDegrees(state.motion.heading)));
   slider.className = "heading-scaffold";
-  slider.ariaLabel = "Heading";
+  // setAttribute, not the `ariaLabel` property: ARIA reflection starts at
+  // Safari 16.4, above the floor vite.config.ts pins (§4.4). Below it the
+  // property is a silent expando and the control has no accessible name.
+  slider.setAttribute("aria-label", "Heading");
 
   slider.addEventListener("input", () => {
     scene.render({

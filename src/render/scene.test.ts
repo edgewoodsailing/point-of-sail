@@ -52,6 +52,20 @@ describe("scene extent (DESIGN.md §4.1)", () => {
       expect(Number.isFinite(extent.halfHeight)).toBe(true);
       expect(extent.halfWidth).toBeGreaterThan(0);
       expect(extent.halfHeight).toBeGreaterThan(0);
+      // Zero is the documented sentinel for "no scale yet", not a scale. Pinned
+      // so that a consumer tempted to divide by this field meets the contract
+      // here rather than an Infinity at runtime.
+      expect(extent.metersPerPixel).toBe(0);
+    }
+  });
+
+  it("reports a positive scale for every surface that has one", () => {
+    for (const [w, h] of [
+      [390, 700],
+      [1600, 900],
+      [1, 1],
+    ] as const) {
+      expect(sceneExtent(w, h).metersPerPixel).toBeGreaterThan(0);
     }
   });
 
