@@ -1,0 +1,58 @@
+/*
+ * Page shell — DESIGN.md §6.2. Two layers:
+ *
+ * 1. Page-level rules (html/body). These belong to whatever page hosts the
+ *    simulator; on this bare page, that's us. If the simulator is ever
+ *    embedded, the host page takes over this job.
+ * 2. Simulator rules, all scoped under the single root class .pos-sim.
+ */
+
+/* ---- 1. Page level ---- */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+
+  /* Kill rubber-banding and pull-to-refresh. (Ignored by iOS Safari < 16;
+     overflow:hidden + touch-action on the surface cover the floor.) */
+  overscroll-behavior: none;
+}
+
+body {
+  /* Dynamic viewport height: tracks iOS Safari's collapsing URL bar, which
+     plain 100vh does not. dvh support begins exactly at the Safari 15.4 floor. */
+  height: 100dvh;
+
+  /* The page itself never scrolls. */
+  overflow: hidden;
+}
+
+/* ---- 2. Simulator, scoped under one root class ---- */
+
+.pos-sim {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: oklch(99% 0.005 240deg);
+}
+
+/*
+ * The drawing surface. touch-action: none means the browser hands us every
+ * pointer event instead of speculatively treating a drag as a scroll or a
+ * zoom — and it removes the double-tap-to-zoom delay as a side effect.
+ * Scoped to the surface, not the page: the control strip (§5) keeps normal
+ * touch handling for its future switches and slider.
+ */
+.pos-sim .surface {
+  flex: 1 1 auto;
+  min-height: 0;
+  touch-action: none;
+  background: oklch(97% 0.01 250deg);
+}
+
+/* Minimal control strip (§5) — empty until the settings bead fills it. */
+.pos-sim .controls {
+  flex: 0 0 auto;
+}
