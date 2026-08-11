@@ -11,6 +11,7 @@
 import type { Kilograms, Meters, MetersPerSecond, Radians, SquareMeters, Vec2 } from "./units.ts";
 import {
   add,
+  degreesToRadians,
   feetToMeters,
   knotsToMetersPerSecond,
   normalizeSigned,
@@ -64,6 +65,17 @@ const JIB_AREA_SQ_FT = triangleAreaFromSides(JIB_LUFF_FT, JIB_LEECH_FT, JIB_FOOT
 
 /** The classic displacement-hull coefficient in `v_hull = 1.34·√LWL_ft` knots. */
 const HULL_SPEED_COEFFICIENT = 1.34;
+
+// --- Boom swing limit (DESIGN.md §5) ---------------------------------------
+//
+// Eased far enough, the boom fetches up on the shrouds and stops: a fact about
+// the rig, not a gameplay choice, which is why it lives in this file. Contact
+// is taken as dead abeam, which is the *upper* bound — chainplates land a
+// little aft of the mast, so a measured angle would come in under 90°, never
+// over. Refine the figure if anyone measures it; nothing downstream assumes
+// the limit is exactly a right angle.
+
+const SWING_LIMIT_DEG = 90;
 
 // --- Longitudinal stations, feet aft of the bow ----------------------------
 //
@@ -171,6 +183,38 @@ export const STATIONS: {
 };
 
 // --- Rig geometry ----------------------------------------------------------
+
+/**
+ * How far a sail can be eased before it fetches up on the shrouds: the widest
+ * legal trim, to either side.
+ *
+ * The same limit serves both sails. The jib fouls the leeward shroud at a
+ * broadly similar ease, and one symmetric limit keeps the set of legal trims
+ * closed under the §3.4 mirror swing — the mirror of a legal trim is legal, so
+ * the swing-back animation never has to reason about clamping. Split this into
+ * per-sail constants only if a measured difference ever demands it.
+ *
+ * It is also what keeps the two clew grab points apart (§5): the clews' arcs
+ * do cross, but not until the main is eased to ~129°. Raising this constant
+ * past that would let the two touch discs coincide, which is why `boat.test.ts`
+ * pins the crossing against it.
+ */
+export const SWING_LIMIT: Radians = degreesToRadians(SWING_LIMIT_DEG);
+
+/**
+ * The nearest legal trim to the angle asked for: normalised into (−π, π], then
+ * held inside ±{@link SWING_LIMIT}.
+ *
+ * Every site that sets a sail angle goes through here — pointer drags, the
+ * backing hold (§3.4 puts the sail on the wrong side of the *wind*, never past
+ * the shrouds), the swing-back mirror target, and the randomised opening trim.
+ * Normalising first means a caller can hand over a raw accumulated drag angle
+ * and still get a legal trim on the side it was heading for, rather than one
+ * clamped by whichever multiple of a turn it had wound up.
+ */
+export function clampTrim(angle: Radians): Radians {
+  return Math.min(SWING_LIMIT, Math.max(-SWING_LIMIT, normalizeSigned(angle)));
+}
 
 /**
  * The boat-frame bearing of a sail's chord, running tack → clew.
