@@ -887,31 +887,33 @@ the student the answer; the traffic light lets them find it.
 ## 8. Build order
 
 Each phase leaves something demonstrable, which is what makes this bead-able.
+Each is an epic in the tracker; its children are branch-sized.
 
-1. **Static scene** — SVG hull, mast, boom, jib, perimeter wind arrow, drawn
-   from a hardcoded state object. No physics, no interaction.
-2. **Direct manipulation** — rotate hull, rotate wind, trim both sails. Shapes
-   follow state. Touch arbitration and multi-touch. Still no forces.
-3. **Force model** — apparent wind, foil curves, hull resistance, integration,
-   speed arrow. Calibration table from [§3.6](#36-calibration-targets) as unit
-   tests. This is the phase where the simulator becomes true.
-4. **Feedback** — trim-quality color, luff fraction, flutter animation, ghost
-   boat, speed-arrow color.
-5. **Backing** — held sails, reversed force, sailing astern, release animation.
-6. **Main-only rig** — `jibSet` through model, render, and input; the upwind
-   bonus; main-only calibration targets.
-7. **Polish and ship** — wind speed control, toggles, URL parameters, touch
-   tuning on real hardware, colorblind check, embed.
+| Epic | Phase | What it delivers |
+| --- | --- | --- |
+| `pos-t9w` | **Foundations** | Vite/TypeScript/Vitest toolchain, the bare full-viewport page shell ([§6.2](#62-a-bare-page-owning-the-whole-viewport)), and the geometry/unit conventions ([§2](#2-state)) |
+| `pos-qmk` | **The drawing** | SVG hull, mast, sails, perimeter wind ring, speed arrow, OKLCH palette — all from a state object. No physics, no interaction |
+| `pos-bwd` | **Direct manipulation** | Clew grabs, hull rotation, wind ring, wind speed. Multi-touch throughout. Still no forces |
+| `pos-fo1` | **Force model** | Apparent wind, foil curves, hull resistance, integration, and the calibration table ([§3.6](#36-calibration-targets)) locked in as tests. Where the simulator becomes true |
+| `pos-dmg` | **Feedback** | Trim-quality color, flutter animation, ghost boat, speed-arrow color |
+| `pos-bql` | **Backing** | Held sails, reversed drive, sailing astern, swing-back |
+| `pos-bh6` | **Main-only rig** | `jibSet` through model, render, and input; the upwind bonus; main-only calibration |
+| `pos-740` | **Ship it** | Opening state, URL serialization, control strip, hardware tuning, deployment |
 
-Phases 1–2 are pure UI and phase 3 is pure model, so they're independent and
-could be built in either order — or in parallel.
+Foundations wasn't in the first draft of this list — it's the thing the list
+assumed. It's the only true bottleneck: everything funnels through it, and after
+it the graph opens up.
 
-Phase 6 is placed late because it's cheap once the model is calibrated, but it
+**The drawing and the force model are independent.** One is pure UI, the other
+pure model with no DOM, and neither imports the other. They can be built in
+either order or in parallel, and they only meet at Feedback.
+
+Main-only is placed late because it's cheap once the model is calibrated, but it
 delivers the configuration Level 1 actually uses. If the class needs something
-before the full sloop is polished, phases 1–4 plus 6 are a complete and honest
-Level 1 tool on their own — one sail, correct trim feedback, correct speeds —
-and phase 5 adds the mooring-departure lesson. That's a defensible early
-release.
+before the full sloop is polished, Foundations through Feedback plus Main-only
+is a complete and honest Level 1 tool on its own — one sail, correct trim
+feedback, correct speeds — and Backing adds the mooring-departure lesson. That's
+a defensible early release.
 
 ---
 
