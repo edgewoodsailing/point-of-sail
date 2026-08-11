@@ -473,14 +473,8 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Main** — the boom drawn as a straight line from mast to clew (the chord),
   with the sail bulging leeward of it as a Bézier arc.
 - **Jib** — no boom, so just a curve from its tack to the clew. Absent entirely
-  when `jibSet` is false; the forestay stays, so the boat still reads as a sloop
-  with its jib struck rather than as a different boat.
-- **Forestay** — mast to the **stemhead**, which is the bow. Note that this is
-  *not* the jib's tack, and conflating the two is an easy mistake that draws a
-  stay stopping half a foot short of the stem. `J` = 6.5 ft measures the tack,
-  which rides about a foot up a stay that rakes aft as it climbs; the stay
-  itself lands within an inch of the tip. The half-foot offset is a fact about
-  tack height, not about where the wire goes.
+  when `jibSet` is false.
+- **Standing rigging** — **not drawn.** See below.
 - **Wind arrow** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)).
 - **Speed arrow** — off the bow, or off the stern when speed is negative. Length
   grows with speed; colored per [§4.3](#43-the-speed-arrow).
@@ -492,6 +486,39 @@ portion — amplitude scaling with how deeply it's luffing, and the fluttering
 region extending aft as the collapse spreads. A sail that is *just* starting to
 break shows a small ripple at the luff only, which is exactly what a student
 should learn to spot.
+
+#### Why no standing rigging
+
+An earlier version of this section drew the headstay, on the argument that it
+kept the boat reading as a sloop with its jib struck rather than as a different
+boat. That argument doesn't survive contact with the drawing.
+
+The boat has **six stays**, and drawing exactly one of them misrepresents the
+rig. Worse, it asks the viewer to care about a stay's *horizontal span*, which
+is not a thing anyone thinks about while sailing — this is a roughly deck-level
+drawing, at least for the parts that don't move, and a stay is very nearly
+vertical. The headstay in particular then lands on a genuinely confusing
+detail: it meets the deck at the stemhead, an inch from the tip of the bow,
+while `J` measures to the jib's *tack*, which rides about a foot up a stay that
+rakes aft as it climbs and so sits half a foot abaft the stem. Drawing to the
+tack leaves a gap that looks like a bug; drawing to the stem invites "why is
+that one line here and not the others?"
+
+So the stays come out, and the sloop-reads-as-a-sloop worry goes with them: a
+hull with a mast well forward and a boom is not going to be mistaken for
+anything else.
+
+If they come back it should be as **deck attachment points for all six** — dots,
+not spans, which is what a deck-level drawing can honestly show. The *lowers*
+are the ones that would earn their place, because they are what the boom fetches
+up on and therefore what sets `SWING_LIMIT` ([§5](#5-direct-manipulation));
+showing where they land would make the boom's travel limit visible rather than
+merely enforced. That's a real design question and it deserves its own decision
+rather than being smuggled in as a line on a hull.
+
+The tack/stemhead distinction still matters to the *model* even with nothing
+drawn, because the jib's clew swings about the tack. It lives in
+`model/boat.ts` as `STATIONS.jibTack`, named so nothing conflates the two again.
 
 #### The coordinate story
 
@@ -830,7 +857,7 @@ src/
     svg.ts            namespace-correct element factory, attribute formatting
     scene.ts          SVG root, viewBox, responsive layout, screen↔world
     scene.css         ink and line weights (§4.4, §4.5)
-    hull.ts           hull outline, mast, forestay
+    hull.ts           hull outline and mast
     sail.ts           Bézier camber + luff flutter
     wind.ts           perimeter arrow, apparent-wind overlay
     speed.ts

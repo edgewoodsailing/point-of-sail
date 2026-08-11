@@ -15,9 +15,7 @@ if (surface === null) {
 
 /**
  * A plausible situation to draw, standing in until the bounded randomiser of
- * §2.1 lands. Main-only, because that is the default rig (§3.7) — which makes
- * this the case the forestay requirement is about: no jib, and the boat must
- * still read as a sloop.
+ * §2.1 lands. Main-only, because that is the default rig (§3.7).
  *
  * The heading is deliberately not zero, so the very first paint proves the
  * rotation is applied rather than passing by accident on an identity transform.

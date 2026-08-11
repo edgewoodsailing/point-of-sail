@@ -35,9 +35,7 @@
    * exact, but it starts at Safari 16, above the §4.4 floor.
    */
   --pos-rule-hull: clamp(1.4px, 0.4vmin, 4px);
-  --pos-rule-rig: clamp(1px, 0.26vmin, 2.6px);
   --pos-ink: oklch(38% 0.03 250deg);
-  --pos-rig-ink: oklch(55% 0.02 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
 }
 
@@ -51,12 +49,6 @@
   stroke: var(--pos-ink);
   stroke-width: var(--pos-rule-hull);
   stroke-linejoin: round;
-}
-
-.pos-sim .pos-forestay {
-  stroke: var(--pos-rig-ink);
-  stroke-width: var(--pos-rule-rig);
-  stroke-linecap: round;
 }
 
 .pos-sim .pos-mast {

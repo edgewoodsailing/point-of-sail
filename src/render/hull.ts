@@ -1,6 +1,6 @@
 /**
- * The hull outline, the mast and the forestay — the part of the drawing that
- * never changes shape (DESIGN.md §4.1).
+ * The hull outline and the mast — the part of the drawing that never changes
+ * shape (DESIGN.md §4.1).
  *
  * Everything here is in **boat-frame metres**: the same `Vec2` axes the model
  * uses, with the origin at the mast. `render/scene.ts` explains why the drawing
@@ -205,12 +205,15 @@ export function outlineRadius(outline: HullOutline = HULL_OUTLINE): Meters {
 // --- The drawn layer --------------------------------------------------------
 
 /**
- * The hull, the mast and the forestay, as one static group.
+ * The hull and the mast, as one static group. It has no update function
+ * because nothing about it moves — the heading rotation lives on the parent.
  *
- * It has no update function, and that is the "forestay stays visible when the
- * jib is struck" requirement (§4.1) expressed structurally: there is no
- * conditional here for anyone to later get wrong. The boat reads as a sloop
- * with its jib down because the forestay is simply always drawn.
+ * **No standing rigging is drawn** (§4.1). The boat has six stays, and drawing
+ * only the headstay both misrepresents the rig and asks the viewer to care
+ * about a horizontal span that nobody thinks about while sailing — this is a
+ * roughly deck-level drawing, and a stay is very nearly vertical. If the stays
+ * come back it should be as deck attachment points for all six, which is a
+ * decision of its own.
  */
 export function createHullLayer(): SVGGElement {
   const group = svgElement("g", { class: "pos-hull" });
@@ -219,19 +222,6 @@ export function createHullLayer(): SVGGElement {
     svgElement("path", {
       class: "pos-hull-outline",
       d: hullPathData(),
-      "vector-effect": "non-scaling-stroke",
-    }),
-    // To the stem, not to STATIONS.jibTack. The stay lands on the stemhead
-    // fitting, an inch or so from the tip of the bow; what sits half a foot
-    // abaft the stem is the jib's *tack*, which rides about a foot up the stay
-    // — and the stay rakes aft as it climbs. Drawing to the tack leaves a gap
-    // at the bow that reads as a mistake, because it is one.
-    svgElement("line", {
-      class: "pos-forestay",
-      x1: STATIONS.mast.x,
-      y1: STATIONS.mast.y,
-      x2: STATIONS.bow.x,
-      y2: STATIONS.bow.y,
       "vector-effect": "non-scaling-stroke",
     }),
     svgElement("circle", {
