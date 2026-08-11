@@ -504,15 +504,32 @@ discovering after the fact that our amber is washed out.
 
 Sail color carries meaning, and roughly 8% of boys have some red-green
 deficiency, so the ramp was designed and then checked under simulation rather
-than assumed. Five stops from worst to best:
+than assumed. Five anchor stops from worst to best:
 
-| Quality | OKLCH | sRGB |
+| Quality | OKLCH | sRGB (reference only) |
 | --- | --- | --- |
-| 0.00 | `oklch(0.52 0.20 25)` | `#c21725` |
-| 0.25 | `oklch(0.62 0.16 50)` | `#cf630d` |
-| 0.50 | `oklch(0.72 0.13 95)` | `#bea333` |
-| 0.75 | `oklch(0.81 0.13 155)` | `#75da9c` |
-| 1.00 | `oklch(0.88 0.14 170)` | `#64f5c9` |
+| 0.00 | `oklch(52% 0.19 30deg)` | `#be2517` |
+| 0.25 | `oklch(62% 0.16 52deg)` | `#ce6400` |
+| 0.50 | `oklch(72% 0.13 75deg)` | `#d49838` |
+| 0.75 | `oklch(80% 0.14 110deg)` | `#c3c54f` |
+| 1.00 | `oklch(86% 0.16 145deg)` | `#89ec8d` |
+
+These are anchors, not the palette. Quality is continuous, so the runtime
+interpolates between them **in OKLCH** — which is the point of authoring there.
+Interpolating the same endpoints through sRGB would put a muddy desaturated
+sag in the middle of the ramp, exactly where "getting warmer" needs to read
+clearly. The palette module clamps chroma to gamut on the way out.
+
+The sRGB column is documentation for this file only; the code emits OKLCH.
+
+**On matching the rest of the site:** these hues happen to land on the same
+anchors the registrar app's palette uses (red 30, amber 75, green 145), which
+came out of testing rather than out of deference — the earlier candidate ended
+on a mint green at hue 170, and swapping it for a conventional green at 145
+*improved* the ramp, spacing the perceptual steps more evenly. So it's a free
+alignment, not a constraint. The simulator is a drawing of a boat, not a page of
+the site, and it should look like whatever serves the drawing. Where the two
+diverge, the drawing wins.
 
 **This ramp does not survive on lightness, and the first attempt that tried to
 failed.** An earlier version held a monotonically rising OKLCH `L` from red to
@@ -558,9 +575,10 @@ anyway, so this costs nothing as long as it's a rule from day one. The palette
 module exposes computed colors only as CSS custom properties, which makes the
 rule structural rather than something to remember.
 
-Support floor is Safari 15.4 / Chrome 111 / Firefox 113, ~93–95% globally.
-Worth confirming the ESS iPads aren't on something ancient; if they are, the
-palette module can emit sRGB hex fallbacks from the same source values.
+Support floor is Safari 15.4 / Chrome 111 / Firefox 113, ~93–95% globally. The
+registrar app already ships OKLCH-only in production — its stylelint config bans
+hex and `rgb()`/`hsl()` outright — so that floor is one the school has already
+accepted in practice, and we can inherit the decision rather than relitigate it.
 
 ### 4.5 Rendering constraints
 
@@ -697,12 +715,42 @@ makes the calibration phase a matter of turning knobs rather than hunting
 constants, and — since a fudge factor in a named tuning file is visibly a fudge
 factor — keeps us honest about which numbers are physics and which are taste.
 
-TypeScript + Vite, building to static files for embedding in the ESS site.
-**[Q4]** Embedding: an `<iframe>` is the safe answer for a WordPress-style host
-(no CSS collisions, no script conflicts) but needs a fixed aspect ratio. Do you
-know what the ESS site runs on?
+TypeScript + Vite, building to static files.
 
-### 6.1 URL parameters as the configuration surface
+### 6.1 Deployment: iframe, into two different hosts
+
+The ESS site is mid-migration — Drupal 6 today, being replaced incrementally by
+the Swift 6 / Hummingbird 2 `registrar` app at
+`/Volumes/Campfire/Sites/registrar`. The simulator has to work in both, possibly
+for years, which makes the decision easy: **embed as an `<iframe>`.**
+
+An iframe is the only embedding that is genuinely identical across a Drupal 6
+theme and a Plot/HTMX page. It also isolates the simulator from a global
+`styles.css` it has no reason to inherit — and given the page is a boat rather
+than a document, not inheriting site styling is a feature. The cost is
+committing to an aspect ratio, which a fixed-frame drawing was always going to
+do anyway.
+
+For the Hummingbird side, the app already serves static assets:
+
+```swift
+router.add(middleware: FileMiddleware(getStaticFilesPath(), urlBasePath: "/registrar"))
+```
+
+so the Vite build drops into `Sources/registrar/Static/public/point-of-sail/`
+and is served at `/registrar/point-of-sail/` with no routing work at all. Drupal
+6 embeds the same URL. One deployed copy, two hosts, no divergence.
+
+This composes with the URL parameters below: a lesson page embeds
+`<iframe src="/registrar/point-of-sail/?jib=off">` and gets the Level 1 boat
+without the simulator knowing anything about lessons.
+
+Building inside the registrar repo as a second npm-driven artifact is the
+alternative, and it's worth revisiting once this lands, but keeping it a
+standalone repo means the sim can ship on its own schedule while the Drupal
+migration proceeds on its own.
+
+### 6.2 URL parameters as the configuration surface
 
 The objectives forbid persistence — reload resets everything — which creates a
 problem the jib toggle exposes. If an instructor sets up a main-only boat for a
@@ -799,13 +847,9 @@ release.
 
 ## 9. Open questions
 
-- **[Q4]** [§6](#6-architecture) — What does the ESS site run on, and is an
-  iframe embed acceptable?
-- **[Q5]** [§4.4](#44-color) — Optimal-end hue: 170 (mint, best CVD separation)
-  or ~155 (more convincingly "green")? I lean 155–160.
 - **[Q6]** [§2.1](#21-initial-state-a-random-solvable-problem) — Add a `?seed=`
   URL parameter so an instructor can put a room on the same problem?
-  ([§6.1](#61-url-parameters-as-the-configuration-surface) argues yes, near-free)
+  ([§6.2](#62-url-parameters-as-the-configuration-surface) argues yes, near-free)
 - **[Q7]** [§3.7](#37-sailing-under-main-alone) — Reverse the "no slot effect"
   decision far enough to add a single upwind lift bonus when the jib is set,
   so that main-only points worse? Without it the simulator tells Level 1
@@ -824,6 +868,12 @@ release.
 - Sails are grabbed by their clews, which are ~40% of LOA apart — no
   arbitration needed
 - All fudge factors collected in `tuning.ts`
+- Deployed as static files embedded via `<iframe>`, served by the registrar
+  app's existing `FileMiddleware` at `/registrar/point-of-sail/`, embedded
+  identically from Drupal 6 and from Plot/HTMX pages
+- Trim ramp ends on a conventional green (hue 145); it need not match the rest
+  of the site, and where the drawing and the site's look diverge, the drawing
+  wins
 - Colors authored in OKLCH, applied via CSS only, never as SVG presentation
   attributes
 - Opening state is randomized and mistrimmed, within bounds
