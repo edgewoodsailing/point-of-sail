@@ -24,6 +24,7 @@ import {
   radiansToDegrees,
   rotateVector,
   scale,
+  smoothstep,
   squareFeetToSquareMeters,
   subtract,
   TAU,
@@ -291,5 +292,40 @@ describe("conversions", () => {
     expect(metersToFeet(feetToMeters(19.5))).toBeCloseTo(19.5, PRECISION);
     expect(poundsToKilograms(1325)).toBeCloseTo(601.0, 1);
     expect(squareFeetToSquareMeters(118.6)).toBeCloseTo(11.02, 2);
+  });
+});
+
+describe("smoothstep", () => {
+  it("clamps outside [0, 1]", () => {
+    for (const t of [-100, -1, -1e-9, 0]) expect(smoothstep(t)).toBe(0);
+    for (const t of [1, 1 + 1e-9, 2, 100]) expect(smoothstep(t)).toBe(1);
+  });
+
+  it("is the Hermite curve in between, symmetric about the midpoint", () => {
+    expect(smoothstep(0.5)).toBeCloseTo(0.5, PRECISION);
+    for (const t of [0.1, 0.25, 0.4]) {
+      expect(smoothstep(t)).toBeCloseTo(t * t * (3 - 2 * t), PRECISION);
+      expect(smoothstep(1 - t)).toBeCloseTo(1 - smoothstep(t), PRECISION);
+    }
+  });
+
+  /**
+   * The property it is chosen for: zero slope at both ends, so a curve blended
+   * with it meets whatever it joins without a kink. A linear ramp would pass
+   * every other test here and fail this one.
+   */
+  it("arrives at both ends with zero slope", () => {
+    const h = 1e-6;
+    expect((smoothstep(h) - smoothstep(0)) / h).toBeCloseTo(0, 5);
+    expect((smoothstep(1) - smoothstep(1 - h)) / h).toBeCloseTo(0, 5);
+  });
+
+  it("rises monotonically", () => {
+    let previous = -1;
+    for (let t = -0.2; t <= 1.2; t += 0.001) {
+      const current = smoothstep(t);
+      expect(current).toBeGreaterThanOrEqual(previous);
+      previous = current;
+    }
   });
 });

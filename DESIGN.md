@@ -252,19 +252,33 @@ heel), with induced drag already accounted for in `Cd`.
 Luffing is a *separate concept from trim quality* and must not be conflated with
 it (see [§4.2](#42-the-traffic-light)).
 
-A cambered sail needs some positive incidence to hold its shape. As α drops, the
+A cambered sail needs some incidence to hold its shape. As α approaches zero the
 luff breaks first and the collapse propagates aft:
 
 ```text
-α ≥ α_full  (≈ +2°)   → sail fully drawing, no flutter
-α_luff < α < α_full   → partial luff, breaking from the luff aft
-α ≤ α_luff  (≈ −5°)   → fully luffing, no drive
+|α| ≥ α_full  (≈ 7°)    → sail fully drawing, no flutter
+α_luff < |α| < α_full   → partial luff, breaking from the luff aft
+|α| ≤ α_luff  (≈ 2°)    → fully luffing, no drive
 ```
+
+**The thresholds are magnitudes, not signed angles**, because
+[§3.2](#32-sail-forces)'s `Cl` is odd in α: the sign of α says which *face* the
+flow strikes, not whether the trim is any good. A well-trimmed sail sits at
+α ≈ +15° on starboard tack and α ≈ −15° on port. Signed thresholds would luff
+the whole port tack exactly where starboard draws, and would take the force off
+a backed sail — which is large *negative* α and must draw fully in reverse, or
+[§3.4](#34-backing-a-sail)'s mooring departure stops working.
+
+What folding about zero gives up is camber asymmetry: a real cambered sail keeps
+drawing a little past nominal zero incidence, on one side only. Representing that
+honestly needs memory of which side the camber has popped to, which the model
+does not carry and should not grow.
 
 We compute a **luff fraction** ∈ [0,1] — how much of the sail, measured from
 the luff aft, has collapsed. That single number drives both the flutter
 animation and the force reduction, so what the student sees and what the boat
-does can never disagree.
+does can never disagree. It scales the whole force, lift and drag alike: the
+collapsed portion is simply not working.
 
 ### 3.4 Backing a sail
 

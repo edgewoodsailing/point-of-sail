@@ -61,3 +61,37 @@ export const FOIL: {
    */
   stallBlendWidth: degreesToRadians(10),
 };
+
+/**
+ * Luffing (§3.3). How much incidence a sail needs before it stops shaking and
+ * starts pulling.
+ *
+ * **Both are magnitudes of the angle of attack, not signed thresholds.** §3.3
+ * originally quoted them signed — drawing above +2°, luffing below −5° — which
+ * reads naturally until you notice that `foil.ts` is deliberately odd in α: a
+ * well-trimmed sail sits at α ≈ +15° on starboard tack and α ≈ −15° on port,
+ * because the sign says which *face* the flow strikes, not whether the trim is
+ * any good. Taken signed, the whole port tack would luff, and a backed sail
+ * (large negative α) would carry no force at all — which would break the
+ * mooring departure §3.4 is built around. Folded about zero the rule mirrors
+ * correctly across tacks and a backed sail draws fully, in reverse.
+ *
+ * What the fold gives up is camber asymmetry — a real cambered sail keeps
+ * drawing a little past nominal zero incidence, on one side only. Representing
+ * that honestly needs memory of which side the camber has popped to, which this
+ * model does not carry.
+ */
+export const LUFF: {
+  readonly collapsedBelow: Radians;
+  readonly drawingAbove: Radians;
+} = {
+  /** At or below this `|α|` the sail is wholly collapsed and carries nothing. */
+  collapsedBelow: degreesToRadians(2),
+
+  /**
+   * At or above this `|α|` the sail is wholly full. The 5° between the two is
+   * the transition width — how gradually the collapse propagates aft — and is
+   * the knob to move if the shake looks too abrupt or too mushy.
+   */
+  drawingAbove: degreesToRadians(7),
+};
