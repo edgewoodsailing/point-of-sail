@@ -8,3 +8,5 @@
 # Node / Vite (added by pos-t9w.1)
 node_modules/
 dist/
+.beads/interactions.jsonl
+.beads/issues.jsonl
