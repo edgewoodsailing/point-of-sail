@@ -1,0 +1,69 @@
+# Publishes a preview of `main` to GitHub Pages, so instructors can try the
+# simulator and give feedback during development (pos-770).
+#
+# This is NOT the production deploy. DESIGN.md §6.1 puts the build output into
+# the registrar app and says nothing else serves it; that remains the plan of
+# record, and pos-740.5 owns it. This workflow is a development-time preview and
+# should be retired when the registrar deploy lands.
+#
+# Why `build:pages` rather than `build`: a project site is served from
+# https://<org>.github.io/point-of-sail/, so the assets need that prefix. The
+# base is passed on Vite's command line rather than set in `vite.config.ts`,
+# whose comment reserves the base-vs-route decision for pos-740.5 — the registrar
+# needs a *different* base again, and hard-coding either one there would settle a
+# question this preview has no business settling.
+
+name: Pages preview
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never publish two builds at once, but let a queued one finish rather than
+# cancelling it: a cancelled deploy would leave the last push unpublished, and
+# the whole point is that what instructors see matches `main`.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The same gates the project runs locally. A preview that quietly serves
+      # a broken build is worse than one that fails loudly: the audience is
+      # instructors giving feedback on the simulator, and they cannot tell a
+      # modelling bug from a bad deploy.
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:pages
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
