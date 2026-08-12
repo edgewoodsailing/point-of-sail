@@ -13,7 +13,7 @@ import {
   radiansToDegrees,
 } from "./model/units.ts";
 import { apparentWind, trueWindAngle } from "./model/wind.ts";
-import { createSailLayer, rigShapes } from "./render/sail.ts";
+import { createSailLayer, rigDrawing } from "./render/sail.ts";
 import { createScene } from "./render/scene.ts";
 import { createSpeedLayer } from "./render/speed.ts";
 import { createWindLayer } from "./render/wind.ts";
@@ -86,7 +86,8 @@ draw(state);
 // Sliders for the wind, the boat's motion and both trims, plus a jib switch, so
 // the things this drawing has to get right can be swept by hand: that rotating
 // the heading rotates the drawing, that each sail bulges to leeward at every
-// trim, that the camber goes flat as a sail luffs, and that a struck jib is
+// trim, that the camber goes flat as a sail luffs, that a sail goes green at
+// its best trim and red either side of it (§4.2), and that a struck jib is
 // absent entirely.
 //
 // DELETE ALL OF THIS when pos-bwd.1 lands dragging the hull and the clews; the
@@ -324,6 +325,8 @@ interface SailReport {
   luffFraction: number;
   camber: Meters;
   driving: Newtons;
+  /** §4.2's traffic light as the number behind it: 1 is green, 0 is red. */
+  quality: number;
 }
 
 const pos = {
@@ -366,28 +369,32 @@ const pos = {
     return { speed: metersPerSecondToKnots(wind.speed), angle: radiansToDegrees(wind.angle) };
   },
 
-  /** The drawn geometry: chord endpoints and signed camber, in boat-frame metres. */
-  shapes: () => rigShapes(state),
+  /**
+   * What the drawing is made of: each sail's chord endpoints and signed camber
+   * in boat-frame metres, and the §4.2 trim quality it is painted with.
+   */
+  drawing: () => rigDrawing(state),
 
   /** Everything at once, in the units a sailor would quote. */
   report: (): Record<string, unknown> => {
     const wind = apparentWind(state.wind, state.motion);
-    const shapes = rigShapes(state);
+    const drawing = rigDrawing(state);
     const forces = rigForce(state.trim, wind);
 
     const sail = (
       angle: Radians,
-      shape: { depth: Meters } | null,
+      drawn: { shape: { depth: Meters }; quality: number } | null,
       force: { angleOfAttack: Radians; luffFraction: number; driving: Newtons } | null,
     ): SailReport | null =>
-      shape === null || force === null
+      drawn === null || force === null
         ? null
         : {
             trim: Number(radiansToDegrees(angle).toFixed(1)),
             angleOfAttack: Number(radiansToDegrees(force.angleOfAttack).toFixed(1)),
             luffFraction: Number(force.luffFraction.toFixed(3)),
-            camber: Number(shape.depth.toFixed(3)),
+            camber: Number(drawn.shape.depth.toFixed(3)),
             driving: Number(force.driving.toFixed(1)),
+            quality: Number(drawn.quality.toFixed(3)),
           };
 
     return {
@@ -398,8 +405,8 @@ const pos = {
       trueWindAngle: Number(radiansToDegrees(trueWindAngle(state.wind, state.motion)).toFixed(1)),
       apparentWindAngle: Number(radiansToDegrees(wind.angle).toFixed(1)),
       apparentKt: Number(metersPerSecondToKnots(wind.speed).toFixed(2)),
-      main: sail(state.trim.mainAngle, shapes.main, forces.main),
-      jib: sail(state.trim.jibAngle, shapes.jib, forces.jib),
+      main: sail(state.trim.mainAngle, drawing.main, forces.main),
+      jib: sail(state.trim.jibAngle, drawing.jib, forces.jib),
     };
   },
 };

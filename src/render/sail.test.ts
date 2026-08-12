@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, STATIONS, SWING_LIMIT, jibClewPosition, mainClewPosition } from "../model/boat.ts";
 import { foilCoefficients } from "../model/foil.ts";
-import { angleOfAttack, dynamicPressure, luffFraction, sailForce } from "../model/sail.ts";
+import {
+  angleOfAttack,
+  dynamicPressure,
+  luffFraction,
+  optimalTrim,
+  sailForce,
+} from "../model/sail.ts";
 import type { SimState } from "../model/simulation.ts";
 import { FOIL, LUFF } from "../model/tuning.ts";
 import type { Radians, Vec2 } from "../model/units.ts";
@@ -17,7 +23,9 @@ import {
   unitVector,
 } from "../model/units.ts";
 import type { ApparentWind } from "../model/wind.ts";
+import { apparentWind, trueWindAngle } from "../model/wind.ts";
 import { cubicPoint } from "./hull.ts";
+import { trimQualityColor, trimQualityStop } from "./palette.ts";
 import {
   SAIL_SAMPLES,
   camberDepth,
@@ -26,11 +34,12 @@ import {
   jibShape,
   mainShape,
   pressureFactor,
-  rigShapes,
+  rigDrawing,
   sailBezier,
   sailPathData,
   sailPoint,
   sailPoints,
+  trimQuality,
   type SailShape,
 } from "./sail.ts";
 import { SCENE } from "./scene.ts";
@@ -480,6 +489,198 @@ describe("sail path data", () => {
   });
 });
 
+// --- The traffic light ------------------------------------------------------
+
+/**
+ * §4.2's three acceptance criteria, asserted where they are actually made: the
+ * ratio, not the DOM. The layer's job is one `setSailInk` call per sail, which
+ * the node environment cannot exercise; what can go wrong here is the number.
+ *
+ * Where a criterion is about *colour* — "goes green", "goes red" — the check
+ * runs the number through `palette.trimQualityColor` and compares against the
+ * ramp's own end stops, so it fails if either the ratio or the fold onto the
+ * ramp stops landing on them. `palette.test.ts` owns everything about the ramp
+ * in between.
+ */
+describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
+  /** The ramp's end stops, asked of the palette rather than written out here. */
+  const GREEN = trimQualityColor(1);
+  const RED = trimQualityColor(0);
+
+  /** Close hauled to a dead run, on both tacks. */
+  const POINTS_OF_SAIL = [30, 45, 60, 90, 120, 150, 180];
+
+  const bothSails = [MAIN, JIB];
+
+  /** Trims reading at or above `level`, as a share of the legal ±90° range. */
+  function bandWidth(apparent: ApparentWind, level: number): number {
+    const step = 0.25;
+    let inside = 0;
+    let total = 0;
+    for (let d = -90; d <= 90; d += step) {
+      total += 1;
+      if (trimQuality(MAIN, deg(d), apparent) >= level) inside += 1;
+    }
+    return inside / total;
+  }
+
+  it("goes green at the optimal trim on every point of sail, on either tack", () => {
+    for (const awa of [...POINTS_OF_SAIL, ...POINTS_OF_SAIL.map((a) => -a)]) {
+      const apparent = wind(10, awa);
+      for (const sail of bothSails) {
+        const best = optimalTrim(sail, apparent);
+        expect(trimQuality(sail, best.angle, apparent)).toBeCloseTo(1, 12);
+        expect(trimQualityColor(trimQuality(sail, best.angle, apparent))).toBe(GREEN);
+      }
+    }
+  });
+
+  it("goes red overtrimmed, with the cloth dead still", () => {
+    // Sheeted in hard: the flow stays attached to the cloth — nothing is
+    // luffing — and the drive collapses anyway. This is the case §4.2 exists
+    // for: without it an overtrimmed sail would look identical to a good one.
+    //
+    // "Red" is asked of the ramp's hue rather than of the exact end stop,
+    // because a couple of these land a thousandth above zero rather than on it.
+    // §4.4's stops run 30° → 52° → … → 145°, so a hue below 35° is the bottom
+    // twentieth of the ramp: red, by the ramp's own reckoning.
+    for (const [awa, trim] of [
+      [30, 20],
+      [45, 20],
+      [60, 10],
+      [90, 0],
+      [150, 0],
+    ] as const) {
+      const apparent = wind(10, awa);
+      expect(trimQuality(MAIN, deg(trim), apparent)).toBeLessThan(0.05);
+      expect(trimQualityStop(trimQuality(MAIN, deg(trim), apparent)).hue).toBeLessThan(35);
+      expect(luffFraction(angleOfAttack(deg(trim), apparent))).toBe(0);
+    }
+
+    // Dead downwind is the one exception, and the model is right to insist on
+    // it: a boom hauled flat amidships on a run is edge-on to the wind at its
+    // *leech* (α = 180°), and a real one slats. Red, and honestly luffing —
+    // which is a statement about that trim, not about overtrimming.
+    const run = wind(10, 180);
+    expect(trimQualityStop(trimQuality(MAIN, 0, run)).hue).toBeLessThan(35);
+    expect(luffFraction(angleOfAttack(0, run))).toBe(1);
+  });
+
+  it("goes red undertrimmed too, and that one *is* fluttering", () => {
+    // The other direction, and the pair is what keeps the two failure modes
+    // distinguishable: both red, one shaking (§4.2).
+    for (const awa of [30, 45, 60, 90]) {
+      const apparent = wind(10, awa);
+      const eased = deg(-awa); // α = 0 exactly: the sail lies along the flow.
+      expect(trimQualityColor(trimQuality(MAIN, eased, apparent))).toBe(RED);
+      expect(luffFraction(angleOfAttack(eased, apparent))).toBe(1);
+    }
+  });
+
+  it("falls off far more sharply close hauled than on a run", () => {
+    // The claim §4.2 makes about *shape*, measured rather than asserted. In
+    // 10 kt of apparent wind the trims reading 0.8 or better span 6.2% of the
+    // legal range close hauled against 30.0% dead downwind, and the trims
+    // reading 0.5 or better 11.5% against 50.8% — a bit under five times
+    // wider, at both levels, from nothing but the driving-force ratio.
+    for (const level of [0.8, 0.5]) {
+      const closeHauled = bandWidth(wind(10, 30), level);
+      const run = bandWidth(wind(10, 180), level);
+      expect(run).toBeGreaterThan(4 * closeHauled);
+    }
+
+    // And it widens steadily in between rather than jumping at one angle.
+    // Stated over the angles where the optimum is a real peak: from about
+    // AWA 100° the best trim is pinned to the swing limit — the sail wants to
+    // be eased further than the shrouds allow — so the band there is a slice
+    // off the side of a peak that has left the range, and it narrows again.
+    let previous = 0;
+    for (const awa of [30, 45, 60, 90]) {
+      const width = bandWidth(wind(10, awa), 0.8);
+      expect(width).toBeGreaterThan(previous);
+      previous = width;
+    }
+    expect(bandWidth(wind(10, 180), 0.8)).toBeGreaterThan(previous);
+  });
+
+  it("says the same thing at every wind speed", () => {
+    // The ratio divides out dynamic pressure, and `MINIMUM_USEFUL_DRIVE` is a
+    // coefficient so that the floor divides out too. Without that the sails
+    // would refuse to go green in light air — the ramp would be reporting the
+    // wind rather than the trim.
+    for (const awa of [5, 8, 30, 90, 180]) {
+      for (const trim of trimSweep(15)) {
+        const reference = trimQuality(MAIN, trim, wind(10, awa));
+        for (const knots of [1, 2, 25]) {
+          expect(trimQuality(MAIN, trim, wind(knots, awa))).toBeCloseTo(reference, 12);
+        }
+      }
+    }
+  });
+
+  it("paints every trim red in irons, where no trim drives at all", () => {
+    // `optimalTrim` reports a best driving force of exactly zero below AWA
+    // ≈ 4.3°, and hands the ratio to this side as §4.2's problem. Nothing may
+    // read green here — and nothing may come out NaN either, which is what the
+    // bare 0/0 would have given.
+    for (const awa of [0, 1, 2, 3, 4, 4.2, -2, -4]) {
+      const apparent = wind(10, awa);
+      for (const sail of bothSails) {
+        for (const trim of trimSweep(2)) {
+          const quality = trimQuality(sail, trim, apparent);
+          expect(Number.isFinite(quality)).toBe(true);
+          expect(quality).toBeLessThanOrEqual(0);
+          expect(trimQualityColor(quality)).toBe(RED);
+        }
+      }
+    }
+  });
+
+  it("has no answer in a flat calm, and says so in red rather than in NaN", () => {
+    for (const sail of bothSails) {
+      for (const trim of trimSweep(15)) {
+        expect(trimQuality(sail, trim, wind(0, 90))).toBe(0);
+      }
+    }
+  });
+
+  it("fades through the no-go zone instead of snapping at its edge", () => {
+    // The floored denominator's whole purpose. Swept along the best trim
+    // available at each angle, the quality climbs continuously from 0 in irons
+    // to a full green by AWA 8°, with no step anywhere: the largest change over
+    // a twentieth of a degree is 0.017, and it is at 8.15° — where the floor
+    // stops binding, which is a corner in the slope and not a jump.
+    let previous: number | null = null;
+    for (let awa = 0; awa <= 14; awa += 0.05) {
+      const apparent = wind(10, awa);
+      const quality = trimQuality(MAIN, optimalTrim(MAIN, apparent).angle, apparent);
+      if (previous !== null) expect(Math.abs(quality - previous)).toBeLessThan(0.05);
+      previous = quality;
+    }
+    expect(previous).toBeCloseTo(1, 12);
+
+    // Pinching at AWA 5° with the sheets perfect: not green, because no trim
+    // there is worth calling good. Amber-to-red, and rising with the angle.
+    const atOptimum = (awa: number): number =>
+      trimQuality(MAIN, optimalTrim(MAIN, wind(10, awa)).angle, wind(10, awa));
+    expect(atOptimum(5)).toBeLessThan(0.2);
+    expect(atOptimum(6)).toBeGreaterThan(atOptimum(5));
+    expect(atOptimum(8)).toBeGreaterThan(0.9);
+    expect(atOptimum(10)).toBeCloseTo(1, 12);
+  });
+
+  it("mirrors across the centreline, like everything else in the drawing", () => {
+    for (const awa of [5, 30, 90, 155]) {
+      for (const trim of trimSweep(5)) {
+        expect(trimQuality(MAIN, -trim, wind(10, -awa))).toBeCloseTo(
+          trimQuality(MAIN, trim, wind(10, awa)),
+          12,
+        );
+      }
+    }
+  });
+});
+
 // --- The rig, and the scene it has to fit in --------------------------------
 
 describe("the rig", () => {
@@ -492,8 +693,22 @@ describe("the rig", () => {
   };
 
   it("has no jib at all when the jib is struck (§3.7)", () => {
-    expect(rigShapes(state).jib).not.toBeNull();
-    expect(rigShapes({ ...state, trim: { ...state.trim, jibSet: false } }).jib).toBeNull();
+    expect(rigDrawing(state).jib).not.toBeNull();
+    expect(rigDrawing({ ...state, trim: { ...state.trim, jibSet: false } }).jib).toBeNull();
+  });
+
+  it("derives each sail's shape and its quality from the one apparent wind", () => {
+    const apparent = apparentWind(state.wind, state.motion);
+    const drawing = rigDrawing(state);
+
+    expect(drawing.main.shape).toEqual(mainShape(state.trim.mainAngle, apparent));
+    expect(drawing.main.quality).toBe(trimQuality(MAIN, state.trim.mainAngle, apparent));
+    expect(drawing.jib?.shape).toEqual(jibShape(state.trim.jibAngle, apparent));
+    expect(drawing.jib?.quality).toBe(trimQuality(JIB, state.trim.jibAngle, apparent));
+
+    // The apparent wind is the boat's own, not the true wind: it is what the
+    // sails feel, so it is what the trim is judged against.
+    expect(apparent.angle).not.toBeCloseTo(trueWindAngle(state.wind, state.motion), 3);
   });
 
   it("stays inside the disc the scene reserves for the boat", () => {

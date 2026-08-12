@@ -1,6 +1,6 @@
 /**
- * The two sails: a chord, a camber, and the seam the luffing animation hangs on
- * (DESIGN.md §4.1).
+ * The two sails: a chord, a camber, the trim-quality ratio the traffic light
+ * reads, and the seam the luffing animation hangs on (DESIGN.md §4.1, §4.2).
  *
  * Everything here is in **boat-frame metres**, like `render/hull.ts` — the sails
  * mount on `scene.layers.sails`, which rides inside the boat group, so the
@@ -74,6 +74,20 @@
  * sampled polyline when something is, with no discontinuity between the two.
  * `sail.test.ts` pins the two against each other to 1e-12.
  *
+ * ## The traffic light's ratio
+ *
+ * §4.2's colour scale is a *ratio of driving forces*, not an angular error, and
+ * {@link trimQuality} is the whole of it: what this sail is driving with,
+ * divided by what the best trim at this apparent wind would drive with. The
+ * division happens here and the colour happens in `render/palette.ts`; neither
+ * knows about the other's half.
+ *
+ * It sits in this module rather than in `model/sail.ts` because it is not
+ * physics: the model already answers both halves — `sailForce` and
+ * `optimalTrim` — and nothing the boat does depends on the ratio between them.
+ * It is a thing the drawing says about the model, which is exactly the line
+ * §6 draws between the two directories.
+ *
  * ## Drawing taste stays here
  *
  * The draft fractions and the pressure reference below are drawing decisions and
@@ -85,7 +99,13 @@
 
 import type { Sail } from "../model/boat.ts";
 import { JIB, MAIN, STATIONS, jibClewPosition, mainClewPosition } from "../model/boat.ts";
-import { angleOfAttack, dynamicPressure, luffFraction } from "../model/sail.ts";
+import {
+  angleOfAttack,
+  dynamicPressure,
+  luffFraction,
+  optimalTrim,
+  sailForce,
+} from "../model/sail.ts";
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
 import {
@@ -100,6 +120,7 @@ import {
 import type { ApparentWind } from "../model/wind.ts";
 import { apparentWind } from "../model/wind.ts";
 import { cubicTo, type CubicSegment } from "./hull.ts";
+import { setSailInk } from "./palette.ts";
 import type { Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
@@ -296,25 +317,116 @@ export function jibShape(jibAngle: Radians, apparent: ApparentWind): SailShape {
   );
 }
 
+// --- Trim quality -----------------------------------------------------------
+
+/**
+ * The drive coefficient below which no trim is a good trim.
+ *
+ * A *coefficient* — `driving / (q·A)` — rather than a force in newtons, and
+ * that is the whole reason this constant is safe to have. Driving force scales
+ * with dynamic pressure, so a floor of "so many newtons" would be a floor on
+ * the wind: perfectly trimmed sails would refuse to go green in light air and
+ * the ramp would be answering a question nobody asked. Divided out, the same
+ * number means the same thing at 2 kt as at 25 kt — measured, not assumed;
+ * `sail.test.ts` pins the peak coefficient across three wind speeds.
+ *
+ * 0.05 is reached at an apparent wind angle of about 8°, deep inside the no-go
+ * zone: the main's peak coefficient is 0.006 at AWA 5°, 0.05 at 8°, 0.21 at
+ * 15°, 0.59 at 30° and 1.57 on a beam reach. So it binds only where the answer
+ * is "bear away", and every point of sail a student can actually sail is
+ * untouched by it — see {@link trimQuality} for what it does when it binds.
+ */
+const MINIMUM_USEFUL_DRIVE_COEFFICIENT = 0.05;
+
+/**
+ * §4.2's traffic light, as a number: this trim's driving force over the best
+ * available at this apparent wind.
+ *
+ * Keyed to force rather than to angle, which is the pedagogical point. A fixed
+ * 10° error would look equally bad everywhere if the scale were angular; keyed
+ * to force the falloff is sharp where the physics is sharp and forgiving where
+ * it is forgiving, because it *is* the physics. Measured on the main in 10 kt:
+ * the trim error that drops the quality below 0.8 is 5.25° close hauled and 27°
+ * on a run, and below 0.5 it is 8.75° against 45.75°. Nothing states that rule
+ * anywhere; it falls out of the ratio.
+ *
+ * **The denominator is floored, and only where the optimum itself is vanishing.**
+ * `optimalTrim` reports the honest in-irons answer — a non-positive best force,
+ * exactly zero below AWA ≈ 4.3° where every trim luffs — and hands the ratio to
+ * this side as §4.2's problem. Taken bare it is 0/0, and worse than undefined:
+ * a sail sitting on the optimum at AWA 5° would read *fully green* while making
+ * 1 N and going nowhere, then snap to red as the best force crossed zero. So
+ * the denominator is `max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT · q · A)`. Above the floor
+ * — every point of sail — this is §4.2's ratio unchanged. Below it the best
+ * trim can no longer read green but fades with what is actually available:
+ * ≈ 0.13 of the ramp at AWA 5°, 0.36 at 6°, 1.0 by 8°. "No trim can save this"
+ * is the true lesson in the no-go zone, and the fade is continuous through the
+ * boundary rather than a threshold pretending to be one.
+ *
+ * **A flat calm is the one case with no answer at all**, since every trim ties
+ * at zero force, so it returns 0 and paints red. Guarding on `q·A` rather than
+ * on the forces is what keeps the sole division safe: the floor is positive
+ * whenever there is any wind at all.
+ *
+ * The result is deliberately *not* clamped to `0..1`. Both ends overshoot in
+ * normal use — a backed sail drives hard astern, and a trim between two samples
+ * of the optimum search can beat it by a hair — and `render/palette.ts` owns
+ * the fold onto the ramp, in one place, for the reasons its `clampQuality`
+ * gives.
+ */
+export function trimQuality(sail: Sail, sailAngle: Radians, apparent: ApparentWind): number {
+  // `q·A`: the force a coefficient of 1 would make on this sail in this wind,
+  // and so what turns the coefficient above back into newtons.
+  const forceScale = dynamicPressure(apparent.speed) * sail.area;
+  if (!(forceScale > 0)) return 0;
+
+  const best = optimalTrim(sail, apparent).driving;
+  const driving = sailForce(sail, sailAngle, apparent).driving;
+  return driving / Math.max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT * forceScale);
+}
+
+/** One sail's frame: the shape to draw and the quality to paint it with. */
+export interface SailDrawing {
+  readonly shape: SailShape;
+  readonly quality: number;
+}
+
+/** Both sails. The jib is `null` when it is struck (§3.7). */
+export interface RigDrawing {
+  readonly main: SailDrawing;
+  readonly jib: SailDrawing | null;
+}
+
 /**
  * Both sails for a state — the renderer's one entry point.
  *
  * The jib is `null` when it is struck, so a caller cannot draw a sail that is
- * not there (§3.7). Derives the apparent wind itself: it is ten flops, it keeps
+ * not there (§3.7). Derives the apparent wind itself: it keeps
  * `Layer.update(state)` as the whole contract, and it keeps `SimState` free of
- * render caches. When pos-dmg.1 and pos-dmg.3 make a per-frame derived bundle
- * worth sharing, this is the one call site to change.
+ * render caches. This is the per-frame derived bundle the shapes-only version
+ * of this function predicted pos-dmg.1 would need; pos-dmg.3 adds the speed
+ * arrow's reference to it the same way.
  *
- * Note what it does *not* call: `sailForce` and `rigForce` would compute foil
- * coefficients and a driving force the drawing throws away. Camber depends on no
- * force at all, which is what keeps this module clear of the trim-quality
- * machinery pos-dmg.1 is about to add next door.
+ * The quality is what makes it cost anything: `optimalTrim` sweeps the sail's
+ * legal range, so a frame is some 60–150 sail-force evaluations per sail
+ * against the handful the camber needs. That is the price §4.2 quotes and
+ * accepts — around 30 µs a sail, nothing beside a frame of rendering — and it
+ * is why the two halves are computed together here rather than separately by
+ * two callers, which would double it.
  */
-export function rigShapes(state: SimState): { main: SailShape; jib: SailShape | null } {
+export function rigDrawing(state: SimState): RigDrawing {
   const apparent = apparentWind(state.wind, state.motion);
   return {
-    main: mainShape(state.trim.mainAngle, apparent),
-    jib: state.trim.jibSet ? jibShape(state.trim.jibAngle, apparent) : null,
+    main: {
+      shape: mainShape(state.trim.mainAngle, apparent),
+      quality: trimQuality(MAIN, state.trim.mainAngle, apparent),
+    },
+    jib: state.trim.jibSet
+      ? {
+          shape: jibShape(state.trim.jibAngle, apparent),
+          quality: trimQuality(JIB, state.trim.jibAngle, apparent),
+        }
+      : null,
   };
 }
 
@@ -504,16 +616,24 @@ export function createSailLayer(): Layer {
   return {
     element,
     update(state: SimState): void {
-      const shapes = rigShapes(state);
+      const rig = rigDrawing(state);
 
-      boom.setAttribute("x2", formatNumber(shapes.main.clew.x));
-      boom.setAttribute("y2", formatNumber(shapes.main.clew.y));
-      main.cloth.setAttribute("d", sailPathData(shapes.main));
+      boom.setAttribute("x2", formatNumber(rig.main.shape.clew.x));
+      boom.setAttribute("y2", formatNumber(rig.main.shape.clew.y));
+      main.cloth.setAttribute("d", sailPathData(rig.main.shape));
+      // On the group, not the path: the property inherits down to the cloth,
+      // and a later bead colouring a telltale or a clew handle inherits the
+      // same value rather than deriving a second one (§4.2).
+      setSailInk(main.group, rig.main.quality);
 
-      // Struck: hidden, and no stale geometry computed or written for it.
-      jib.group.classList.toggle(STRUCK_CLASS, shapes.jib === null);
-      if (shapes.jib === null) return;
-      jib.cloth.setAttribute("d", sailPathData(shapes.jib));
+      // Struck: hidden, and no stale geometry or colour computed or written for
+      // it. What is left behind on the group is stale, and harmlessly so — the
+      // group is `display: none`, and the frame that unstrikes the jib rewrites
+      // both before anything paints.
+      jib.group.classList.toggle(STRUCK_CLASS, rig.jib === null);
+      if (rig.jib === null) return;
+      jib.cloth.setAttribute("d", sailPathData(rig.jib.shape));
+      setSailInk(jib.group, rig.jib.quality);
     },
   };
 }
