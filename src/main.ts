@@ -211,21 +211,55 @@ if (controls !== null) {
    * than offered as something to set — see {@link apply}. The bar is here
    * because a number alone makes it hard to see the boat gathering way as you
    * ease a sail in.
+   *
+   * `opening` is where the domain *starts*, not what it is: the bar widens to
+   * whatever it is asked to show, symmetrically about zero. That is deliberate
+   * and it is the pos-w4v fix. The domain used to be a pair of measured
+   * numbers — −8 to 9 kt, justified by a comment saying `settle` returned about
+   * 8 kt at the top of the wind slider — and pos-lcz then raised that to
+   * 8.915 kt, leaving 0.085 kt before the bar pegged and, exactly as its own
+   * comment warned, silently stopped tracking. A readout whose range is a
+   * measurement of the model is a readout the model can outgrow, so this one
+   * measures nothing.
+   *
+   * **Both directions of rescale are defects, and this avoids both.** Narrowing
+   * is the obvious one: the domain would shrink as the boat slowed and the mark
+   * would crawl back up while the speed fell. Widening is the same defect
+   * mirrored, and the first version of this fix had it — rounding the new reach
+   * *up* to a whole knot rescaled the domain past the reading, so at 8.00 kt
+   * the mark sat hard right and one frame later at 8.05 kt it jumped back to
+   * 94.7%, about 16 px on a 300 px bar, and did not recover until 9 kt. The
+   * boat accelerated and the mark went backwards.
+   *
+   * So: the reach never shrinks, and when it grows it grows to *exactly* the
+   * reading. The mark then arrives at the end of the track and stays there
+   * rather than being thrown back down it. And because `opening` is set well
+   * clear of anything the model can produce, widening is a backstop that
+   * should never fire in normal use rather than something the bar does while
+   * you watch — which keeps the mark moving proportionally across the whole
+   * range the boat can actually reach.
    */
-  const readout = (label: string, min: number, max: number, read: () => number): void => {
+  const readout = (label: string, opening: number, read: () => number): void => {
     const input = document.createElement("input");
     input.type = "range";
-    input.min = String(min);
-    input.max = String(max);
     input.step = "any";
     input.disabled = true;
     input.setAttribute("aria-label", label);
+
+    let reach = 0;
+    const widenTo = (knots: number): void => {
+      reach = knots;
+      input.min = String(-reach);
+      input.max = String(reach);
+    };
+    widenTo(opening);
 
     const value = document.createElement("output");
     value.className = "scaffold-value";
 
     followers.push(() => {
       const knots = read();
+      if (Math.abs(knots) > reach) widenTo(Math.abs(knots));
       input.value = String(knots);
       value.textContent = `${knots.toFixed(2)} kt`;
     });
@@ -266,11 +300,12 @@ if (controls !== null) {
     (degrees) => apply({ motion: { ...state.motion, heading: degreesToRadians(degrees) } }),
   );
 
-  // Wide enough for what the strip can actually reach: swept over the sliders'
-  // own domains, `settle` returns up to ~8 kt in 30 kt of wind and down to
-  // ~−7 kt running astern. A narrower bar pegs and silently stops tracking,
-  // which is worse than no bar.
-  readout("Boat kt", -8, 9, () => metersPerSecondToKnots(state.motion.speed));
+  // ±10 kt is where the bar opens, not what it can show. It is deliberately
+  // clear of the 8.9 kt the sliders can reach — a bar that never has to rescale
+  // is a bar whose mark never jumps — while staying tight enough that the range
+  // the boat actually sails in still spans a third of the track. Anything faster
+  // widens it rather than pegging it. See {@link readout}.
+  readout("Boat kt", 10, () => metersPerSecondToKnots(state.motion.speed));
 
   slider(
     "Main",

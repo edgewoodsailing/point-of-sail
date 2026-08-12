@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import { HULL, STATIONS } from "../model/boat.ts";
-import type { Vec2 } from "../model/units.ts";
-import { knotsToMetersPerSecond, magnitude, subtract } from "../model/units.ts";
-import { SCENE } from "./scene.ts";
+import type { Meters, Vec2 } from "../model/units.ts";
+import {
+  degreesToRadians,
+  knotsToMetersPerSecond,
+  magnitude,
+  rotateVector,
+  subtract,
+} from "../model/units.ts";
+import { SCENE, SHORT_SPAN, sceneExtent } from "./scene.ts";
 import {
   SPEED_FULL_SCALE,
+  SPEED_KNEE,
+  SPEED_LIMIT,
   SPEED_REACH,
   createSpeedLayer,
   speedArrowLength,
@@ -66,7 +74,7 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     expect(HULL_GAP / band).toBeLessThan(0.1);
   });
 
-  it("is linear in speed and never clamped", () => {
+  it("is linear in speed everywhere out to the wind ring", () => {
     const half = speedArrowLength(SPEED_FULL_SCALE / 2);
     expect(half).toBeCloseTo(SPEED_REACH / 2, METRES);
     expect(speedArrowLength(SPEED_FULL_SCALE)).toBeCloseTo(2 * half, METRES);
@@ -77,12 +85,49 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     expect(fromPivot(tipOf(kt(8)))).toBeGreaterThan(SCENE.windRingRadius);
   });
 
-  it("grows strictly with speed, and reads the same either way", () => {
+  it("draws the plain linear law, unbent, at every speed short of the ring", () => {
+    // What pos-w4v's knee placement buys, asserted rather than claimed: the
+    // bend is in the band past `windRingRadius` and nowhere else, so every
+    // speed the boat sails at draws exactly what it drew before.
+    const linear = (speed: number): number => (SPEED_REACH * Math.abs(speed)) / SPEED_FULL_SCALE;
+    for (let knots = 0; knots <= 6.8; knots += 0.05) {
+      expect(speedArrowLength(kt(knots))).toBeCloseTo(linear(kt(knots)), 12);
+    }
+    expect(SPEED_KNEE).toBeCloseTo(SCENE.windRingRadius - (SCENE.contentRadius - SPEED_REACH), 12);
+    expect(SPEED_KNEE).toBeGreaterThan(SPEED_REACH);
+  });
+
+  it("leaves the linear law tangentially, with no corner at the knee", () => {
+    // Slope 1 on both sides, so the arrow does not visibly kink as it crosses
+    // the ring. Compared across the knee rather than at it, since that is where
+    // a corner would show.
+    const step = 1e-4;
+    const at = (length: Meters): number =>
+      speedArrowLength((length * SPEED_FULL_SCALE) / SPEED_REACH);
+    const before = (at(SPEED_KNEE) - at(SPEED_KNEE - step)) / step;
+    const after = (at(SPEED_KNEE + step) - at(SPEED_KNEE)) / step;
+    expect(before).toBeCloseTo(1, 3);
+    expect(after).toBeCloseTo(1, 3);
+  });
+
+  it("grows with speed wherever it still can, and reads the same either way", () => {
+    // Swept far past anything the model can produce on purpose: the wind
+    // slider's 30 kt ceiling is scaffolding pos-bwd.1 deletes, so no top speed
+    // is a safe thing for this law to be correct only below.
+    //
+    // "Wherever it still can" is the honest claim rather than a hedge. The law
+    // is monotone everywhere, and strictly so until it is within a *nanometre*
+    // of `SPEED_LIMIT` — after which the remaining gap is a handful of ulps,
+    // consecutive speeds round together, and by 30.35 kt it is flat outright.
+    // Stating the strict half against a distance rather than a speed is what
+    // keeps the assertion about the law instead of about the model's ceiling.
+    const RESOLVED: Meters = 1e-9;
     let previous = speedArrowLength(0);
     expect(previous).toBe(0);
-    for (let knots = 0.25; knots <= 9; knots += 0.25) {
+    for (let knots = 0.25; knots <= 60; knots += 0.25) {
       const length = speedArrowLength(kt(knots));
-      expect(length).toBeGreaterThan(previous);
+      expect(length).toBeGreaterThanOrEqual(previous);
+      if (previous < SPEED_LIMIT - RESOLVED) expect(length).toBeGreaterThan(previous);
       expect(speedArrowLength(kt(-knots))).toBeCloseTo(length, 12);
       previous = length;
     }
@@ -95,6 +140,154 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     // A boat ghosting along at a quarter knot is moving, and should say so.
     expect(underWay(kt(0.25))).toBe(true);
     expect(underWay(kt(-0.25))).toBe(true);
+  });
+});
+
+describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
+  /**
+   * The one invariant this bead is actually about, and it is stated over the
+   * *whole* speed domain rather than over what the model happens to reach
+   * today. The model is being made slower as this lands, and the wind slider's
+   * 30 kt ceiling is scaffolding pos-bwd.1 deletes — a test pinned to any
+   * measured top speed would be testing the wrong thing and would break the
+   * moment either changed.
+   *
+   * `SCENE.shortRadius` is the whole bound, on every viewport: see the extent
+   * test below for why. It is radial, and the boat group only ever rotates
+   * about the origin, so heading cannot break it.
+   */
+  const speeds = (): number[] => {
+    const swept = [];
+    for (let knots = -60; knots <= 60; knots += 0.05) swept.push(kt(knots));
+    // Absurd on purpose: the law has to be total, not merely adequate.
+    return [...swept, kt(1e3), kt(1e6), Number.MAX_VALUE, Infinity, -Infinity];
+  };
+
+  it("keeps every point it draws inside the short-axis half-span", () => {
+    for (const speed of speeds()) {
+      if (!underWay(speed)) continue;
+      for (const drawn of pathPoints(speedArrowPathData(speed))) {
+        expect(fromPivot(drawn)).toBeLessThan(SCENE.shortRadius);
+      }
+    }
+  });
+
+  /**
+   * Half the drawn stroke, in metres — the bit that overhangs the tip, because
+   * `.pos-speed-mark` is round-capped.
+   *
+   * Derived rather than asserted from memory, since it is the number that
+   * justifies `EDGE_KEEP_OUT` and it is not obvious. Two different lengths are
+   * in play and they are *not* the same one:
+   *
+   * - The stroke is `clamp(1.6px, 0.45vmin, 4px)`, and `vmin` is the
+   *   **viewport's** short side.
+   * - Metres per pixel is `SHORT_SPAN / surfaceShort`, and `surfaceShort` is
+   *   the **drawing surface's** short side.
+   *
+   * §6.2 stacks the control strip *below* the surface, so in landscape the
+   * strip comes off the short axis and the surface is shorter than the
+   * viewport. Assuming the two were equal — as this test first did — understates
+   * the overhang by up to a factor of two.
+   */
+  const halfStrokeMeters = (viewport: [number, number], stripPx: number): Meters => {
+    const [width, height] = viewport;
+    const surfaceShort = Math.min(width, height - stripPx);
+    const vmin = Math.min(width, height);
+    const strokePx = Math.min(4, Math.max(1.6, (0.45 * vmin) / 100));
+    return (strokePx / 2) * (SHORT_SPAN / surfaceShort);
+  };
+
+  it("leaves room for the stroke, which overhangs the tip it is drawn on", () => {
+    // The module keeps the tail radius private, so it is recovered the only way
+    // the exports allow: it is what `contentRadius` has left over once the
+    // arrow's own hull-speed reach is taken out of it.
+    const tailRadius = SCENE.contentRadius - SPEED_REACH;
+    const viewports: [number, number][] = [
+      [320, 568],
+      [568, 320],
+      [390, 844],
+      [844, 390],
+      [768, 1024],
+      [1024, 768],
+      [1440, 900],
+      [2560, 1080],
+    ];
+    // 160 px is the *current* scaffolding strip — seven rows of controls — and
+    // so more than §5's eventual strip will ever want. Worst case across all of
+    // it is 0.060 m, on a 568x320 landscape phone, where the strip leaves only
+    // 160 px of surface. Portrait never exceeds 0.030 m.
+    for (const viewport of viewports) {
+      for (const stripPx of [0, 100, 160]) {
+        const overhang = halfStrokeMeters(viewport, stripPx);
+        expect(overhang).toBeLessThan(0.07);
+        expect(SPEED_LIMIT + tailRadius + overhang).toBeLessThan(SCENE.shortRadius);
+      }
+    }
+  });
+
+  it("is bounded by its limit at every speed there is, finite or not", () => {
+    // The bound is a property of the law and not of how hard the test happened
+    // to push, which is what makes it worth having: `1 − e^(−x)` cannot exceed
+    // 1, so nothing that can be handed to this function gets past the limit.
+    for (const speed of speeds()) {
+      expect(speedArrowLength(speed)).toBeLessThanOrEqual(SPEED_LIMIT);
+    }
+    // 20 kt is already nonsense for a 19-foot keelboat, and the law is still
+    // strictly below its limit there — by a nanometre, but below. It rounds up
+    // to the limit at 30.35 kt.
+    expect(speedArrowLength(kt(20))).toBeLessThan(SPEED_LIMIT);
+    expect(speedArrowLength(kt(20))).toBeCloseTo(SPEED_LIMIT, 6);
+    expect(SPEED_LIMIT).toBeGreaterThan(SPEED_KNEE);
+  });
+
+  it("is bounded by the viewBox itself, on every viewport shape", () => {
+    // The link the invariant above rests on: `sceneExtent` scales by the
+    // *shorter* side, so the smaller half-span is `shortRadius` exactly —
+    // portrait, landscape or square. Nothing narrower than that exists to fall
+    // foul of.
+    for (const [width, height] of [
+      [390, 844],
+      [844, 390],
+      [768, 768],
+      [1440, 900],
+      [320, 480],
+      [2560, 1080],
+    ]) {
+      const extent = sceneExtent(width!, height!);
+      expect(Math.min(extent.halfWidth, extent.halfHeight)).toBeCloseTo(SCENE.shortRadius, 9);
+    }
+  });
+
+  it("stays on screen at every heading, in the world frame the viewBox measures", () => {
+    // Belt as well as braces: the bound above is radial because the boat group
+    // only rotates, and this is that assumption spent rather than assumed —
+    // the drawn points carried through `boatTransform`'s rotation by hand and
+    // checked against the viewBox's actual sides.
+    //
+    // The samples are *derived*, deliberately. They were once the literals
+    // 5.646 and 8.915 — hull speed and the measured top speed — which is
+    // precisely what the comment at the top of this block says a test must not
+    // be pinned to. Written that way they would not have failed when the model
+    // changed; they would have gone on passing while quietly sampling speeds
+    // that no longer meant anything. Each of these is the speed at which the
+    // arrow reaches a *landmark of the drawing*, so they keep their meaning
+    // whatever the model does.
+    const speedAtLength = (length: Meters): number => (length * SPEED_FULL_SCALE) / SPEED_REACH;
+    const hullSpeed = SPEED_FULL_SCALE; // tip on contentRadius
+    const atRing = speedAtLength(SPEED_KNEE); // tip on the wind ring: the knee
+    const saturated = speedAtLength(SPEED_LIMIT) * 10; // far into the flat tail
+    const extent = sceneExtent(768, 768);
+    for (const speed of [-saturated, -atRing, -hullSpeed, hullSpeed, atRing, saturated]) {
+      const drawn = pathPoints(speedArrowPathData(speed));
+      for (let degrees = 0; degrees < 360; degrees += 5) {
+        for (const point of drawn) {
+          const world = rotateVector(subtract(point, STATIONS.pivot), degreesToRadians(degrees));
+          expect(Math.abs(world.x)).toBeLessThan(extent.halfWidth);
+          expect(Math.abs(world.y)).toBeLessThan(extent.halfHeight);
+        }
+      }
+    }
   });
 });
 

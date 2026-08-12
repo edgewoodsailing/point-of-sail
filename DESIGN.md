@@ -1078,7 +1078,7 @@ Length encodes absolute speed. Color compares current speed against what this
 boat would be doing, on this heading in this wind, if both sails were trimmed
 perfectly.
 
-The length law is linear and unclamped:
+The length law is linear:
 
 ```text
 length = SPEED_REACH · |speed| / HULL.hullSpeed
@@ -1091,6 +1091,67 @@ means *hull speed*, which is a thing worth recognising, rather than merely
 meaning "the biggest arrow". Above hull speed the arrow overruns and crosses the
 wind ring; see [§4.1](#41-whats-drawn) for why that is allowed and what makes it
 safe.
+
+#### The one place it is not linear
+
+The law above governs every speed out to the wind ring, which the tip reaches at
+6.87 kt. Past the ring it bends, easing asymptotically onto a limit 0.1 m inside
+`shortRadius`:
+
+```text
+linear  = SPEED_REACH · |speed| / HULL.hullSpeed
+overrun = linear − SPEED_KNEE                 (SPEED_KNEE reaches windRingRadius)
+
+length  = linear                                        when linear ≤ SPEED_KNEE
+        = SPEED_KNEE + H · (1 − e^(−overrun/H))          when linear > SPEED_KNEE
+          where H = SPEED_LIMIT − SPEED_KNEE, ≈ 0.25 m
+```
+
+The guard is not decoration. Below the knee `overrun` is negative, the
+exponent turns positive, and the second line runs away — at 0 kt it evaluates
+to about −6000 m. The bend applies to the overrun and to nothing else.
+
+The reason is not taste, it is that the drawing is finite and the linear law was
+not. `sceneExtent` maps `shortRadius` onto the *shorter* side of any surface, so
+a tip past 6 m is off the screen — not overrunning a reservation, which
+[§4.1](#41-whats-drawn) allows, but leaving the viewBox, which nothing here ever
+contemplated. The linear law crossed 6 m at 7.82 kt, and
+[§3.5](#35-hull-resistance-and-integration)'s softened wall raised what the
+model can reach to 8.9 kt, putting 0.4 m of arrow outside the box on any
+square-or-portrait viewport.
+
+Three choices were on the table — clamp, compress, or accept the clip — and the
+bend is placed **at the ring rather than at hull speed** deliberately, which is
+what makes it invisible: every speed out to 6.87 kt draws exactly what it drew
+before. What compresses is only the band between the ring and the edge, the one
+part of the drawing nothing else uses — the ring's graduations are drawn
+*inward* from it for the same reason this stops short of the edge, that a mark
+clipped by the viewport reads as a rendering fault. Bending at hull speed
+instead would have shortened the arrow across 5.6–8 kt, where the boat actually
+sails, and pushed the ring crossing out to 7.6 kt — moving the one landmark a
+student can see the arrow cross, since `contentRadius` is a budget rather than a
+drawn circle.
+
+One consequence to record before someone finds this and thinks it is dead
+weight. Depowering the rig in a breeze (pos-d7u) drops the fastest reachable
+speed to about 6.4 kt, which is *below* the 6.87 kt ring crossing — so in normal
+use the knee never engages and the arrow is linear across the whole range the
+boat can reach. It stays anyway, for the same reason it was not tuned to a measured
+top speed to begin with: nothing guarantees a future model, a retuned constant
+or a raised wind control stays under the ring. The drawing declines to depend on
+the model's range at all. Measure the invariant, not the reachable speeds.
+
+What the bend guarantees, and why it is a curve rather than a clamp: the length
+is **bounded** at every speed there is, including ones no boat reaches, so no
+future top speed can be a surprise — the wind slider's 30 kt ceiling is
+throwaway scaffolding rather than anything this document commits to, so "nobody
+can get there" is not something to build on. It is **monotone**, so the arrow
+never stops answering the question. And it leaves the linear law
+**tangentially**, at slope 1, so there is no corner where it crosses the ring.
+The honest cost is that above
+about 10 kt successive speeds differ by fractions of a pixel: up there it is a
+clamp in all but name, which is the right place to give up, since no law can
+keep resolving speed inside a finite box forever.
 
 The arrow starts **0.2 m clear of the bow**, not at it. Anchored to the stem it
 reads as a bowsprit — part of the boat rather than a thing said about it — and
