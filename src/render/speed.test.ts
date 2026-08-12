@@ -38,6 +38,16 @@ const HULL_GAP = 0.2;
 const kt = knotsToMetersPerSecond;
 
 /**
+ * `scene.css` with its comments stripped.
+ *
+ * That stylesheet is heavily annotated, and several of its comments quote the
+ * declarations they explain. Scanning the raw text would let a commented-out or
+ * merely *quoted* declaration answer for a live one, which is the same class of
+ * mistake as reading a declaration that loses the cascade.
+ */
+const STYLESHEET = sceneCss.replace(/\/\*[\s\S]*?\*\//g, "");
+
+/**
  * The three terms of `--pos-rule-speed`, read out of `scene.css`.
  *
  * The stroke is the one input to the arrow's edge margin that is not in metres
@@ -48,9 +58,10 @@ const kt = knotsToMetersPerSecond;
  * which is the failure this repository keeps writing tests against.
  *
  * Parsed rather than evaluated because `clamp()` needs a viewport to resolve
- * and the test supplies several. A shape this does not recognise throws with
- * instructions, since silently falling back to a default would restore exactly
- * the coupling it is here to remove.
+ * and the test supplies several. Anything it cannot read — an unknown shape, a
+ * missing declaration, or more than one — throws with instructions, since
+ * silently falling back to a default or to the first match would restore
+ * exactly the coupling it is here to remove.
  */
 const SPEED_STROKE = parseStrokeClamp("--pos-rule-speed");
 
@@ -59,8 +70,21 @@ function parseStrokeClamp(property: string): {
   vminPercent: number;
   maxPx: number;
 } {
-  const declared = new RegExp(`${property}\\s*:\\s*([^;]+);`).exec(sceneCss)?.[1]?.trim();
-  if (declared === undefined) throw new Error(`${property} is not declared in scene.css.`);
+  const declarations = [...STYLESHEET.matchAll(new RegExp(`${property}\\s*:\\s*([^;]+);`, "g"))];
+  if (declarations.length === 0) throw new Error(`${property} is not declared in scene.css.`);
+  if (declarations.length > 1) {
+    // Reading the first match would be reading a declaration that need not win
+    // the cascade: a `@media` override later in the file paints a different
+    // stroke while this test carries on checking the old one — which is the
+    // drift pos-7nt exists to close, reintroduced through the tripwire itself.
+    throw new Error(
+      `${property} is declared ${declarations.length} times in scene.css. This test reads a ` +
+        `single declaration and cannot resolve a cascade, so it would silently check a value ` +
+        `the browser does not paint. Fold them into one, or teach this which one wins and ` +
+        `re-check EDGE_KEEP_OUT's comment in speed.ts against the result.`,
+    );
+  }
+  const declared = declarations[0]![1]!.trim();
   const terms = /^clamp\(\s*([\d.]+)px\s*,\s*([\d.]+)vmin\s*,\s*([\d.]+)px\s*\)$/.exec(declared);
   if (terms === null) {
     throw new Error(
@@ -253,8 +277,17 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     // comment stale, and the round cap a little further through the viewport
     // edge. Parsing it means the CSS cannot move on its own.
     expect(SPEED_STROKE).toEqual({ minPx: 1.6, vminPercent: 0.45, maxPx: 4 });
-    // And the declaration this parsed is the one `.pos-speed-mark` paints with.
-    expect(sceneCss).toMatch(/stroke-width:\s*var\(--pos-rule-speed\)/);
+    // And the property this parsed is the one `.pos-speed-mark` actually paints
+    // with. Matching `stroke-width: var(--pos-rule-speed)` anywhere in the file
+    // would be satisfied by a dead rule, or by a different element using the
+    // same custom property, while the arrow itself had moved to a literal — so
+    // the margin would again be derived from a width the arrow does not use.
+    // The check has to name the selector the sentence above names.
+    const rules = [...STYLESHEET.matchAll(/([^{}]*)\{([^}]*)\}/g)].filter(([, selector]) =>
+      selector!.includes(".pos-speed-mark"),
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0]![2]).toMatch(/stroke-width:\s*var\(--pos-rule-speed\)/);
   });
 
   it("leaves room for the stroke, which overhangs the tip it is drawn on", () => {
