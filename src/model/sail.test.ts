@@ -53,11 +53,11 @@ function attachedCd(alphaDegrees: number, aspectRatio = AR): number {
 
 /** The flat-plate limb of §3.2, which stands alone past stall + blend. */
 function plateCl(alphaDegrees: number): number {
-  return 2 * Math.sin(deg(alphaDegrees)) * Math.cos(deg(alphaDegrees));
+  return FOIL.plateNormalForce * Math.sin(deg(alphaDegrees)) * Math.cos(deg(alphaDegrees));
 }
 
 function plateCd(alphaDegrees: number): number {
-  return FOIL.profileDrag + 2 * Math.sin(deg(alphaDegrees)) ** 2;
+  return FOIL.profileDrag + FOIL.plateNormalForce * Math.sin(deg(alphaDegrees)) ** 2;
 }
 
 function expectedDriving(
@@ -133,7 +133,10 @@ describe("force assembly (DESIGN.md §3.2)", () => {
     const force = driving(90, wind(-180));
     expect(angleOfAttack(deg(90), wind(-180))).toBeCloseTo(deg(-90), 10);
     expect(force).toBeCloseTo(expectedDriving(plateCl(-90), plateCd(-90), -180), 9);
-    expect(force / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(2.02, 6);
+    expect(force / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(
+      FOIL.plateNormalForce + FOIL.profileDrag,
+      6,
+    );
   });
 
   it("scales with the square of the apparent wind speed", () => {
@@ -400,15 +403,15 @@ describe("optimal trim (DESIGN.md §3.2)", () => {
   /**
    * Hand-worked: on a beam reach the drag term drops out entirely — it acts
    * dead abeam — so the best trim is simply the one with the most lift, which
-   * `tuning.ts` puts at α ≈ 19.7° and Cl ≈ 1.46.
+   * `tuning.ts` puts at α ≈ 22.4° and Cl ≈ 1.57.
    */
   it("trims for peak lift on a beam reach", () => {
     const best = optimalTrim(MAIN, wind(90));
-    expect(radiansToDegrees(best.angle)).toBeCloseTo(-70.3, 0);
+    expect(radiansToDegrees(best.angle)).toBeCloseTo(-67.6, 0);
 
     const alpha = radiansToDegrees(angleOfAttack(best.angle, wind(90)));
-    expect(alpha).toBeCloseTo(19.7, 0);
-    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(1.461, 2);
+    expect(alpha).toBeCloseTo(22.4, 0);
+    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(1.572, 2);
   });
 
   /**
@@ -419,7 +422,10 @@ describe("optimal trim (DESIGN.md §3.2)", () => {
     const best = optimalTrim(MAIN, wind(180));
     expect(Math.abs(best.angle)).toBeCloseTo(SWING_LIMIT, 12);
     expect(Math.abs(angleOfAttack(best.angle, wind(180)))).toBeCloseTo(deg(90), 12);
-    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(2.02, 6);
+    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(
+      FOIL.plateNormalForce + FOIL.profileDrag,
+      6,
+    );
   });
 
   it("stays inside the legal range at every point of sail", () => {

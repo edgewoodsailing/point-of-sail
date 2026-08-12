@@ -23,13 +23,16 @@ function cd(degrees: number, aspectRatio = AR): number {
   return foilCoefficients(deg(degrees), aspectRatio).drag;
 }
 
-/** The flat-plate limb, written out independently of the implementation. */
+/**
+ * The flat-plate limb, written out independently of the implementation: a
+ * normal force `Cn = k·sinα` resolved along and across the flow.
+ */
 function plateLift(degrees: number): number {
-  return 2 * Math.sin(deg(degrees)) * Math.cos(deg(degrees));
+  return FOIL.plateNormalForce * Math.sin(deg(degrees)) * Math.cos(deg(degrees));
 }
 
 function plateDrag(degrees: number): number {
-  return FOIL.profileDrag + 2 * Math.sin(deg(degrees)) ** 2;
+  return FOIL.profileDrag + FOIL.plateNormalForce * Math.sin(deg(degrees)) ** 2;
 }
 
 describe("lift-curve slope (DESIGN.md §3.2)", () => {
@@ -65,11 +68,41 @@ describe("attached flow", () => {
 
   /**
    * §3.2 calls this out as the check that the stall angle and the slope are
-   * consistent with a soft sail: peak lift ≈ 1.4, not a rigid wing's 1.8.
+   * consistent with a soft sail: lift at the stall ≈ 1.4, not a rigid wing's
+   * 1.8.
    */
-  it("peaks at a realistic Cl_max for a soft sail", () => {
+  it("reaches a realistic Cl at the stall for a soft sail", () => {
     expect(cl(STALL_DEGREES)).toBeCloseTo(1.4, 1);
     expect(cl(STALL_DEGREES, JIB.aspectRatio)).toBeCloseTo(1.4, 1);
+  });
+
+  /**
+   * And the *true* maximum, which sits past the stall angle rather than at it:
+   * the blend leaves the stall with zero slope, so the attached limb keeps
+   * climbing into it. That makes the peak a function of
+   * {@link FOIL.stallBlendWidth} as much as of the stall angle, and the width
+   * is the constant pos-fo1.4 had to double to kill a bistability. This is the
+   * bound that says how far it can go: at the 20° it now has, peak lift is 1.57
+   * — high for a soft sail but not absurd — where 30° would put it at 1.74,
+   * which is a rigid wing and not a sail.
+   *
+   * It matters because every point of sail in §3.6's table trims to within a
+   * degree or two of this peak, so it sets the whole force scale of the model.
+   */
+  it("tops out past the stall, at a lift a soft sail could still hold", () => {
+    let peak = 0;
+    let peakAt = 0;
+    for (let degrees = 0; degrees <= 90; degrees += 0.05) {
+      if (cl(degrees) > peak) {
+        peak = cl(degrees);
+        peakAt = degrees;
+      }
+    }
+
+    expect(peakAt).toBeGreaterThan(STALL_DEGREES);
+    expect(peakAt).toBeLessThan(FULLY_STALLED_DEGREES);
+    expect(peak).toBeCloseTo(1.57, 2);
+    expect(peak).toBeLessThan(1.65);
   });
 });
 
@@ -82,12 +115,27 @@ describe("the flat-plate limb", () => {
   });
 
   /**
-   * The dead run. Lift is gone and drag is the whole story at Cd ≈ 2 — the
-   * boat is being pushed, which is what makes downwind sailing work at all.
+   * The dead run. Lift is gone and drag is the whole story — the boat is being
+   * pushed, which is what makes downwind sailing work at all. Square to the
+   * wind is where {@link FOIL.plateNormalForce} *is* the drag coefficient, and
+   * so where §3.6's run speed is decided.
    */
   it("is pure drag with the sail square to the wind", () => {
     expect(cl(90)).toBeCloseTo(0, 12);
-    expect(cd(90)).toBeCloseTo(2 + FOIL.profileDrag, 12);
+    expect(cd(90)).toBeCloseTo(FOIL.plateNormalForce + FOIL.profileDrag, 12);
+  });
+
+  /**
+   * The coefficient itself, held to the range a stalled sail can argue for. A
+   * rigid plate of infinite span gives 2.0 and one at a sail's aspect ratio
+   * about 1.2; a soft sail, twisted and with the jib in the main's shadow on a
+   * run, comes in under that. What this rules out is a calibration pass that
+   * reached for the one constant the run responds to and pushed it somewhere a
+   * sail could not go — which, given the run wants slowing, means downwards.
+   */
+  it("keeps the plate's normal force in the range a stalled sail can make", () => {
+    expect(FOIL.plateNormalForce).toBeGreaterThan(0.9);
+    expect(FOIL.plateNormalForce).toBeLessThanOrEqual(2);
   });
 
   /**
@@ -96,8 +144,8 @@ describe("the flat-plate limb", () => {
    * comes edge-on again; no reversed attached limb is invented near 180°.
    */
   it("reverses lift past 90° and goes quiet edge-on", () => {
-    expect(cl(135)).toBeCloseTo(-1, 12);
-    expect(cd(135)).toBeCloseTo(1 + FOIL.profileDrag, 12);
+    expect(cl(135)).toBeCloseTo(-FOIL.plateNormalForce / 2, 12);
+    expect(cd(135)).toBeCloseTo(FOIL.plateNormalForce / 2 + FOIL.profileDrag, 12);
     expect(cl(180)).toBeCloseTo(0, 12);
     expect(cd(180)).toBeCloseTo(FOIL.profileDrag, 12);
     expect(Math.abs(cl(170))).toBeLessThan(0.4);

@@ -231,24 +231,45 @@ Cl = a · α
 Cd = Cd0 + Cl² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
 ```
 
-giving `Cl_max ≈ 1.4` at the stall — a realistic figure for a soft sail.
+giving `Cl ≈ 1.4` at the stall — a realistic figure for a soft sail. The curve
+does not *peak* there: the blend below leaves the stall angle with zero slope, so
+the attached limb keeps climbing into it and lift tops out at ≈ **1.57 near
+22°**, which is where the optimal-trim search actually sits at every point of
+sail in [§3.6](#36-calibration-targets).
 
-**Past stall**, blend over ~10° into the flat-plate model:
+**Past stall**, blend over ~20° into the flat-plate model — a normal force
+`Cn = k·sinα` resolved along and across the flow:
 
 ```text
-Cl = 2 · sin α · cos α
-Cd = Cd0 + 2 · sin²α
+Cl = k · sin α · cos α
+Cd = Cd0 + k · sin²α          // k ≈ 1.1
 ```
 
 The flat-plate limb is not a detail — it is what makes downwind sailing work at
 all. On a dead run the sail is square to the wind at α = 90°, where lift is zero
-and `Cd ≈ 2.0`. The boat is being pushed, not lifted, and the model should say
-so.
+and `Cd = k`. The boat is being pushed, not lifted, and the model should say so.
+
+Two numbers there were settled by calibration and are worth flagging, because a
+first reading of the physics gives different ones.
+
+`k` is **1.1, not the textbook 2.0**. Two is a flat plate of *infinite* span; at
+a sail's aspect ratio the flow spills round the ends and the figure is nearer
+1.2, and a soft sail — twisted, its head falling off, its jib in the main's wind
+shadow — comes in under that. This single constant sets the speed of a run and
+nothing else in the model can substitute for it, so getting it wrong is
+expensive: at 2.0 the run came out a full knot fast.
+
+The blend is **~20°, not ~10°**, and that width is not cosmetic. A sharper stall
+makes the model *bistable* on a reach — the same boat at the same trim in the
+same wind settling at 3.7 kt or 5.1 kt depending on whether it started from rest
+— because a sail eased for the apparent wind at speed is stalled at the apparent
+wind at rest, and with a cliff at the stall it cannot climb back out. Widening
+the blend is what removes that, at the cost of the higher peak lift above.
 
 **Force assembly.** Lift acts perpendicular to the apparent wind, drag along it.
 Sum both sails, rotate into the boat frame, and take the component along the
-heading as **driving force**. The lateral component is discarded (no leeway, no
-heel), with induced drag already accounted for in `Cd`.
+heading as **driving force**. The lateral component is *not* discarded — see
+[§3.5](#35-hull-resistance-and-integration), where the keel is charged for it.
 
 ### 3.3 Luffing
 
@@ -331,6 +352,41 @@ displacement hull hits, so no amount of sail area gets a Rhodes 19 to 9 knots.
 Going astern, multiply by ≈ 2.5: transom-first with a stalled keel and rudder is
 genuinely much draggier, and students should feel that backing up is slow.
 
+**The keel is charged for the rig's side force, and that is what makes a no-go
+zone.** [§3.2](#32-sail-forces)'s lateral component is not free: the keel has to
+generate it, and a foil making lift makes induced drag doing so. The drag of it
+goes as the square of the load over the dynamic pressure —
+
+```text
+D = k · F_side² / v²
+```
+
+— which is almost nothing off the wind and enormous close hauled, where the side
+force is more than twice the drive and the boat is slowest. Without it the model
+had no charge at all for sailing at a large angle to the wind: it ran 29% fast
+close hauled and still made 3 kt at TWA 15°, and no resistance coefficient could
+fix that, since scaling `R(v)` slows every point of sail at once while the
+problem was one end of the polar.
+
+`F²/v²` runs away at rest, and that runaway is not physics: a keel asked for
+more than it can carry stalls, and the boat sideslips rather than growing an
+unbounded drag. Worse, in a model with no leeway an unbounded drag would push a
+sheeted-in boat *backwards* and then reverse as soon as it did. So the keel is
+given a stall — the drag is scaled by how much lift the keel can hold relative
+to how hard it is being asked to pull, a ratio that grows with `v²` because that
+is what a foil's capacity does. That recovers `k·F²/v²` where there is capacity
+to spare and a flat plate's `v²` where there is not, going to zero at rest as
+any water drag must.
+
+Both constants are honestly fudges and live in `tuning.ts` accordingly. The
+scale is about four times what a 3'3" keel's own induced drag comes to, because
+it is also standing in for the heel that side force produces, the leeway the
+hull makes, and the rudder angle needed to hold the course — all of which
+[§7](#7-deliberately-out-of-scope) declines to model separately and all of which
+scale the same way. The stall ceiling turns out to be the constant that sets
+where the no-go zone ends, since the whole upwind quarter runs at or just under
+it.
+
 **Speed is integrated, not solved.** Each frame:
 
 ```text
@@ -338,7 +394,7 @@ a = (F_drive − R(v)) / m_effective
 v += a · dt
 ```
 
-with `m_effective` ≈ 880 kg — boat + two crew + ~15% added mass, which is a
+with `m_effective` — boat + two crew + ~15% added mass ≈ 880 kg, which is a
 sanity check on the figure rather than its source; see the lag knob below.
 Three reasons to integrate rather than solve for equilibrium:
 
@@ -394,31 +450,75 @@ moving. The cost is iterations, which are cheap.
 — *time to reach ~63% of terminal speed from rest*, starting at **10 s**, about
 right for a keelboat. `hull.ts` inverts the closed form `v(t) = v_t·tanh(t·A·v_t/m)`
 to get `m_effective` from it, so that calibrating the resistance can't move the
-lag out from under us. It lands at ≈ 877 kg, which is where the boat + two crew +
-~15% added mass estimate above independently lands — two routes to one number,
-and the reason that estimate is quoted as a sanity check rather than used as an
-input. The anchor holds at the reference speed and stretches away from it: the
-lag works out as `10 s · v_hull / v_terminal`, so a calibration pass that leaves
-the boat settling slower will also leave it a little slower off the mark. If it
-reads as sluggish when comparing two trim settings back to back, we shorten the
-time; it's a feel decision to be made against the running thing, not something
-to argue about now.
+lag out from under us. The anchor holds at the reference speed and stretches away
+from it: the lag works out as `10 s · v_hull / v_terminal`, so a calibration pass
+that leaves the boat settling slower will also leave it a little slower off the
+mark. If it reads as sluggish when comparing two trim settings back to back, we
+shorten the time; it's a feel decision to be made against the running thing.
+
+Before calibration this landed at ≈ 877 kg, agreeing with the 880 kg estimate
+above to within 1% — two routes to one number, and the reason that estimate is
+quoted as a sanity check rather than used as an input. Calibration raised the
+resistance by a quarter and carried the derived mass to ≈ **1092 kg** with it, so
+the two now differ by 24%. That is the anchor stretching rather than breaking,
+and the ten seconds was kept rather than shortened to hold the mass down: the lag
+is the thing anyone can judge by watching and the mass is the thing nobody can,
+and a pass fitting a polar has no business deciding how the boat should feel.
+Read the gap as the boat feeling slightly heavier off the mark than its
+displacement argues for, or as the resistance sitting at the top of its plausible
+range; the evidence doesn't distinguish them. `hull.test.ts` holds the derived
+mass to 600–1200 kg, so a pass that needs more room has to say so out loud.
 
 ### 3.6 Calibration targets
 
 Constants get tuned until the polar hits roughly these marks in 10 kt true:
 
-| Point of sail | TWA | Sloop | Main only |
-| --- | --- | --- | --- |
-| Head to wind | 0° | 0 (in irons) | 0 (in irons) |
-| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt |
-| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt |
-| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt |
-| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt |
-| **Closest useful angle** | — | **≈ 45°** | **≈ 55°** |
+| Point of sail | TWA | Sloop | Main only | **Model (sloop)** |
+| --- | --- | --- | --- | --- |
+| Head to wind | 0° | 0 (in irons) | 0 (in irons) | **0** |
+| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.29 kt** |
+| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt | **5.55 kt** |
+| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.83 kt** |
+| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt | **3.79 kt** |
+| **Closest useful angle** | — | **≈ 45°** | **≈ 55°** | **44°** |
 
 Beam reach fastest, run notably slower, and a no-go zone that simply *is* rather
-than being drawn on. These become the model layer's unit tests.
+than being drawn on. These are the model layer's unit tests, in
+`calibration.test.ts`.
+
+The right-hand column is where `pos-fo1.4` left the sloop; every figure is inside
+the ~10% the targets are quoted to. Two of them are worth reading rather than
+just checking.
+
+The **broad reach is 7% light, and structurally so.** The table puts a beam reach
+and a broad reach 0.2 kt apart while the driving force at 135° is barely half
+what it is at 90° — that needs resistance going as `v¹⁰`, and this section's
+curve is a square under a sixth power, which tops out at `v⁸`. No further tuning
+closes that gap; a different resistance curve would.
+
+The **closest useful angle is read as the peak of upwind VMG**, which is what a
+sailor means by it and what a test can check. It came out at 30–35° before
+calibration — a boat that points like nothing afloat — and the constant that
+moved it is the keel's stall ceiling in [§3.5](#35-hull-resistance-and-integration).
+
+The **main-only column is not yet met** and is not this section's to meet: it
+belongs to [§3.7](#37-sailing-under-main-alone)'s upwind bonus, which changes
+the sloop numbers too and so has to recalibrate against this table.
+
+**This table is one wind speed, and the model knows it.** [§2.1](#21-initial-state-a-random-solvable-problem)
+opens anywhere in 6–14 kt and [§5](#5-direct-manipulation)'s slider has no
+ceiling, and the three qualitative lessons weaken monotonically as the breeze
+fills in — the closest useful angle runs from 49° at 6 kt to 39° at 14 kt, and
+the run climbs from 55% of a beam reach to 78% of it. Partly that is real, since
+a displacement hull meets its wall on both points of sail as the wind rises. The
+rest is the wall not being sharp enough to hold the speed down while the keel's
+`1/v²` charge falls away — the same softness as the broad-reach shortfall above,
+and by 20 kt it puts a beam reach 25% *over* hull speed. `calibration.test.ts`
+asserts the looser bounds that do hold across 6–14 kt, so the limit is stated
+rather than discovered; `pos-lcz` is the bead for narrowing it, and the lever it
+will have to reach for is the wall exponent, which
+[§3.5](#35-hull-resistance-and-integration) currently treats as shape rather
+than knob.
 
 The last row matters as much as the speeds. Main-only falls off *hardest close
 hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
@@ -1079,9 +1179,12 @@ one. Several are worth revisiting *after* v1 works.
 
 **Out for now, plausible later (as toggles):**
 
-- Leeway — the crab angle between heading and track
+- Leeway — the crab angle between heading and track. The *cost* of making side
+  force is charged ([§3.5](#35-hull-resistance-and-integration)); what is out is
+  the boat visibly crabbing, and any separate accounting of where that cost goes
 - Telltales
-- Heel, which top-down can only hint at symbolically
+- Heel, which top-down can only hint at symbolically — and which, like leeway,
+  is paid for without being shown
 
 **Out, by design:**
 
@@ -1097,8 +1200,12 @@ the student the answer; the traffic light lets them find it.
 
 **Out, physics we're not modeling:**
 
-- Main blanketing the jib downwind (real, and the reason a run is slower than
-  the model will say — worth reconsidering if runs feel wrong)
+- Main blanketing the jib downwind, as a mechanism. It is real, and it is part
+  of why a run is slower than a two-independent-sails model says; `pos-fo1.4`
+  folded it into the stalled sail's normal force
+  ([§3.2](#32-sail-forces)) rather than modelling the shadow, which fits the
+  sloop but leaves main-only carrying a penalty it should not have. Worth
+  reopening if [§3.7](#37-sailing-under-main-alone) cannot calibrate around it
 - Slot effect between main and jib, *except* for the single scalar upwind bonus
   that makes main-only point worse — see [§3.7](#37-sailing-under-main-alone)
 - Weather helm. Unreachable without a rudder, and largely absent from the

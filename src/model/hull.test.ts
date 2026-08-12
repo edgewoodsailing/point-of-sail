@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { HULL } from "./boat.ts";
-import { EFFECTIVE_MASS, hullResistance, hullResistanceSlope } from "./hull.ts";
+import {
+  EFFECTIVE_MASS,
+  hullResistance,
+  hullResistanceSlope,
+  keelInducedDrag,
+} from "./hull.ts";
 import { ACCELERATION, RESISTANCE } from "./tuning.ts";
 import type { MetersPerSecond, Newtons, Seconds } from "./units.ts";
 
@@ -70,11 +75,18 @@ describe("the hull-speed wall (DESIGN.md §3.5)", () => {
 
   it("makes the last fraction of a knot cost far more than a quadratic hull would", () => {
     // 20% more speed. A purely quadratic hull would charge 1.2² = 1.44× for it;
-    // this one charges nearly three times as much, which is the wall the boat
-    // cannot sail through however much sail area it carries.
+    // this one charges 2.7×, which is the wall the boat cannot sail through
+    // however much sail area it carries.
+    //
+    // The margin here was tighter before pos-fo1.4, which raised the quadratic
+    // term by a quarter and left the wall where it was — so the wall is now a
+    // smaller share of the whole and the ratio came down from 2.9 to 2.7. The
+    // bound tracks that rather than the other way round: what has to hold is
+    // that the last knot costs much more than a quadratic hull would charge,
+    // not that the two coefficients stay in any particular proportion.
     const ratio = hullResistance(1.2 * V_HULL) / hullResistance(V_HULL);
     expect(ratio).toBeGreaterThan(2.5);
-    expect(ratio / 1.44).toBeGreaterThan(1.9);
+    expect(ratio / 1.44).toBeGreaterThan(1.8);
   });
 });
 
@@ -108,17 +120,136 @@ describe("the resistance slope", () => {
   });
 });
 
+describe("the keel's induced drag (DESIGN.md §3.5)", () => {
+  /** The far-field limb the design document writes down, on its own. */
+  function unstalled(speed: MetersPerSecond, sideForce: Newtons): Newtons {
+    return (RESISTANCE.sideForce * sideForce ** 2) / speed ** 2;
+  }
+
+  /** A side force in the range the rig actually makes close hauled. */
+  const LOADED: Newtons = 680;
+
+  it("charges nothing when the sails are making no side force", () => {
+    for (const speed of [-2, 0, 0.5, 2, V_HULL]) {
+      expect(keelInducedDrag(speed, 0)).toBe(0);
+    }
+  });
+
+  it("charges nothing at rest, however hard the rig is pulling sideways", () => {
+    // The property the whole saturated limb exists for. A drag that survived at
+    // zero speed would push a sheeted-in boat backwards out of the no-go zone
+    // and then reverse the moment it did, leaving the speed chattering.
+    expect(keelInducedDrag(0, LOADED)).toBe(0);
+    expect(keelInducedDrag(0, -LOADED)).toBe(0);
+  });
+
+  it("opposes the motion, whichever way the boat is going", () => {
+    expect(keelInducedDrag(2, LOADED)).toBeGreaterThan(0);
+    expect(keelInducedDrag(-2, LOADED)).toBeLessThan(0);
+    // And does not care which side the rig is pulling towards: port tack costs
+    // exactly what starboard does.
+    expect(keelInducedDrag(2, -LOADED)).toBe(keelInducedDrag(2, LOADED));
+  });
+
+  it("is the design document's induced drag once the boat is moving", () => {
+    // Well clear of the keel's stall the saturation term fades and what is left
+    // is `k·F²/v²` — written out here from §3.5 rather than shared with the
+    // implementation. It approaches from below and never overshoots, which is
+    // what says the stall only ever *reduces* the charge.
+    const light: Newtons = 120;
+    let previous = 0;
+
+    for (const speed of [3, 4, 6]) {
+      const share = keelInducedDrag(speed, light) / unstalled(speed, light);
+      expect(share, `${speed} m/s`).toBeGreaterThan(0.98);
+      expect(share, `${speed} m/s`).toBeLessThanOrEqual(1);
+      expect(share, `${speed} m/s`).toBeGreaterThan(previous);
+      previous = share;
+    }
+  });
+
+  it("never charges more than the keel can hold", () => {
+    // `keelStall` read literally: the drag can reach that fraction of the side
+    // force and no more, at any speed and any load.
+    for (const load of [50, 200, LOADED, 2000]) {
+      for (let speed = 0; speed <= 8; speed += 0.05) {
+        expect(keelInducedDrag(speed, load) / load, `${load} N at ${speed} m/s`).toBeLessThanOrEqual(
+          RESISTANCE.keelStall + 1e-12,
+        );
+      }
+    }
+  });
+
+  it("reaches that ceiling exactly where the two limbs cross", () => {
+    // Which is what makes the constant readable. The crossing is at
+    // `v² = k·F/(2·keelStall)`, and the peak of the blend sits on it.
+    const saturation = (RESISTANCE.sideForce * LOADED) / (2 * RESISTANCE.keelStall);
+    const speed = Math.sqrt(saturation);
+
+    expect(keelInducedDrag(speed, LOADED)).toBeCloseTo(RESISTANCE.keelStall * LOADED, 9);
+  });
+
+  it("changes the sign of its slope at the stall, which is why it is taken explicitly", () => {
+    // The reason `simulation.ts` keeps this term out of the linearised
+    // denominator. It is not that the slope is negative — it is that the slope
+    // is *both*: the drag climbs to the ceiling above and falls away after it,
+    // so a boat below the keel's stall stiffens with speed and one above it
+    // softens. Both halves are ordinary sailing, close hauled and reaching
+    // respectively, so there is no regime the term could be safely folded into
+    // a denominator that must stay positive.
+    const h = 1e-6;
+    const slopeAt = (speed: MetersPerSecond, load: Newtons) =>
+      (keelInducedDrag(speed + h, load) - keelInducedDrag(speed - h, load)) / (2 * h);
+
+    const peak = Math.sqrt((RESISTANCE.sideForce * LOADED) / (2 * RESISTANCE.keelStall));
+    expect(slopeAt(peak / 2, LOADED)).toBeGreaterThan(0);
+    expect(slopeAt(peak * 2, LOADED)).toBeLessThan(0);
+  });
+
+  it("stays gently sloped, which is what makes leaving it explicit safe", () => {
+    // Omitting a term from the denominator costs whatever damping it would have
+    // added, and that is only negligible if its slope is small next to the mass
+    // over a step. Measured at `MAX_STEP` rather than at a frame: 0.1 s is the
+    // longest step the clamp allows, and it is also the step `settle` runs at,
+    // so a bound taken at 60 Hz would understate the worst case sixfold.
+    //
+    // The peak slope grows as the square root of the load — the ceiling rises
+    // with `F` while the speed it is reached at rises with `√F` — so which
+    // loads are sampled matters. 5000 N is far past anything a Rhodes 19's rig
+    // makes in a wind a student would set, and it comes to 0.026.
+    const dt: Seconds = 0.1;
+    const h = 1e-6;
+    let steepest = 0;
+
+    for (const load of [50, 200, LOADED, 2000, 5000]) {
+      for (let speed = 0.01; speed <= 8; speed += 0.01) {
+        const slope =
+          (keelInducedDrag(speed + h, load) - keelInducedDrag(speed - h, load)) / (2 * h);
+        steepest = Math.max(steepest, Math.abs(slope));
+      }
+    }
+
+    expect((steepest * dt) / EFFECTIVE_MASS).toBeLessThan(0.05);
+  });
+});
+
 describe("effective mass (DESIGN.md §3.5)", () => {
   it("lands near the boat, crew and added mass the design document reasons out", () => {
     // §3.5 arrives at ≈ 880 kg by adding up a 601 kg boat, two crew and ~15%
-    // added mass; this module gets there from the acceleration lag instead. The
-    // two agreeing is a check on both.
+    // added mass; this module gets there from the acceleration lag instead.
     //
     // The mass is proportional to the resistance coefficient, so a pinned value
     // here would be a pinned `RESISTANCE.quadratic` in disguise — and pos-fo1.4
-    // exists to move that. Hence a band wide enough to calibrate inside, which
-    // still catches a tuning pass that has produced a barge or a dinghy, over a
+    // moved that. Hence a band wide enough to calibrate inside, which still
+    // catches a tuning pass that has produced a barge or a dinghy, over a
     // closed form written out independently of `hull.ts`.
+    //
+    // Calibration spent about half the headroom: the two routes agreed to
+    // within 1% before that pass and differ by 24% after it, at ≈ 1092 kg. The
+    // band stays where pos-fo1.3 put it. Its job is to make the next pass that
+    // needs more room say so out loud — the answer then is to argue about the
+    // band or to shorten the lag `ACCELERATION.timeToTerminal`, which is what
+    // the mass is derived through, not to widen this quietly.
     expect(EFFECTIVE_MASS).toBeGreaterThan(600);
     expect(EFFECTIVE_MASS).toBeLessThan(1200);
     expect(EFFECTIVE_MASS).toBeCloseTo(

@@ -30,6 +30,7 @@ export const FOIL: {
   readonly spanEfficiency: number;
   readonly stallAngle: Radians;
   readonly stallBlendWidth: Radians;
+  readonly plateNormalForce: number;
 } = {
   /** `Cd0` — the drag a sail carries at zero incidence, before induced drag. */
   profileDrag: 0.02,
@@ -46,10 +47,11 @@ export const FOIL: {
    * lift moves with it.
    *
    * On the main, `Cl` reaches 1.40 here, the figure §3.2 quotes. That is not
-   * quite the maximum: the smoothstep blend leaves this angle with zero slope,
-   * so the attached limb keeps climbing for another degree or so and the curve
-   * actually tops out at ≈ 1.46 near 19.7°. Both are realistic for a soft sail,
-   * but the optimal-trim search will settle on the second one, so it is the
+   * the maximum: the smoothstep blend leaves this angle with zero slope, so the
+   * attached limb keeps climbing well past it and the curve actually tops out
+   * at ≈ 1.57 near 22.4°. Both are realistic for a soft sail, but the
+   * optimal-trim search settles on the second one — at every point of sail in
+   * the §3.6 table the main sits within a degree or two of 22° — so it is the
    * number to have in mind when reading the calibration table.
    */
   stallAngle: degreesToRadians(18),
@@ -58,8 +60,49 @@ export const FOIL: {
    * How far past the stall the blend into the flat-plate limb takes to
    * complete. A soft sail stalls gradually rather than dropping off a cliff,
    * and the width is what expresses that.
+   *
+   * **pos-fo1.4 doubled this from 10°, and not for the polar.** At 10° the
+   * stall was a cliff, and a cliff makes the model *bistable* on a reach: the
+   * same boat at the same trim in the same wind settles at two different
+   * speeds, depending on whether it started from rest or was already going.
+   * Trimmed for TWA 120 from a standstill it stuck at 3.7 kt where the same
+   * trim held 5.1 kt once moving, because the sail eased for the apparent wind
+   * at speed is stalled at the apparent wind at rest, and the drop over the
+   * cliff was steeper than the drive needed to climb out of it. A polar that
+   * depends on how the boat got there is not a polar, and a student who could
+   * not get going without easing first and trimming after would be learning
+   * the model's arithmetic rather than sailing.
+   *
+   * The threshold is sharp and the margin here is deliberate: 12° is still
+   * bistable by 3 kt, 14° is clean, and 20° leaves room for a later pass to
+   * move the neighbouring constants without falling back over the edge. It also
+   * costs something — see {@link FOIL.stallAngle} for where peak lift ends up —
+   * so it is not free to widen further.
    */
-  stallBlendWidth: degreesToRadians(10),
+  stallBlendWidth: degreesToRadians(20),
+
+  /**
+   * `k` in the stalled sail's normal force, `Cn = k·sinα`, which `foil.ts`
+   * resolves into the flat-plate limb's `Cl` and `Cd`. At α = 90° — a sail
+   * squared off on a dead run — it *is* the drag coefficient.
+   *
+   * **This is what sets the speed of a run**, and it is the only constant that
+   * does: dead downwind the sail makes no lift, the keel makes no side force,
+   * and the whole force balance is this number against the hull. Nothing else
+   * in the model can be moved to slow a run without wrecking a reach — the
+   * resistance that would do it (`A ≈ 65`) puts a beam reach at 4 kt.
+   *
+   * **1.1, where the design document said 2.0.** Two is the textbook figure for
+   * a flat plate of *infinite* span; the same plate at the aspect ratio of a
+   * sail is nearer 1.2, because the flow spills round the ends instead of
+   * stagnating. That correction is most of the change and is straightforwardly
+   * right. The rest is that a soft sail on a run is not a plate at all: it is
+   * twisted, its head falls off to leeward, and — the part §7 declines to model
+   * — the jib spends the whole run in the main's wind shadow. One number stands
+   * for all of it, which is why it sits a little under the rigid-plate figure
+   * rather than at it.
+   */
+  plateNormalForce: 1.1,
 };
 
 /**
@@ -97,24 +140,23 @@ export const LUFF: {
 };
 
 /**
- * Hull resistance (§3.5), in
+ * What the water charges (§3.5): the hull's own resistance,
  *
  * ```text
  * R(v) = A·v² + B·v²·(v / v_hull)⁶
  * ```
  *
- * Both coefficients are in N·s²/m², and `v_hull` is a *measurement* — it lives
- * in `boat.ts` as `HULL.hullSpeed`, ≈ 2.90 m/s — so it is not a knob and is not
- * restated here.
- *
- * **These are starting values, not calibrated ones.** pos-fo1.4 tunes them until
- * the polar hits §3.6; what this file fixes now is the shape and the units, so
- * that the tuning pass has knobs to turn rather than constants to hunt.
+ * plus what it costs to be held on course against the rig's side force, which
+ * is the last two constants. `A` and `B` are in N·s²/m², and `v_hull` is a
+ * *measurement* — it lives in `boat.ts` as `HULL.hullSpeed`, ≈ 2.90 m/s — so it
+ * is not a knob and is not restated here.
  */
 export const RESISTANCE: {
   readonly quadratic: number;
   readonly hullSpeedWall: number;
   readonly asternFactor: number;
+  readonly sideForce: number;
+  readonly keelStall: number;
 } = {
   /**
    * `A` — ordinary resistance, quadratic in speed, which is what the boat feels
@@ -123,13 +165,31 @@ export const RESISTANCE: {
    * It is also the one constant the acceleration lag is derived through (see
    * `hull.ts`), so it cannot be moved without moving the effective mass with
    * it. That is deliberate: the *felt* lag is what §3.5 pins, not the mass.
+   *
+   * pos-fo1.4 raised it from 22.5. What pinned it is the run: with the drive
+   * there fixed by {@link FOIL.plateNormalForce}, this is the other side of
+   * that balance, and 22.5 left the boat a knot fast dead downwind. A textbook
+   * estimate for a Rhodes 19 — friction on ~9.5 m² of wetted surface plus
+   * residuary resistance at `Fn` 0.38 — comes out around 310 N at 5.4 kt where
+   * this curve now says 349 N, which is as close as an estimate assembled that
+   * way deserves to be called.
    */
-  quadratic: 22.5,
+  quadratic: 28,
 
   /**
    * `B` — the wall. Reads as *the extra resistance at exactly hull speed*,
-   * since the sixth-power factor is 1 there: starting equal to `A`, so
-   * resistance doubles at 5.65 kt and has nearly tripled 20% past it.
+   * since the sixth-power factor is 1 there: at 22.5 against an `A` of 28, the
+   * resistance has not quite doubled at 5.65 kt and has more than tripled 20%
+   * past it.
+   *
+   * Calibration left this where pos-fo1.3 set it, which is worth saying out
+   * loud rather than leaving to a diff: the polar wants a *sharper* wall than a
+   * sixth power can give — §3.6 puts a beam reach and a broad reach 0.2 kt
+   * apart while their driving forces differ by half, which needs `R ∝ v¹⁰` and
+   * the curve tops out at `v⁸` — so raising this cannot buy the shape, and
+   * lowering it lets a beam reach through hull speed. The broad reach lands 7%
+   * light as a result, which is the largest miss in the table and the one that
+   * is structural rather than a matter of turning something.
    *
    * The sixth power is a shape, not a theory. What it has to produce is the
    * wall a displacement hull hits — no amount of sail area gets a Rhodes 19 to
@@ -150,6 +210,56 @@ export const RESISTANCE: {
    * cannot get near hull speed astern.
    */
   asternFactor: 2.5,
+
+  /**
+   * `k` in the keel's `D = k·F²/v²` — what it costs to be held on a heading the
+   * wind is not blowing along. `hull.ts` has the derivation and the stall that
+   * keeps it finite at rest; this is its scale.
+   *
+   * **It is what makes the no-go zone exist.** Before this term the simulator
+   * had nothing to charge for sailing at a large angle to the wind: it ran 29%
+   * fast close hauled and still made 3 kt at TWA 15°, and no resistance
+   * coefficient could fix that, because scaling resistance slows every point of
+   * sail at once and the problem was one end of the polar. Close hauled this
+   * term is worth 148 N against 158 N of hull resistance — it is half of what
+   * slows the boat — and it fades to 44 N on a beam reach, 1 N on a broad
+   * reach, and exactly nothing on a run, where the sails make no side force at
+   * all.
+   *
+   * **Four times the keel's own induced drag, and deliberately.** Working it
+   * out honestly for a 3'3" keel — `k = 1/(½ρ·π·b²·e)` — gives about 1/1100,
+   * against the 1/280 here; put the other way, the boat is charged as if its
+   * keel had half the span it has. The gap is the rest of the bill for making
+   * side force, all of which §7 declines to model separately and all of which
+   * scales the same way: the heel it produces, which spills drive and drags the
+   * topsides through the water; the leeway the hull makes, which drags a boat
+   * sideways as well as forwards; and the rudder angle needed to hold the
+   * course, which is drag with a keel's shape and none of its span. Charging
+   * them on the same number is the fudge. Pretending the keel alone accounted
+   * for the polar would be the dishonest version.
+   */
+  sideForce: 0.0036,
+
+  /**
+   * The largest fraction of the side force the keel can ever charge as drag —
+   * a maximum drag angle, in the sense that 0.22 is a boat crabbing at 12°.
+   *
+   * Physically it is where the keel stalls, and it went in because `F²/v²` runs
+   * away at low speed where a real keel simply gives up and lets the boat
+   * slide. It turned out to be more than a guard on that corner. The whole
+   * upwind quarter runs at or just under this ceiling — close hauled in 10 kt
+   * the keel is loaded to within a percent of it — so this, and not
+   * {@link RESISTANCE.sideForce}, is what sets where the no-go zone ends:
+   * raise it and the zone widens and the best angle opens (0.30 puts it at
+   * 50°), lower it and the boat points higher than any boat should (0.16 puts
+   * it at 40°). At 0.22 the upwind VMG peaks at 44°, which is §3.6's "closest
+   * useful angle ≈ 45°".
+   *
+   * The two constants therefore divide the work rather than duplicating it:
+   * this one owns the upwind end of the polar, and `sideForce` owns how fast
+   * the charge fades as the boat bears away.
+   */
+  keelStall: 0.22,
 };
 
 /**
@@ -163,6 +273,15 @@ export const RESISTANCE: {
  * from moving the lag out from under us. It ties the two together rather than
  * freezing the lag outright — see `EFFECTIVE_MASS` for how far the anchor
  * holds.
+ *
+ * **pos-fo1.4 left it at ten seconds, which was a choice.** Raising the
+ * resistance raised the derived mass with it, to ≈ 1092 kg against §3.5's
+ * independently reasoned 880, and the mass could have been held there instead
+ * by shortening this to 7.4 s. It was not, because that inverts the design: the
+ * lag is the thing anyone can judge and the mass is the thing nobody can, and a
+ * calibration pass fitting a polar has no business deciding how the boat should
+ * feel. Shortening it is a decision to make against the running simulator, as
+ * §3.5 says — not a side effect of getting a run down to 3.5 kt.
  */
 export const ACCELERATION: {
   readonly timeToTerminal: Seconds;
