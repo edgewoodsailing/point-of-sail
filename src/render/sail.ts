@@ -469,9 +469,9 @@ export function rigDrawing(state: SimState): RigDrawing {
  * always — it is a position on the drawn chord, and a travelling wave's phase
  * depends on it staying monotone — while the collapse runs aft from `s = 0` when
  * the flow arrives at the luff and forward from `s = 1` when it arrives at the
- * leech. Asking "how far into the shaking is this point" answers both without a
+ * leech. Asking "how far into the collapse is this point" answers both without a
  * branch at the call site, and reads the same in either band: 0 at the boundary,
- * 1 where the cloth is loosest.
+ * 1 at the breaking edge.
  *
  * A ratio rather than a chord distance, deliberately: it is the natural argument
  * for a flutter's amplitude ramp (pos-dmg.2), which wants to fade in from the
@@ -479,15 +479,22 @@ export function rigDrawing(state: SimState): RigDrawing {
  * `shape.collapsedFraction` for the distance in chord fractions if that is what
  * is wanted.
  *
- * **One caveat before it is used as an amplitude on its own.** This measures
- * distance from the *boundary*, so as the region grows to the whole chord the
- * peak stays at the edge the collapse started from and the far end falls to 0:
- * head to wind it is 1 at the luff and 0 at the clew, though a wholly flogging
- * sail is loosest at its free end. That is right for §4.1's case — "a small
- * ripple at the luff only", where the boundary is the thing moving — and it
- * inverts exactly where the sail shakes hardest. A flutter that wants to cover
- * the fully collapsed state too should scale by `collapsedFraction` as well
- * rather than read this alone.
+ * **This is the *aerodynamic* ramp, and at full collapse that stops being the
+ * whole story.** What it measures is depth into the **detached** region, which
+ * is where a partly collapsed sail really does shake: the flow has left the
+ * cloth at the breaking edge and is still attached further along. Once the
+ * fraction reaches 1 there is no pressure gradient left to measure, and this
+ * goes on peaking at the edge the collapse arrived from — head to wind, 1 at the
+ * luff, which is the end pinned to the mast, and 0 at the clew. A sail flogging
+ * head to wind moves most at its **unsupported** edge, the leech, because
+ * nothing is holding it.
+ *
+ * Both are real, in different regimes, which is why no single word covers this
+ * number: "detached" is what it measures, "unsupported" is what a flogging sail
+ * responds to, and they point at opposite ends of the cloth. A flutter that
+ * wants the second must blend toward the free edge as `collapsedFraction`
+ * approaches 1 — deliberately not done here, because it is an animation
+ * decision. §4.1 says the same thing in the same terms.
  */
 export function collapseAt(shape: SailShape, chordFraction: number): number {
   // Guards the divide, and says the honest thing besides: with nothing

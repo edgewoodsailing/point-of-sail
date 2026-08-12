@@ -459,9 +459,14 @@ describe("the collapsed region runs from the edge that is breaking (pos-83f)", (
 
   /**
    * Wholly collapsed, at either edge-on state: the region has grown to the whole
-   * chord, so every interior point is shaking. The far end reads exactly 0 —
-   * not a gap, but the boundary having arrived there: it is the last point to
-   * let go and the least loose, which is what a depth-into-the-collapse says.
+   * chord, so every interior point is inside it. The far end reads exactly 0 —
+   * not a gap, but the boundary having arrived there.
+   *
+   * **Read that 0 as "furthest from where the flow detached", not "not
+   * moving".** This pins the aerodynamic quantity `collapseAt` promises, and at
+   * full collapse the far end is the *unsupported* one — a sail flogging head to
+   * wind whips hardest exactly there. See `collapseAt`'s docblock and §4.1; a
+   * flutter that reads this alone will hold the wrong end still.
    */
   it("covers the whole chord when the sail is wholly collapsed, at either edge", () => {
     for (const alpha of [0, 1, 180, 179]) {
