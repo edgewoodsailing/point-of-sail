@@ -1015,11 +1015,14 @@ a quarter of full camber, so a shaking sail can never be read as a drawing one.
 Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
 shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
 px. **The largest ripple is not the flogging one**: the amplitude envelope tops
-out 5% higher, at exactly 0.945 — at the cross-fade midpoint described below,
+out 5% higher, reaching 0.945 at the cross-fade midpoint described below,
 `collapsedFraction = 0.95`, and a tenth of the way aft, where the end taper stops
-biting. Neither coordinate is an accident, so the figure is exact rather than
-sampled, and the biggest thing the drawing shows is 4.61 px on that jib and
-5.96 px on the main.
+biting — so the biggest thing the drawing shows is 4.61 px on that jib and
+5.96 px on the main. That is the value at the taper's corner rather than the
+supremum, which sits `2.2 × 10⁻⁶` higher and a hair inside the taper, because
+`smoothstep`'s slope is zero *at* saturation and not near it. Nothing physical
+turns on 2.2 × 10⁻⁶ — about 10⁻⁵ px — but the figure is derived rather than
+sampled, and a derived figure is worth quoting accurately.
 It **travels with the flow** at one chord a second, so the ripples run aft
 when the wind arrives at the luff and forward when it arrives at the leech, and
 the jib's clock is offset from the main's so two flogging sails do not read as

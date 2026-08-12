@@ -549,19 +549,25 @@ export type SailDeformation = (chordFraction: number, camberOffset: Meters) => M
  * and the main 5.7 px.
  *
  * **Head to wind is not where the ripple is largest**, which is worth knowing
- * before quoting either of those as a maximum. {@link flutterEnvelope} tops out
- * at exactly **0.945**, not at full collapse but at the cross-fade's midpoint,
+ * before quoting either of those as a maximum. {@link flutterEnvelope} reaches
+ * **0.945** at the cross-fade's midpoint,
  * `collapsedFraction = (FLOG_ONSET + 1) / 2 = 0.95` — α = 2.6768° — and at
- * `s = FLUTTER_END_TAPER` rather than at the leech. Neither coordinate is a
- * numerical accident: the mixture is already falling in `s` on that limb, so
- * the peak sits where the taper stops biting, and at the midpoint
- * `smoothstep(0.5) = 0.5` puts both ends of the mixture at 0.5, where the
- * normaliser's two branches meet in a kink. There the envelope is
- * `cf − FLUTTER_END_TAPER · (1 − cf)`. So the largest ripple the drawing can
- * show is 5% above the figures above: **5.96 px** on the main and **4.61 px**
- * on the jib. `sail.test.ts` evaluates that maximum where it lives rather than
- * sweeping up to it, because it is the figure that has to stay legible and the
- * one a change to any of these constants would move first.
+ * `s = FLUTTER_END_TAPER`, where it is `cf − FLUTTER_END_TAPER · (1 − cf)`. So
+ * the largest ripple the drawing shows is 5% above the figures above:
+ * **5.96 px** on the main and **4.61 px** on the jib.
+ *
+ * **0.945 is the value at the taper's corner, not the supremum**, and the
+ * distinction is recorded because it was got wrong twice. The `cf` coordinate
+ * is exact — at the midpoint `smoothstep(0.5) = 0.5` puts both ends of the
+ * mixture at 0.5, where the normaliser's two branches meet in a kink, and a
+ * kink is a true argmax. The `s` coordinate is a hair early: just inside the
+ * taper its slope is `6u(1 − u)/τ = 60(1 − u)`, still beating the mixture's
+ * fall of `0.05/0.95`, so the true maximum sits at `s ≈ 0.09991` and is
+ * `2.2 × 10⁻⁶` higher. **`smoothstep`'s derivative is zero *at* 1, not near
+ * it** — the module docblock warns of the same thing at §3.3's plateau edges,
+ * and this is that property met from the other side. Nothing physical turns on
+ * 2.2 × 10⁻⁶, which is about 10⁻⁵ px; what turns on it is whether this
+ * paragraph may say "maximum", and it may not.
  *
  * A quarter of full camber, so a fluttering sail can never be mistaken for a
  * drawing one at a glance. This is a knob to move by eye against the running

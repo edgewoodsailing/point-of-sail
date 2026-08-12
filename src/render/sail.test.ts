@@ -817,36 +817,41 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
 
   /**
    * **The largest ripple is not the flogging one**, which the test above would
-   * leave you believing. The envelope tops out at exactly 0.945 — 5% above its
-   * full-collapse value — at `collapsedFraction = 0.95`, α = 2.6768°, and at
-   * `s = 0.10` rather than at the leech: the normalised cross-fade is broadest
-   * halfway across, so the peak sits higher there than at either end of it.
+   * leave you believing. The envelope reaches 0.945 at `collapsedFraction =
+   * 0.95` — the cross-fade midpoint, α = 2.6768° — and at `s = FLUTTER_END_TAPER`,
+   * which is 5% above its full-collapse value and a tenth of the way aft rather
+   * than at the leech.
    *
-   * Pinned because it is the figure that actually has to stay legible, and
-   * because a change to any of the flutter constants moves this before it moves
-   * the flogging case.
+   * **That is the value at the taper's corner, and the supremum is 2.2 × 10⁻⁶
+   * above it**, at `s ≈ 0.09991`. Stating both is the point of this test. Near
+   * `u = 1` the taper's slope is `6u(1 − u)/τ = 60(1 − u)`, still beating the
+   * mixture's fall of `0.05/0.95 = 0.0526` until `u = 0.999123` — so the peak
+   * sits a hair *before* saturation, not at it. `smoothstep`'s derivative is
+   * zero **at** 1, not near it, which is the same property `sail.ts`'s module
+   * docblock warns about at the collapsed-fraction plateau edges, met here from
+   * the other side.
+   *
+   * Nothing physical moves on 2.2 × 10⁻⁶ — about 10⁻⁵ px — so the pixel figures
+   * below are unchanged. What moves is what may be *claimed*.
    */
-  it("is largest in the middle of the cross-fade, not head to wind", () => {
-    // **Evaluated at the maximum rather than swept up to it.** A sampled sweep
-    // reports its own step size here: the ridge is narrow in α, so coarsening
-    // from 0.001° to 0.05° walks the answer from 0.9448 down to 0.9243, and
-    // *both* refining and coarsening would turn a pinned running maximum red.
+  it("reaches 0.945 at the taper's corner, and never much more anywhere", () => {
+    // **Evaluated where the value lives rather than swept up to it.** A sampled
+    // sweep reports its own step size here: the ridge is narrow in α, so
+    // coarsening from 0.001° to 0.05° walks the answer from 0.9448 to 0.9243,
+    // and *both* refining and coarsening would turn a pinned running maximum
+    // red.
     //
-    // Neither coordinate of the maximum is a numerical accident, which is what
-    // makes evaluating it there legitimate rather than a convenient spot check:
-    //
-    //   s  = FLUTTER_END_TAPER exactly — the mixture is already falling in `s`
-    //        on this limb, so the peak sits where the taper stops biting and
-    //        not one sample later.
-    //   cf = (FLOG_ONSET + 1) / 2 exactly — the cross-fade midpoint, where
-    //        `smoothstep(0.5) = 0.5` puts both ends of the mixture at 0.5 and
-    //        the normaliser's two branches, `max(1 − w, w)`, meet in a kink.
-    //        The kink is the maximum.
+    // The `cf` coordinate is exact: `(FLOG_ONSET + 1) / 2` is the cross-fade
+    // midpoint, where `smoothstep(0.5) = 0.5` puts both ends of the mixture at
+    // 0.5 and the normaliser's two branches, `max(1 − w, w)`, meet in a kink.
+    // The kink is a true argmax. The `s` coordinate is *not* — see the docblock
+    // above — so what is asserted here is the value at the corner, and the
+    // supremum is bounded separately below.
     //
     // There the envelope is `cf − taper · (1 − cf)` = 0.95 − 0.1 × 0.05 = 0.945.
-    // Asserted with a tolerance rather than exactly: the value through the code
-    // path is 0.9449999999999996, and demanding equality would pin the
-    // implementation's association order rather than the number.
+    // With a tolerance rather than exactly: the value through the code path is
+    // 0.9449999999999996, and demanding equality would pin the implementation's
+    // association order rather than the number.
     const FLOG_ONSET = 0.9;
     const FLUTTER_END_TAPER = 0.1;
     const midCrossFade = (FLOG_ONSET + 1) / 2;
@@ -857,6 +862,12 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
     expect(flutterEnvelope(atPeak, FLUTTER_END_TAPER)).toBeCloseTo(
       midCrossFade - FLUTTER_END_TAPER * (1 - midCrossFade),
       12,
+    );
+
+    // And the supremum really is just inside the taper rather than at it, which
+    // is the whole reason 0.945 is not called a maximum.
+    expect(flutterEnvelope(atPeak, 0.0999)).toBeGreaterThan(
+      flutterEnvelope(atPeak, FLUTTER_END_TAPER),
     );
 
     // And that fraction is reachable rather than hypothetical — bracketed
@@ -870,19 +881,54 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
       envelopePeak(shapeAtAlpha(0)).value,
     );
 
-    // And nothing anywhere exceeds it. Swept coarsely on purpose — as an upper
-    // bound a sparse grid can only understate, so this cannot pass by luck.
-    let highest = 0;
-    for (const make of [mainShape, jibShape]) {
-      for (let alpha = 0; alpha <= 180; alpha += 0.01) {
-        const shape = make(0, wind(10, alpha));
-        if (shape.collapsedFraction <= 0) continue;
-        for (let i = 0; i <= 500; i += 1) {
-          highest = Math.max(highest, flutterEnvelope(shape, i / 500));
+    // **Nothing anywhere exceeds 0.9451**, established in the two halves that
+    // are honestly available — because the previous version of this got exactly
+    // that wrong, and it is worth spelling out as the fourth appearance of one
+    // defect in this bead.
+    //
+    // That version swept α through `mainShape`/`jibShape` and asserted
+    // `≤ 0.945 + 1e-12`, with a comment claiming a sparse grid "can only
+    // understate, so this cannot pass by luck". Backwards on both counts. **A
+    // sweep cannot establish an upper bound at all** — it can only fail to find
+    // a counterexample — and here the sparseness was doing the passing: the
+    // ridge needs `cf` within ~1e-8 of 0.95 *and* `s` within ~1e-4 of 0.09991,
+    // which a grid on either axis alone slides straight past, so the test
+    // asserted a bound that `collapsingShape` twenty lines above constructs a
+    // counterexample to.
+    //
+    // The lesson under all four appearances: **a measured quantity and an
+    // asserted property were allowed to be the same sentence.** So, separately:
+    //
+    //   1. *Where the supremum is* comes from the derivation in the docblock,
+    //      and a fine local scan measures it there — the only place a scan can
+    //      settle a maximum, because it is the place already known to hold one.
+    //   2. *That nothing else beats it* is a counterexample search, coarse and
+    //      wide, claiming only what a search can claim.
+    let ridge = 0;
+    for (let i = 0; i <= 400; i += 1) {
+      const shape = collapsingShape(0.94 + (i / 400) * 0.02, "luff");
+      for (let j = 0; j <= 2000; j += 1) {
+        ridge = Math.max(ridge, flutterEnvelope(shape, 0.09 + (j / 2000) * 0.02));
+      }
+    }
+    // It clears the corner value, so the scan is on the ridge rather than
+    // beside it — and it clears it by 2.2e-6, which is 1e-5 px.
+    expect(ridge).toBeGreaterThan(0.945);
+    expect(ridge).toBeCloseTo(0.9450022, 6);
+
+    let elsewhere = 0;
+    for (const edge of ["luff", "leech"] as const) {
+      for (let i = 0; i <= 2000; i += 1) {
+        const shape = collapsingShape(i / 2000, edge);
+        for (let j = 0; j <= 500; j += 1) {
+          elsewhere = Math.max(elsewhere, flutterEnvelope(shape, j / 500));
         }
       }
     }
-    expect(highest).toBeLessThanOrEqual(0.945 + 1e-12);
+    // 0.9451 leaves 5.4e-5 of headroom over the ridge — 3e-4 px — so this is a
+    // statement about the function rather than about either grid.
+    expect(ridge).toBeLessThan(0.9451);
+    expect(elsewhere).toBeLessThan(0.9451);
 
     // 5.96 px peak to peak on the main and 4.61 on the jib, on a 320 px phone —
     // *above* the flogging figures above rather than below them.
