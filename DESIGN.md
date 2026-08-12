@@ -1125,7 +1125,7 @@ flutter uses each where it is true: pos-dmg.2 cross-fades the amplitude ramp fro
 `collapsedFraction ∈ [0.9, 1]`. This section left that decision to the animation
 and the animation made it; what follows is what it costs.
 
-The onset is at |α| < 2.9°, so **every partial collapse is left exactly where
+The onset is at |α| < 2.98°, so **every partial collapse is left exactly where
 `collapseAt` puts it**, with no ripple outside the region at all — the case above
 is untouched. And on the leech-first limb the cross-fade is the *identity*, not a
 mirror: at full collapse from the leech, `collapseAt(shape, s)` already is `s`.
@@ -1149,7 +1149,7 @@ Two consequences are worth writing down rather than discovering.
   still calls drawing. At the points actually drawn the worst case is 0.217 of
   peak — 2.2 px of amplitude on a 1024 px iPad, on the single sample at
   `s = 0.969`, at α = 2.55°, where 96.6% of the sail has gone and the drawn
-  camber is 1.2 mm. Gating it would trade that smear for a discontinuity in the
+  camber is 0.65 mm. Gating it would trade that smear for a discontinuity in the
   drawn shape at the boundary, which is worse. `render/sail.test.ts` measures the
   overhang rather than arguing it away.
 

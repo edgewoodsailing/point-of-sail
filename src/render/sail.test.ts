@@ -860,7 +860,7 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
   });
 
   /**
-   * The cross-fade's onset is above `collapsedFraction` 0.9 — |α| < 2.9° — so
+   * The cross-fade's onset is above `collapsedFraction` 0.9 — |α| < 2.98° — so
    * every partial collapse §4.1 cares about is left exactly where `collapseAt`
    * puts it, with no ripple outside the region at all.
    */
@@ -892,7 +892,7 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
    * worst overhang at any of them, over every partial collapse of both limbs,
    * is 0.217 of peak — 0.026 m on the main, 2.2 px of amplitude on a 1024 px
    * iPad. It falls on the single sample at `s = 0.969`, at α = 2.55°, where
-   * 96.6% of the sail has gone and the drawn camber is 1.2 mm. Sampled on the
+   * 96.6% of the sail has gone and the drawn camber is 0.65 mm. Sampled on the
    * continuum instead it reaches 0.40, at `s = 0.954` — between two samples,
    * so never on screen.
    */
@@ -924,14 +924,28 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
    * ripple. The end taper is what makes the flutter grow out of the attachment.
    */
   it("grows out of its attachments instead of spiking off them", () => {
-    for (const alpha of [0, 2, 3, 5, 175, 178, 180]) {
-      const shape = shapeAtAlpha(alpha);
-      const peak = envelopePeak(shape).value;
-      const first = flutterEnvelope(shape, 1 / SAIL_SAMPLES);
-      const last = flutterEnvelope(shape, 1 - 1 / SAIL_SAMPLES);
-      expect(first, `${alpha}° first sample`).toBeLessThan(0.35 * peak);
-      expect(last, `${alpha}° last sample`).toBeLessThan(0.35 * peak);
+    let worstEnd = 0;
+    let largestAnywhere = 0;
+    for (const make of [mainShape, jibShape]) {
+      for (let alpha = 0; alpha <= 180; alpha += 0.05) {
+        const shape = make(0, wind(10, alpha));
+        if (shape.collapsedFraction <= 0) continue;
+        const amplitude = peakRipple(shape);
+        largestAnywhere = Math.max(largestAnywhere, envelopePeak(shape).value * amplitude);
+        for (const s of [1 / SAIL_SAMPLES, 1 - 1 / SAIL_SAMPLES]) {
+          worstEnd = Math.max(worstEnd, flutterEnvelope(shape, s) * amplitude);
+        }
+      }
     }
+
+    // Measured in metres rather than as a share of *this* shape's own peak: at a
+    // collapse so slight that only one sample falls inside the region, that
+    // sample necessarily is the peak, and the ratio reads 0.99 while the sail
+    // moves two hundredths of a pixel. The size is the thing that matters.
+    expect(worstEnd).toBeLessThan(0.028);
+    expect(worstEnd).toBeLessThan(0.25 * largestAnywhere);
+    expect(worstEnd * (320 / (2 * SCENE.shortRadius))).toBeLessThan(0.75);
+    expect(worstEnd * (1024 / (2 * SCENE.shortRadius))).toBeLessThan(2.4);
   });
 
   /**

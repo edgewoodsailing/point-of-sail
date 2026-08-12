@@ -579,9 +579,14 @@ const FLUTTER_HZ = 3;
  * is what turns that corner into a ripple that grows out of the attachment.
  *
  * At 0.1 the fade spans a little over three samples at each end, so the flutter
- * is at full amplitude across the middle 80% of the chord while the first and
- * last interior samples carry under a third of the peak — which `sail.test.ts`
- * asserts at every collapse rather than leaving to the eye.
+ * is at full amplitude across the middle 80% of the chord while the sample
+ * beside either attachment never moves more than 0.027 m — 0.7 px on a 320 px
+ * phone, 2.3 px on a 1024 px tablet, a quarter of the largest ripple the drawing
+ * ever shows. `sail.test.ts` sweeps both sails and every collapse for that,
+ * **in metres rather than as a share of the shape's own peak**: at a collapse so
+ * slight that only one sample falls inside the region, that sample necessarily
+ * *is* the peak, and a ratio would read 0.99 of a motion two hundredths of a
+ * pixel wide.
  */
 const FLUTTER_END_TAPER = 0.1;
 
@@ -589,7 +594,7 @@ const FLUTTER_END_TAPER = 0.1;
  * The collapsed fraction at which the amplitude ramp starts crossing from the
  * aerodynamic answer to the structural one. See {@link flutterEnvelope}.
  *
- * 0.9 is reached at |α| ≈ 2.9° — inside a band where `(1 − collapsedFraction)`
+ * 0.9 is reached at |α| = 2.98° — inside a band where `(1 − collapsedFraction)`
  * has already taken the camber below a tenth and the sail is drawn as very
  * nearly a straight line. Nothing §4.1 asks the *partial* collapse to teach
  * survives that far in, which is why the cross-fade can be put here without
