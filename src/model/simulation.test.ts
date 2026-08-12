@@ -330,10 +330,19 @@ describe("step size", () => {
       // follows a tangent to a convex curve, so its target lies past the true
       // balance point, and in a gale not slightly — the first step from rest at
       // 200 kt landed at 12.03 m/s against a balance of 6.34. Under pos-d7u's
-      // capped drive the same step lands at 0.0635 m/s against a balance of
-      // 3.2929 and the approach is monotone at every wind swept here. The
-      // assertion stays the weaker one, because what it is really for is that
-      // the overshoot *decays* if there is one, which is the property that
+      // capped drive the same step lands at 0.0223 m/s against a balance of
+      // 2.3016, and the approach is monotone at every wind swept here.
+      //
+      // Those are *this* boat's figures, which is worth flagging because the
+      // docblock on `advance` quotes a different pair for the same experiment.
+      // `gale` below carries the trim `wellTrimmed` found in 10 kt and then has
+      // the wind swapped under it, so it is overtrimmed for the gale and settles
+      // at 4.40-4.50 kt across 55 kt to 1000. Re-trimmed for the wind it is
+      // actually in, the boat settles at 6.38-6.40 kt and the first step is
+      // 0.0635 m/s. Both are real; they are different boats.
+      //
+      // The assertion stays the weaker one, because what it is really for is
+      // that the overshoot *decays* if there is one, which is the property that
       // separates converging from ringing and does not depend on the cap.
       let current = gale;
       const speeds: MetersPerSecond[] = [];

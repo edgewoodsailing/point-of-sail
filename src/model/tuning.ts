@@ -286,17 +286,24 @@ export const RESISTANCE: {
    * Charging the full-power figure would have been the real double count.
    *
    * **And it needs no re-solving**, which is not luck but the knee's doing: this
-   * constant is calibrated against the 10 kt polar, and depowering is 1.000 at
-   * 10 kt to five decimal places, so the calibration it was solved against is
-   * untouched. `calibration.test.ts` asserts that directly.
+   * constant is calibrated against the 10 kt polar, and depowering is 0.99999
+   * there — 1 to four decimal places — so the calibration it was solved against
+   * is untouched. `calibration.test.ts` asserts that directly.
    *
    * One thing did improve, and it explains why depowering fixed the pointing
    * angle rather than merely capping the speed. {@link RESISTANCE.keelStall} is
-   * a *ratio*, so it is invariant under scaling the side force: the keel still
-   * runs at 0.214–0.220 of its ceiling close hauled at every wind from 10 kt to
-   * 30, exactly as it did at 10 kt alone before. Since that ceiling is what sets
-   * where the no-go zone ends, holding the boat's speed while scaling the force
-   * holds the upwind end of the polar still — which is why the closest useful
+   * a *ratio* — drag over side force — so it is invariant under scaling that
+   * force. Measured close hauled, the keel charges 0.2170 of the side force at
+   * 10 kt, 0.2139 at 12, 0.2143 at 14, 0.2170 at 16, 0.2197 at 20 and 0.2190 at
+   * 30, against a ceiling of 0.22: **97–100% of it at every wind**, where before
+   * it sat there only at the wind it was calibrated in.
+   *
+   * So there is essentially no headroom before keel stall close hauled, and that
+   * is the intended state rather than a warning — §3.5 says the whole upwind
+   * quarter runs at or just under this ceiling, and it is what makes the ceiling
+   * rather than {@link RESISTANCE.sideForce} the constant that sets where the
+   * no-go zone ends. Holding the boat's speed while scaling the force therefore
+   * holds the upwind end of the polar still, which is why the closest useful
    * angle now stays at 41–42° instead of collapsing to 33°.
    */
   sideForce: 0.0036,
@@ -408,11 +415,24 @@ export const DEPOWERING: {
    *
    * Lower caps the boat harder and costs more of the top of §2.1's opening
    * range, since the cap has to bite before it can cap. Thirteen is where the
-   * whole 4–12 kt range comes out unchanged to the hundredth of a knot, 14 kt
-   * gives up 3% of a beam reach, and the pointing angle holds inside §3.6's
-   * 40–50° at *every* wind from 4 to 45 kt rather than falling to 33°. It also
-   * hands back a degree of margin where §3.6 says there is none: the 14 kt VMG
-   * peak moves from 40° — sitting exactly on its bound — to 41°.
+   * whole 4–10 kt range comes out unchanged to the hundredth of a knot, a beam
+   * reach in 14 kt of wind gives up 3%, and the pointing angle holds inside
+   * §3.6's 40–50° at *every* wind from 4 to 45 kt rather than falling to 33°.
+   *
+   * **12 kt is not quite untouched, and the table above does not show it.** The
+   * factor is 0.9954 there, which takes a beam reach from 6.0789 kt to 6.0722 —
+   * under a hundredth of a knot, but across a rounding boundary, so §3.6's table
+   * row reads 6.07 where it used to read 6.08. Worth stating because the round
+   * number invites the belief that the opening range is wholly untouched, and it
+   * is untouched only through 10 kt.
+   *
+   * Thirteen also hands back a degree of margin where §3.6 says there is none:
+   * the 14 kt VMG peak moves from 40° — sitting exactly on its bound, with its
+   * runner-up degree outside it — to 41°, which puts both inside. That is the
+   * argument that chose this number over 14, and it is worth more than the 3.4%
+   * of a beam reach at 14 kt that it costs: the margin it buys is against a
+   * numerical flip that could turn the suite red with nothing having changed,
+   * where the cost is a speed nobody is calibrating against.
    *
    * **The honest cost is that the wind slider stops making the boat faster
    * above this speed**, which is what a capped rig means and is right for a
@@ -428,8 +448,14 @@ export const DEPOWERING: {
    * sits at 4.73 kt against a floor of 4.68 — about a tenth of the 10%
    * tolerance §3.6 quotes — so a knee soft enough to reach back into 10 kt
    * breaks the calibration table outright. Measured at a 12 kt cap, an exponent
-   * of 4 puts the broad reach at 4.65 and fails; at 16 the entire 4–12 kt range
-   * is unchanged to the hundredth of a knot and only 14 kt onwards moves.
+   * of 4 puts the broad reach at 4.65 kt and fails it, where 16 leaves it at
+   * 4.73 and passes.
+   *
+   * Read that comparison as being about the *knee* and not about the shipped
+   * boat: at a 12 kt cap the factor is 0.958 at 12 kt whatever the exponent, so
+   * that wind moves a good deal under either. What the exponent decides is how
+   * far below the cap the softening reaches — which at 4 is far enough to pull
+   * 10 kt down with it, and at 16 is not.
    *
    * So the sharpness is not a taste about how crews sail — it is what buys the
    * separation between the range §3.6 calibrates and the range this term is

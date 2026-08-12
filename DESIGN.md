@@ -352,7 +352,7 @@ cause; its effect has to be spread evenly to be any use.**
 reach sits at 4.73 kt against a 4.68 floor — about a tenth of the 10% tolerance
 [§3.6](#36-calibration-targets) quotes — so a knee soft enough to reach back
 into 10 kt breaks the table outright. At an exponent of 4 it does; at 16 the
-whole 4–10 kt range is unchanged to five decimal places and only 12 kt onward
+whole 4–10 kt range is unchanged to four decimal places and only 12 kt onward
 moves at all. The sharpness buys the separation between the range that is
 calibrated and the range this term is for.
 
@@ -828,7 +828,7 @@ k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
 
 The bottom row is [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
 depowering factor, and the shape of the table is its doing. Through 10 kt it is
-1 to five decimal places and every figure is the undepowered one; at 12 kt it
+0.99999 and every figure is the undepowered one to four decimals; at 12 kt it
 has taken a tenth of a percent; from 14 kt the rig stops collecting force and
 the boat stops accelerating. The closest useful angle stays inside 40–50° at
 every wind from 4 kt to 45 — the same band the 10 kt test pins — where before
@@ -838,10 +838,12 @@ every wind from 4 kt to 45 — the same band the 10 kt test pins — where befor
 slower so the wall bites less" is the obvious explanation and it is not the
 one.** [§3.5](#35-hull-resistance-and-integration) says the keel's stall ceiling
 is what sets where the no-go zone ends, and that ceiling is a *ratio* — the
-largest fraction of the side force the keel can charge as drag. A ratio is
-invariant under scaling the side force, so depowering cannot move it: measured,
-the keel runs at 0.214–0.220 of its ceiling close hauled at every wind from
-10 kt to 30, where before it only did so at the wind it was calibrated in. Hold
+largest fraction of the side force the keel can charge as drag, 0.22. A ratio is
+invariant under scaling the side force, so depowering cannot move it: measured
+close hauled, the keel charges 0.2170 of the side force in 10 kt, 0.2139 in 12,
+0.2143 in 14, 0.2170 in 16, 0.2197 in 20 and 0.2190 in 30 — **97–100% of the
+ceiling at every wind**, where before it sat there only at the wind it was
+calibrated in. Hold
 the boat's speed still and scale the force, and the upwind end of the polar
 stops moving because the constant that governs it has nothing left to respond
 to. That is the mechanism behind the 41–42° row above, and it is the reason

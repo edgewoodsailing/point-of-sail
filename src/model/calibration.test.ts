@@ -353,7 +353,7 @@ describe("the no-go zone (DESIGN.md §3.6)", () => {
  * ```
  *
  * The bottom row is {@link depoweringFactor}, and the shape of the table is its
- * doing: through 10 kt it is 1 to five decimal places and every figure is
+ * doing: through 10 kt it is 0.99999 — 1 to four decimal places — and every figure is
  * pos-lcz's unchanged, at 12 kt it has taken a tenth of a percent (a beam reach
  * of 6.072 kt against an undepowered 6.079), and from 14 kt the rig stops
  * collecting force and the boat stops accelerating. The closest useful angle

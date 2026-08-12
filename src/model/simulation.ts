@@ -111,12 +111,18 @@ export function step(state: SimState, dt: Seconds): SimState {
  *
  * **Every one of those numbers is now historical, and saying so is the point of
  * re-measuring them.** §3.2's depowering caps the drive at its 13 kt value, so
- * the boat settles around 6.4 kt whether it is handed 55 kt of wind or a
- * thousand, and there is no wind at which the naive form misbehaves any more:
- * measured at 55, 60, 80, 100, 120, 200, 500 and 1000 kt, the naive step and
- * this one converge to the same speed with the tails identical and no overshoot
- * between them. From rest in 200 kt the first step is 0.0635 m/s against a
- * balance of 3.2929, where the undepowered boat took 12.03 m/s at a stride.
+ * the boat stops accelerating with the wind, and there is no wind at which the
+ * naive form misbehaves any more: measured at 55, 60, 80, 100, 120, 200, 500
+ * and 1000 kt, the naive step and this one converge to the same speed with the
+ * tails identical to six decimals and no overshoot between them.
+ *
+ * Two settled speeds get quoted for this and they are different boats, so they
+ * are labelled here rather than left to be conflated. **Re-trimmed for the gale
+ * it is in**, the boat settles 3.2810–3.2929 m/s (6.38–6.40 kt) across 55 kt to
+ * 1000, and from rest in 200 kt the first step is 0.0635 m/s. **Carrying a trim
+ * found in 10 kt**, which is what `simulation.test.ts` actually builds, it
+ * settles 2.2612–2.3141 m/s (4.40–4.50 kt) and the first step is 0.0223 m/s.
+ * The undepowered boat took 12.03 m/s at a stride.
  *
  * **The step stays implicit, and not out of inertia.** What makes the failure
  * unreachable is no longer a property of the physics but the value of
