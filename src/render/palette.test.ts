@@ -107,6 +107,11 @@ describe("the gamut clamp (the check stylelint cannot make here)", () => {
     // Stated as a property of the *authored* colour, so this test fails if
     // someone later moves that anchor inside and leaves the clamp unexercised.
     expect(oklchToLinearSrgb(AUTHORED[1]!).blue).toBeLessThan(0);
+    // How far outside, pinned rather than left to a comment. `palette.ts` quotes
+    // this margin twice — once to say which anchor the clamp moves, once as the
+    // distance CHANNEL_TOLERANCE is chosen against — and both said 7e-3 until
+    // this was measured. A figure that only lives in prose drifts silently.
+    expect(oklchToLinearSrgb(AUTHORED[1]!).blue).toBeCloseTo(-5.72e-4, 6);
     expect(trimQualityStop(0.25).chroma).toBeLessThan(AUTHORED[1]!.chroma);
     // Lightness and hue are what OKLCH lets us hold while chroma gives.
     expect(trimQualityStop(0.25).lightness).toBeCloseTo(0.62, 9);
