@@ -17,10 +17,10 @@
  * ```
  *
  * `SPEED_REACH` is derived rather than declared — it is what is left of
- * `SCENE.contentRadius` once the bow is accounted for, which is the same figure
- * astern because the pivot is the midpoint of LOA. `SPEED_FULL_SCALE` is hull
- * speed. So the tip lands *exactly* on `contentRadius` at hull speed, which is
- * what that band was reserved for.
+ * `SCENE.contentRadius` once the bow and the gap between hull and arrow are
+ * accounted for, which is the same figure astern because the pivot is the
+ * midpoint of LOA. `SPEED_FULL_SCALE` is hull speed. So the tip lands *exactly*
+ * on `contentRadius` at hull speed, which is what that band was reserved for.
  *
  * Above hull speed the arrow keeps growing and crosses the wind ring. That is
  * deliberate, and §4.1 says so in as many words: `contentRadius` is a
@@ -33,7 +33,7 @@
  * means for the ring.
  *
  * At the fastest the model produces — about 8 kt, which wants 30 kt of wind on a
- * reach — the tip reaches 6.15 m, just past the short-axis edge. It is only
+ * reach — the tip reaches 6.07 m, just past the short-axis edge. It is only
  * clipped there when it also points athwartships, and the long axis has room to
  * spare. Worth knowing about; not worth a clamp.
  *
@@ -57,17 +57,37 @@ import { formatNumber, svgElement } from "./svg.ts";
 // --- The scale --------------------------------------------------------------
 
 /**
+ * Clear water between the boat and the arrow.
+ *
+ * An arrow welded to the stem reads as a bowsprit — part of the boat rather than
+ * a thing said about it — and the layer paints below the hull, so at the stern
+ * it would appear to slide out from under the transom. A gap says the arrow is
+ * an annotation.
+ *
+ * In metres, so it scales with the boat, while the stroke it has to out-read is
+ * in CSS pixels and scales with the viewport (§4.5). Those sound like they would
+ * drift apart and do not: both are pinned to the viewport's short side, so this
+ * holds at a steady ~3.5 stroke widths from a 390 px phone to a desktop.
+ */
+const HULL_GAP: Meters = 0.2;
+
+/**
  * How long the arrow is at hull speed: what is left of `SCENE.contentRadius`
- * once the bow is accounted for, ≈ 2.28 m.
+ * once the bow and the gap are accounted for, ≈ 2.08 m.
  *
  * Measured rather than declared, the way `SCENE.boatRadius` is. Refair the hull
  * or move the mast station and this follows, instead of quietly disagreeing with
  * the band it is supposed to fill. Because `STATIONS.pivot` is the midpoint of
  * LOA, the same figure is available astern, so sternway gets exactly the room
  * headway does — `scene.test.ts` pins that symmetry from the other side.
+ *
+ * Note which end the gap is taken out of: the *arrow's*, not the band's. The
+ * clear water is a drawing decision and the band is a budget, so the gap comes
+ * out of what the arrow may spend rather than being added on top of it — which
+ * is what keeps the tip landing exactly on `contentRadius` at hull speed.
  */
 export const SPEED_REACH: Meters =
-  SCENE.contentRadius - magnitude(subtract(STATIONS.bow, STATIONS.pivot));
+  SCENE.contentRadius - magnitude(subtract(STATIONS.bow, STATIONS.pivot)) - HULL_GAP;
 
 /**
  * The speed at which the arrow is exactly `SPEED_REACH` long.
@@ -114,33 +134,29 @@ function point(v: Vec2): string {
 }
 
 /**
- * The arrow, from the bow forward or from the stern aft.
+ * The arrow, starting `HULL_GAP` clear of the bow and running forward, or clear
+ * of the stern and running aft.
  *
- * It starts *at* the station rather than a little clear of it, which is what
- * makes the tip land exactly on `contentRadius` at hull speed. Nothing is lost
- * to occlusion: the layer paints below the hull, so the arrow emerges from the
- * stem the way a projection should, and on sternway it runs out from under the
- * transom instead of over the boom.
- *
- * The head shrinks with the shaft below ~2.3 kt — `min(ARROW_BARB, length / 2)`
+ * The head shrinks with the shaft below ~2.2 kt — `min(ARROW_BARB, length / 2)`
  * — so a slow boat draws a small arrow rather than a barb with a tail poking out
  * of the wrong end of it.
  */
 export function speedArrowPathData(speed: MetersPerSecond): string {
   const astern = speed < 0;
   const station = astern ? STATIONS.stern : STATIONS.bow;
-  // Bearings, so the sign never has to be threaded through the barbs by hand:
-  // 0 is screen-up, which at heading zero is dead ahead.
+  // Bearings, so the sign never has to be threaded through the gap or the barbs
+  // by hand: 0 is screen-up, which at heading zero is dead ahead.
   const travel: Radians = astern ? Math.PI : 0;
 
   const length = speedArrowLength(speed);
-  const tip = add(station, vectorFromAngle(travel, length));
+  const tail = add(station, vectorFromAngle(travel, HULL_GAP));
+  const tip = add(tail, vectorFromAngle(travel, length));
   const barbLength = Math.min(ARROW_BARB, length / 2);
   const barb = (sign: number): Vec2 =>
     add(tip, vectorFromAngle(travel + Math.PI + sign * ARROW_SPREAD, barbLength));
 
   return [
-    `M ${point(station)} L ${point(tip)}`,
+    `M ${point(tail)} L ${point(tip)}`,
     `M ${point(barb(-1))} L ${point(tip)} L ${point(barb(1))}`,
   ].join(" ");
 }

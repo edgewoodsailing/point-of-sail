@@ -625,8 +625,8 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
   a thin full circle marking the whole draggable track, an arrow at the wind
   bearing with its tail on the ring and its head flying inward the way the wind
   blows, and seven short graduations every 45°.
-- **Speed arrow** — off the bow, or off the stern when speed is negative. Length
-  grows with speed; colored per [§4.3](#43-the-speed-arrow).
+- **Speed arrow** — a little clear of the bow, or of the stern when speed is
+  negative. Length grows with speed; colored per [§4.3](#43-the-speed-arrow).
 - **Apparent wind overlay** — only when toggled on.
 
 Camber depth is a function of trim and apparent wind pressure. When the luff
@@ -866,16 +866,25 @@ length = SPEED_REACH · |speed| / HULL.hullSpeed
 ```
 
 `SPEED_REACH` is derived rather than declared — it is what is left of
-`contentRadius` once the bow is accounted for, ≈ 2.28 m, and the same figure
-astern because the pivot is amidships. So a full-length arrow means *hull
-speed*, which is a thing worth recognising, rather than merely meaning "the
-biggest arrow". Above hull speed the arrow overruns and crosses the wind ring;
-see [§4.1](#41-whats-drawn) for why that is allowed and what makes it safe.
+`contentRadius` once the bow and the gap below are accounted for, ≈ 2.08 m, and
+the same figure astern because the pivot is amidships. So a full-length arrow
+means *hull speed*, which is a thing worth recognising, rather than merely
+meaning "the biggest arrow". Above hull speed the arrow overruns and crosses the
+wind ring; see [§4.1](#41-whats-drawn) for why that is allowed and what makes it
+safe.
 
-The head is a constant size in metres down to about 2.3 kt, below which it
+The arrow starts **0.2 m clear of the bow**, not at it. Anchored to the stem it
+reads as a bowsprit — part of the boat rather than a thing said about it — and
+at the stern, where the layer paints below the hull, it would appear to slide
+out from under the transom. That clear water comes out of the *arrow's* budget
+rather than being added on top of the band: the gap is a drawing decision and
+`contentRadius` is a reservation, so taking it from the reach is what keeps the
+tip landing exactly on the band at hull speed.
+
+The head is a constant size in metres down to about 2.2 kt, below which it
 shrinks with the shaft, so **length** stays the thing that encodes speed rather
-than the whole shape scaling together. Below about 0.12 kt there is no arrow at
-all: the boat is not under way, and a round-capped stub at the stem that never
+than the whole shape scaling together. Below about 0.14 kt there is no arrow at
+all: the boat is not under way, and a round-capped stub off the stem that never
 went away would stop reading as motion.
 
 That reference comes from a **ghost simulation** — a second, invisible

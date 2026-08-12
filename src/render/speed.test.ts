@@ -22,8 +22,9 @@ import {
  */
 const METRES = 3;
 
-/** The barb length written down in `speed.ts`, restated so the module cannot agree with itself. */
+/** Figures written down in `speed.ts`, restated so the module cannot agree with itself. */
 const ARROW_BARB = 0.4;
+const HULL_GAP = 0.2;
 
 const kt = knotsToMetersPerSecond;
 
@@ -53,12 +54,16 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     expect(SPEED_FULL_SCALE).toBeCloseTo(HULL.hullSpeed, 10);
   });
 
-  it("gives the arrow room worth having — at least ¾ of a metre per knot-ish", () => {
-    // The same claim `scene.test.ts` makes about the band, read from this side:
-    // whatever the hull's figures become, the arrow must still be long enough at
-    // hull speed to read as a length rather than as a tick.
-    expect(SPEED_REACH / HULL.hullSpeed).toBeGreaterThan(0.75);
+  it("gives the arrow room worth having, after handing the hull its gap back", () => {
+    // `scene.test.ts` makes the same claim about the *band* — better than ¾ of a
+    // metre per m/s. The arrow gets that less the clear water it leaves at the
+    // stem, and what this pins is that the gap stays a trim off the end rather
+    // than growing into a real share of the drawing.
+    const band = SCENE.contentRadius - magnitude(subtract(STATIONS.bow, STATIONS.pivot));
+    expect(SPEED_REACH).toBeCloseTo(band - HULL_GAP, 9);
+    expect(SPEED_REACH / HULL.hullSpeed).toBeGreaterThan(0.7);
     expect(SPEED_REACH).toBeGreaterThan(2);
+    expect(HULL_GAP / band).toBeLessThan(0.1);
   });
 
   it("is linear in speed and never clamped", () => {
@@ -96,13 +101,26 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
 describe("speed arrow direction (DESIGN.md §3.4)", () => {
   it("projects off the bow with way on, and off the stern with sternway", () => {
     const ahead = pathPoints(speedArrowPathData(kt(4)));
-    expect(ahead[0]!.y).toBeCloseTo(STATIONS.bow.y, METRES);
-    // −y is forward in the boat frame, so a tip ahead of the bow is *above* it.
-    expect(ahead[1]!.y).toBeLessThan(STATIONS.bow.y);
+    // −y is forward in the boat frame, so ahead of the bow is *above* it.
+    expect(ahead[0]!.y).toBeCloseTo(STATIONS.bow.y - HULL_GAP, METRES);
+    expect(ahead[1]!.y).toBeLessThan(ahead[0]!.y);
 
     const astern = pathPoints(speedArrowPathData(kt(-4)));
-    expect(astern[0]!.y).toBeCloseTo(STATIONS.stern.y, METRES);
-    expect(astern[1]!.y).toBeGreaterThan(STATIONS.stern.y);
+    expect(astern[0]!.y).toBeCloseTo(STATIONS.stern.y + HULL_GAP, METRES);
+    expect(astern[1]!.y).toBeGreaterThan(astern[0]!.y);
+  });
+
+  it("never touches the boat, at any speed and either way", () => {
+    // The arrow is a thing said *about* the boat, so it may not appear welded to
+    // it. Anchored at the station rather than clear of it, the tail would share
+    // a point with the stem — and at the stern, where the layer paints under the
+    // hull, it would look like it was sliding out from beneath the transom.
+    for (let knots = -9; knots <= 9; knots += 0.25) {
+      if (!underWay(kt(knots))) continue;
+      const tail = pathPoints(speedArrowPathData(kt(knots)))[0]!;
+      const station = knots < 0 ? STATIONS.stern : STATIONS.bow;
+      expect(magnitude(subtract(tail, station))).toBeCloseTo(HULL_GAP, METRES);
+    }
   });
 
   it("stays on the centreline, so it never leans off to one side", () => {
