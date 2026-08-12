@@ -1,6 +1,7 @@
 import "./shell.css";
 
 import { SWING_LIMIT, clampTrim } from "./model/boat.ts";
+import type { CollapseEdge } from "./model/sail.ts";
 import { rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle } from "./model/simulation.ts";
@@ -349,7 +350,8 @@ if (controls !== null) {
 // made of, reachable from a console. DELETE with the rest of the scaffolding.
 //
 // This exists because "the sail looks wrong here" is a claim about *numbers* —
-// which apparent wind, which angle of attack, which luff fraction — and reading
+// which apparent wind, which angle of attack, how much of the sail has
+// collapsed — and reading
 // them off a picture is guesswork. `report()` prints all of them at once, in the
 // degrees a sailor would quote, so a suspect situation can be described exactly
 // rather than approximately.
@@ -357,7 +359,13 @@ if (controls !== null) {
 interface SailReport {
   trim: Degrees;
   angleOfAttack: Degrees;
-  luffFraction: number;
+  collapsedFraction: number;
+  /**
+   * Which end that collapse ran in from (§3.3). Printed beside the fraction
+   * rather than folded into it, because the fraction alone reads the same at
+   * α = 3° and α = 177° while the cloth is letting go at opposite ends.
+   */
+  collapseFrom: CollapseEdge;
   camber: Meters;
   driving: Newtons;
   /**
@@ -426,14 +434,20 @@ const pos = {
     const sail = (
       angle: Radians,
       drawn: { shape: { depth: Meters }; quality: number } | null,
-      force: { angleOfAttack: Radians; luffFraction: number; driving: Newtons } | null,
+      force: {
+        angleOfAttack: Radians;
+        collapsedFraction: number;
+        collapseFrom: CollapseEdge;
+        driving: Newtons;
+      } | null,
     ): SailReport | null =>
       drawn === null || force === null
         ? null
         : {
             trim: Number(radiansToDegrees(angle).toFixed(1)),
             angleOfAttack: Number(radiansToDegrees(force.angleOfAttack).toFixed(1)),
-            luffFraction: Number(force.luffFraction.toFixed(3)),
+            collapsedFraction: Number(force.collapsedFraction.toFixed(3)),
+            collapseFrom: force.collapseFrom,
             camber: Number(drawn.shape.depth.toFixed(3)),
             driving: Number(force.driving.toFixed(1)),
             quality: Number(drawn.quality.toFixed(3)),

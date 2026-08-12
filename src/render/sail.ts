@@ -39,25 +39,30 @@
  * ## Why `sin α` sets the depth and not just the sign
  *
  * `sin α` is the component of the flow across the chord, which is the thing that
- * inflates a sail, and using it whole rather than only for its sign buys two
- * knife edges for nothing:
+ * inflates a sail. It has to supply the *side* — nothing else in the depth
+ * expression is signed — and pos-83f re-measured whether it earns the rest of
+ * its keep now that §3.3 collapses `(1 − collapsedFraction)` at *both* edge-on
+ * states. It does, but not for the reason originally written here.
  *
- * - **α → 0** — the sail is edge-on and luffing. Depth → 0, so the side flip at
- *   the luff happens through a flat sail and is invisible.
- * - **α → ±180°** — the flow arrives at the leech instead (a boom eased to
- *   starboard with the wind on the starboard beam; `foil.ts` contemplates this
- *   case explicitly, and `Cl = 0, Cd = Cd0` there — a flogging sail making
- *   nothing). Depth → 0 again, so there is no pop there either. This case is
- *   easy to miss, and when this module was written it had to carry it alone:
- *   `luffFraction` was blind to the leech-first state and reported a fully
- *   drawing sail, so `(1 − luffFraction)` would have drawn full camber on an
- *   arbitrary side and flipped it as α crossed 180°. pos-aa2 has since folded
- *   §3.3 about 90° too, so the two now agree rather than one covering for the
- *   other — but `sin α` is still what supplies the *side*, and it collapses the
- *   depth over a far wider band than the 7° §3.3 collapses over, so it stays.
+ * **The two knife edges no longer need it**, and they were the original
+ * argument. At α → 0 the sail is edge-on and luffing, and at α → ±180° the flow
+ * arrives at the leech instead (a flogging sail making nothing; `foil.ts`
+ * contemplates that case explicitly and reports `Cl = 0, Cd = Cd0`). The belly
+ * changes sides at both, and `sin α` took the depth to zero so each flip
+ * happened through a flat sail. Since pos-aa2 folded §3.3 about 90°,
+ * `(1 − collapsedFraction)` is *already* exactly 0 at both — and gets there with
+ * vanishing slope, a measured 6·10⁻⁵ of full draft per degree at the 2° and 178°
+ * junctions, because `smoothstep` is flat at its ends. Reduce `sin α` to
+ * `sign(sin α)` and both flips are still invisible.
  *
- * The visible consequence, chosen deliberately: a close-hauled sail reads
- * distinctly flatter than a reaching one. That is true on the water.
+ * **What it does still buy is depth against incidence**, which turns out to be
+ * worth more than the knife edges were. Measured on the main, whose full draft
+ * is 0.473 m: with `sin α` the drawn camber is 0.058 m at α = 7°, 0.122 m at 15°
+ * and 0.473 m at 90°; with only the sign it is 0.473 m at all three — full
+ * camber on a sail 7° off luffing, and a close-hauled sail indistinguishable
+ * from one on a beam reach. A close-hauled sail reading distinctly flatter than
+ * a reaching one is §4.1's deliberate visible consequence and is true on the
+ * water, so `sin α` stays whole.
  *
  * ## The camber really is a Bézier arc
  *
@@ -99,10 +104,12 @@
 
 import type { Sail } from "../model/boat.ts";
 import { JIB, MAIN, STATIONS, jibClewPosition, mainClewPosition } from "../model/boat.ts";
+import type { CollapseEdge } from "../model/sail.ts";
 import {
   angleOfAttack,
+  collapseFrom,
+  collapsedFraction,
   dynamicPressure,
-  luffFraction,
   optimalTrim,
   sailForce,
 } from "../model/sail.ts";
@@ -210,19 +217,23 @@ export interface SailShape {
   /** Where the peak sits along the chord, 0..1 from the luff. */
   readonly draftPosition: number;
   /**
-   * How much of the sail has collapsed, from the luff aft — the model's number,
-   * carried through untouched for pos-dmg.2. `s < luffFraction` is the
-   * fluttering region, because `s` and this are measured on the same axis.
-   *
-   * **One band where that axis is wrong, and pos-dmg.2 should know before it
-   * wires the shake.** Past |α| = 173° the flow arrives at the leech (§3.3
-   * collapses the sail there too, since pos-aa2), and the cloth breaks at the
-   * *leech* and runs forward — so `s < luffFraction` shakes the forward end of
-   * a sail whose after end is the one letting go. It is not a sliver: the
-   * fraction is 0.35 at α = 175° and only reaches 1 at 178°. pos-83f owns
-   * reporting which end it breaks from and drawing it that way.
+   * How much of the sail has collapsed — the model's number, carried through
+   * untouched. Measured from {@link collapseFrom}'s edge, so it does not locate
+   * the fluttering region on its own; {@link collapseAt} is what turns the pair
+   * into a position on the chord, and pos-dmg.2 should hang the shake on that
+   * rather than on either field.
    */
-  readonly luffFraction: number;
+  readonly collapsedFraction: number;
+  /**
+   * Which edge the collapse ran in from, so the drawing shakes the end that is
+   * actually letting go rather than always the luff.
+   *
+   * Past |α| = 173° the flow arrives at the leech, and the cloth breaks there
+   * and runs forward. That band is not a sliver to draw wrongly: the fraction is
+   * 0.35 at α = 175° and only reaches 1 at 178°, so a renderer measuring from
+   * the luff would shake the forward third of a sail whose after end is going.
+   */
+  readonly collapseFrom: CollapseEdge;
 }
 
 /**
@@ -249,21 +260,24 @@ export function pressureFactor(q: number): number {
  * Signed peak camber for a trim.
  *
  * ```text
- * depth = foot · MAX_DRAFT_FRACTION · (1 − luffFraction) · pressureFactor(q) · sin α
+ * depth = foot · MAX_DRAFT_FRACTION · (1 − collapsedFraction) · pressureFactor(q) · sin α
  * ```
  *
- * `(1 − luffFraction)` is what ties the drawing to the model: §3.3 asks that one
- * number drive both the flutter and the force reduction, and this makes it drive
- * the depth too, so what the student sees and what the boat does cannot
- * disagree. `sin α` supplies the side and the two edge-on collapses; see the
- * module docblock.
+ * `(1 − collapsedFraction)` is what ties the drawing to the model: §3.3 asks
+ * that one number drive both the flutter and the force reduction, and this makes
+ * it drive the depth too, so what the student sees and what the boat does cannot
+ * disagree. It is a scalar on the peak, so **which edge the collapse came from
+ * does not enter here** — a sail with a third of its cloth shaking is a third
+ * flatter whichever third it is. The edge is spent on the flutter's position
+ * ({@link collapseAt}), not on the depth. `sin α` supplies the side and the
+ * incidence; see the module docblock for what it is and is not still buying.
  */
 export function camberDepth(sail: Sail, sailAngle: Radians, apparent: ApparentWind): Meters {
   const alpha = angleOfAttack(sailAngle, apparent);
   return (
     sail.foot *
     MAX_DRAFT_FRACTION *
-    (1 - luffFraction(alpha)) *
+    (1 - collapsedFraction(alpha)) *
     pressureFactor(dynamicPressure(apparent.speed)) *
     sin(alpha)
   );
@@ -277,12 +291,14 @@ function shapeOf(
   draftPosition: number,
   apparent: ApparentWind,
 ): SailShape {
+  const alpha = angleOfAttack(sailAngle, apparent);
   return {
     tack,
     clew,
     depth: camberDepth(sail, sailAngle, apparent),
     draftPosition,
-    luffFraction: luffFraction(angleOfAttack(sailAngle, apparent)),
+    collapsedFraction: collapsedFraction(alpha),
+    collapseFrom: collapseFrom(alpha),
   };
 }
 
@@ -441,18 +457,51 @@ export function rigDrawing(state: SimState): RigDrawing {
 // --- Points and paths -------------------------------------------------------
 
 /**
+ * How deep into the collapsed region a chord fraction lies: 0 outside it, 1 at
+ * the edge the cloth is breaking from, rising linearly between.
+ *
+ * **This is where the collapse's axis is settled**, so that nothing downstream
+ * has to know that it has two limbs. `s` runs 0 at the luff to 1 at the clew,
+ * always — it is a position on the drawn chord, and a travelling wave's phase
+ * depends on it staying monotone — while the collapse runs aft from `s = 0` when
+ * the flow arrives at the luff and forward from `s = 1` when it arrives at the
+ * leech. Asking "how far into the shaking is this point" answers both without a
+ * branch at the call site, and reads the same in either band: 0 at the boundary,
+ * 1 where the cloth is loosest.
+ *
+ * A ratio rather than a chord distance, deliberately: it is the natural argument
+ * for a flutter's amplitude ramp (pos-dmg.2), which wants to fade in from the
+ * boundary regardless of how wide the collapsed region currently is. Multiply by
+ * `shape.collapsedFraction` for the distance in chord fractions if that is what
+ * is wanted.
+ */
+export function collapseAt(shape: SailShape, chordFraction: number): number {
+  // Guards the divide, and says the honest thing besides: with nothing
+  // collapsed there is no region to be inside, at either end.
+  if (shape.collapsedFraction <= 0) return 0;
+
+  const into =
+    shape.collapseFrom === "luff"
+      ? shape.collapsedFraction - chordFraction
+      : chordFraction - (1 - shape.collapsedFraction);
+
+  return into <= 0 ? 0 : Math.min(into / shape.collapsedFraction, 1);
+}
+
+/**
  * A per-point deformation of the sail, for pos-dmg.2's travelling sine.
  *
- * `chordFraction` runs 0 at the luff to 1 at the clew — **the same axis
- * `luffFraction` is measured on**, so the fluttering region is literally
- * `s < shape.luffFraction`. `camberOffset` is the undeformed offset there, in
+ * `chordFraction` runs 0 at the luff to 1 at the clew — a position on the drawn
+ * chord, never on the collapse's own axis. Which end is shaking is
+ * {@link collapseAt}'s business: `collapseAt(shape, s) > 0` is the fluttering
+ * region, in either band. `camberOffset` is the undeformed offset there, in
  * metres, already signed.
  *
  * **It returns a replacement, not an addend, and that is load-bearing.** §4.1
- * wants the collapsed forward portion to go flat while the after portion keeps
- * its camber, so pos-dmg.2 needs to write `offset · collapse(s) + ripple(s)` —
- * an addend hook could not attenuate what it was given and would have forced a
- * rewrite of exactly the code this seam exists to protect.
+ * wants the collapsed portion to go flat while the portion still drawing keeps
+ * its camber, so pos-dmg.2 needs to write `offset · (1 − collapseAt(shape, s)) +
+ * ripple(s)` — an addend hook could not attenuate what it was given and would
+ * have forced a rewrite of exactly the code this seam exists to protect.
  *
  * Two deliberate limits. The hook is **never called at the endpoints**: the tack
  * and clew are physical attachments, and the clew is pos-bwd.1's grab point, so

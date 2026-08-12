@@ -66,6 +66,16 @@ const AIR_DENSITY = 1.225;
 /** Dead ahead in the boat frame: the bearing driving force is measured along. */
 const AHEAD: Radians = 0;
 
+/**
+ * The edge a collapse propagates from: the one the flow arrives at.
+ *
+ * A sail lies along the flow twice, and the two states are not mirror images of
+ * each other. At α ≈ 0 the wind arrives at the luff and the cloth breaks there,
+ * the collapse running *aft*; at α ≈ ±180° it arrives at the leech instead and
+ * the collapse runs *forward*. Same fraction, opposite end.
+ */
+export type CollapseEdge = "luff" | "leech";
+
 export interface SailForce {
   /**
    * The signed angle from the sail's chord to the apparent wind. Its sign says
@@ -74,15 +84,15 @@ export interface SailForce {
    */
   readonly angleOfAttack: Radians;
   /**
-   * How much of the sail, measured from the luff aft, has collapsed: 0..1.
-   *
-   * The axis is a known simplification in one band. Past |α| = 173° the flow
-   * arrives at the *leech* and the cloth breaks there, running forward — but
-   * the fraction is still reported from the luff aft, so anything drawing the
-   * collapse shakes the wrong end there. See {@link luffFraction} and §3.3;
-   * pos-83f owns fixing it.
+   * How much of the sail has collapsed, measured from {@link collapseFrom}'s
+   * edge: 0..1. See {@link collapsedFraction} and §3.3.
    */
-  readonly luffFraction: number;
+  readonly collapsedFraction: number;
+  /**
+   * Which end the collapse ran in from, so a renderer shakes the end that is
+   * actually letting go. See {@link CollapseEdge}.
+   */
+  readonly collapseFrom: CollapseEdge;
   /** The component along the heading. Negative when the sail is backed. */
   readonly driving: Newtons;
   /**
@@ -132,7 +142,8 @@ export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radia
 }
 
 /**
- * How much of the sail has collapsed, from the luff aft (§3.3).
+ * How much of the sail has collapsed, measured from whichever edge the flow
+ * arrives at (§3.3). {@link collapseFrom} says which edge that is.
  *
  * **Even about both edge-on states, not just about zero.** A sail lies along
  * the flow twice: at α = 0, where the wind arrives at the luff, and at
@@ -141,25 +152,25 @@ export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radia
  * surely as at 0° — so the measure is distance from *whichever is nearer*
  * rather than distance from zero. Folding about zero alone left this function
  * calling a sail flogging edge-on at its leech "fully drawing", which is a lie
- * the drawing then has to work around (pos-aa2).
+ * the drawing then had to work around (pos-aa2).
  *
  * {@link LUFF}'s thresholds are magnitudes, which is what makes the fold about
  * zero correct across tacks; see the reasoning there. The band this second fold
  * adds is `|α| > 173°` and nothing else, so the rest of the polar is untouched
  * by construction.
  *
- * **The name and the axis both lag the meaning, knowingly.** The result is
- * still reported as a fraction *from the luff aft*, but in the leech-first band
- * the cloth breaks at the leech and the collapse runs forward, so a renderer
- * that shades or shakes the first `luffFraction` of the chord shakes the wrong
- * end there. The fraction does not saturate fast enough to make that moot
- * either — it is 0.35 at α = 175° and only reaches 1 at 178°. §3.3 records why
- * it stands anyway (one axis for the deformation hook) and pos-83f owns fixing
- * it, name included.
+ * **The fraction alone does not say where the collapse is**, and it never did —
+ * a bare number cannot, once it covers two states that break at opposite ends.
+ * That is why it is reported beside {@link collapseFrom} rather than as a
+ * fraction from the luff aft, which is what pos-aa2 left behind and pos-83f
+ * fixed. The distinction is not a sliver: the fraction is 0.35 at α = 175° and
+ * only reaches 1 at 178°, so through the first half of the leech-first band a
+ * renderer working off the luff would shake the forward third of a sail whose
+ * *after* end is the one letting go.
  *
  * Continuous, and `smoothstep` clamps, so no limb needs a branch.
  */
-export function luffFraction(alpha: Radians): number {
+export function collapsedFraction(alpha: Radians): number {
   // Normalised first, or `π − |α|` goes negative for an angle that arrives
   // unwrapped and the clamp turns that into a confident "fully collapsed" —
   // α = 350°, which is really −10° and drawing, is the case that bites.
@@ -178,6 +189,31 @@ export function luffFraction(alpha: Radians): number {
 }
 
 /**
+ * Which edge {@link collapsedFraction} is measured from: the edge the flow
+ * arrives at.
+ *
+ * It falls straight out of the fold above. `min(|α|, 180° − |α|)` takes the
+ * first term on one limb and the second on the other, and the limb *is* the
+ * answer: below 90° the nearer edge-on state is α = 0, where the wind meets the
+ * luff; above it the nearer one is ±180°, where the wind meets the leech.
+ *
+ * **The value is defined everywhere, and only meaningful where it is used.**
+ * Between the two bands — every trim a student sails — the fraction is 0 and
+ * nothing is collapsing, so this reports the edge a collapse *would* arrive at
+ * rather than a fact about the cloth. The tie at exactly |α| = 90°, where both
+ * edges are 90° away, is broken toward the luff and is unobservable for the
+ * same reason: the fraction there is 0, and 90° is more than ten times
+ * {@link LUFF.drawingAbove}, so nothing reads this without also reading a
+ * fraction of zero.
+ *
+ * Sign-free, like the fraction: which *face* the flow strikes says nothing
+ * about which *end* it arrives at, so both tacks answer alike.
+ */
+export function collapseFrom(alpha: Radians): CollapseEdge {
+  return Math.abs(normalizeSigned(alpha)) > Math.PI / 2 ? "leech" : "luff";
+}
+
+/**
  * One sail's contribution to driving force.
  *
  * Lift acts across the apparent wind and drag along it. `perpendicular` turns
@@ -186,26 +222,29 @@ export function luffFraction(alpha: Radians): number {
  * lift comes out bearing 300°, forward and to port, and drag bearing 210°,
  * netting ≈ +0.48·qA of drive.
  *
- * The luff fraction scales the *whole* force rather than lift alone. That is
- * the "effective area" reading of §3.3: the collapsed portion, measured from
- * the luff aft, carries no load of either kind. What it drops is the flogging
- * drag a real luffing sail has — but at either edge-on state that drag is only
- * `Cd0` ≈ 0.02, so the simplification is invisible against a drawing sail's
- * hundreds of newtons.
+ * The collapsed fraction scales the *whole* force rather than lift alone. That
+ * is the "effective area" reading of §3.3: the collapsed portion carries no
+ * load of either kind. Which end that portion is at does not enter here — a
+ * third of the sail carries a third of the load whichever third it is — so
+ * {@link collapseFrom} is reported for the drawing's sake and spent by nothing
+ * in this file. What the reduction drops is the flogging drag a real luffing
+ * sail has, but at either edge-on state that drag is only `Cd0` ≈ 0.02, so the
+ * simplification is invisible against a drawing sail's hundreds of newtons.
  */
 export function sailForce(sail: Sail, sailAngle: Radians, apparent: ApparentWind): SailForce {
   const alpha = angleOfAttack(sailAngle, apparent);
-  const luffing = luffFraction(alpha);
+  const collapsed = collapsedFraction(alpha);
 
   const { lift: cl, drag: cd } = foilCoefficients(alpha, sail.aspectRatio);
-  const scaling = dynamicPressure(apparent.speed) * sail.area * (1 - luffing);
+  const scaling = dynamicPressure(apparent.speed) * sail.area * (1 - collapsed);
 
   const flow = unitVector(oppositeAngle(apparent.angle));
   const force = add(scale(perpendicular(flow), cl * scaling), scale(flow, cd * scaling));
 
   return {
     angleOfAttack: alpha,
-    luffFraction: luffing,
+    collapsedFraction: collapsed,
+    collapseFrom: collapseFrom(alpha),
     driving: componentAlong(force, AHEAD),
     lateral: componentAcross(force, AHEAD),
   };
@@ -280,9 +319,9 @@ export function depoweringFactor(trueWindSpeed: MetersPerSecond): number {
 // frame — affordable because a sail force is a handful of transcendentals and
 // this takes well under a hundred of them per sail.
 //
-// The search evaluates the same `sailForce` used everywhere else, so the luff
-// reduction is inside it rather than beside it: §3.3's one number, one source
-// of truth.
+// The search evaluates the same `sailForce` used everywhere else, so the
+// collapse reduction is inside it rather than beside it: §3.3's one number, one
+// source of truth.
 
 /** Spacing of the sweep across the legal range: 37 samples over ±90°. */
 const COARSE_STEP: Radians = SWING_LIMIT / 18;
@@ -403,8 +442,8 @@ export function optimalTrim(
  *
  * It is only ever an extra candidate: `optimalTrim` keeps whichever of the
  * sweep's peaks and this one refines highest, so a seed that misjudges — it
- * ignores the luff reduction, which still bites a little below α = 7° — costs
- * accuracy nowhere and 19 evaluations near the bow.
+ * ignores the collapse reduction, which still bites a little below α = 7° —
+ * costs accuracy nowhere and 19 evaluations near the bow.
  */
 function attachedTrimSeed(sail: Sail, apparent: ApparentWind): Radians | null {
   if (!(cos(apparent.angle) > 0)) return null;

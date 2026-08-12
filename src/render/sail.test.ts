@@ -5,8 +5,8 @@ import { JIB, MAIN, STATIONS, SWING_LIMIT, jibClewPosition, mainClewPosition } f
 import { foilCoefficients } from "../model/foil.ts";
 import {
   angleOfAttack,
+  collapsedFraction,
   dynamicPressure,
-  luffFraction,
   optimalTrim,
   sailForce,
 } from "../model/sail.ts";
@@ -32,6 +32,7 @@ import {
   SAIL_SAMPLES,
   camberDepth,
   camberProfile,
+  collapseAt,
   createSailLayer,
   jibShape,
   mainShape,
@@ -306,9 +307,9 @@ describe("camber collapses where the sail cannot hold a shape", () => {
   it("goes flat again edge-on at the leech", () => {
     // α ≈ ±180° is the flow arriving at the leech — a flogging sail making
     // nothing, which `foil.ts` contemplates and which §3.3 also collapses since
-    // pos-aa2. `sin α` collapsed it here first and over a much wider band, and
-    // still supplies the side: without it the drawing would show full camber
-    // here, on an arbitrary side, and flip it as α crossed 180°.
+    // pos-aa2. Both terms of the depth vanish here now, so this holds whichever
+    // one is doing the work; pos-83f measured that `sin α` is no longer what
+    // keeps the flip invisible, and kept it for the *incidence* instead.
     const trim = deg(90);
     expect(camberDepth(MAIN, trim, wind(10, 90))).toBeCloseTo(0, 12);
 
@@ -341,17 +342,17 @@ describe("camber collapses where the sail cannot hold a shape", () => {
 });
 
 describe("camber depth", () => {
-  it("is the documented product of chord, draft, luff and pressure", () => {
+  it("is the documented product of chord, draft, collapse and pressure", () => {
     for (const awa of [15, 45, 90, 140]) {
       const apparent = wind(12, awa);
       for (const trim of trimSweep(5)) {
         const alpha = angleOfAttack(trim, apparent);
         // Only where the sail is *fully* drawing, so `expected` need not carry
-        // the luff term. Asked of `luffFraction` rather than compared against
-        // `LUFF.drawingAbove` by hand: §3.3 owns which angles those are, and it
-        // has moved once already — pos-aa2 folded the thresholds about 90° as
-        // well as about zero, which this guard silently missed.
-        if (luffFraction(alpha) > 0) continue;
+        // the collapse term. Asked of `collapsedFraction` rather than compared
+        // against `LUFF.drawingAbove` by hand: §3.3 owns which angles those are,
+        // and it has moved once already — pos-aa2 folded the thresholds about 90°
+        // as well as about zero, which this guard silently missed.
+        if (collapsedFraction(alpha) > 0) continue;
         const expected =
           MAIN.foot *
           MAX_DRAFT_FRACTION *
@@ -386,6 +387,133 @@ describe("camber depth", () => {
       const across = point.x * along.y - point.y * along.x - (shape.tack.x * along.y - shape.tack.y * along.x);
       expect(across).toBeCloseTo(0, 12);
     }
+  });
+});
+
+// --- Where the collapse is ---------------------------------------------------
+
+describe("the collapsed region runs from the edge that is breaking (pos-83f)", () => {
+  /**
+   * A shape at a chosen angle of attack. The boom stays on the centreline and
+   * the wind is moved instead, since α = AWA + trim — which keeps every case
+   * here a legal trim, including the α = 180° one that needs the boom amidships
+   * with the wind dead astern.
+   */
+  function shapeAtAlpha(alphaDegrees: number): SailShape {
+    return mainShape(0, wind(10, alphaDegrees));
+  }
+
+  it("carries the model's fraction and edge onto the shape", () => {
+    for (const alpha of [0, 3, 5, 15, 90, 175, 180]) {
+      const apparent = wind(10, alpha);
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(collapsedFraction(angleOfAttack(0, apparent)));
+      expect(shape.collapseFrom, `${alpha}°`).toBe(alpha > 90 ? "leech" : "luff");
+    }
+  });
+
+  it("shakes nothing at all when the sail is drawing", () => {
+    const drawing = shapeAtAlpha(30);
+    expect(drawing.collapsedFraction).toBe(0);
+    for (const s of [0, 0.25, 0.5, 0.75, 1]) expect(collapseAt(drawing, s)).toBe(0);
+  });
+
+  /**
+   * The bug this bead exists for, stated as a position on the cloth. At α = 175°
+   * the fraction is 0.35 and the sail is breaking at its *leech*, so the after
+   * 35% shakes and the forward 65% does not — the exact opposite of what the
+   * old luff-aft axis drew.
+   */
+  it("shakes the after end at the leech and the forward end at the luff", () => {
+    const leech = shapeAtAlpha(175);
+    expect(leech.collapseFrom).toBe("leech");
+    expect(leech.collapsedFraction).toBeCloseTo(0.352, 3);
+    expect(collapseAt(leech, 0.2)).toBe(0);
+    expect(collapseAt(leech, 0.5)).toBe(0);
+    expect(collapseAt(leech, 0.99)).toBeGreaterThan(0);
+
+    // The same fraction the other side of the fold, breaking the other way.
+    const luff = shapeAtAlpha(5);
+    expect(luff.collapseFrom).toBe("luff");
+    expect(luff.collapsedFraction).toBeCloseTo(0.352, 3);
+    expect(collapseAt(luff, 0.01)).toBeGreaterThan(0);
+    expect(collapseAt(luff, 0.5)).toBe(0);
+    expect(collapseAt(luff, 0.8)).toBe(0);
+  });
+
+  it("reads 1 at the breaking edge, 0 at the boundary, and rises in between", () => {
+    for (const alpha of [3, 4, 5, 6, 175, 176, 177]) {
+      const shape = shapeAtAlpha(alpha);
+      const f = shape.collapsedFraction;
+      const atEdge = shape.collapseFrom === "luff" ? 0 : 1;
+      const boundary = shape.collapseFrom === "luff" ? f : 1 - f;
+
+      expect(collapseAt(shape, atEdge), `${alpha}°`).toBeCloseTo(1, 12);
+      expect(collapseAt(shape, boundary), `${alpha}°`).toBeCloseTo(0, 12);
+      // Halfway in, from whichever end.
+      const half = shape.collapseFrom === "luff" ? f / 2 : 1 - f / 2;
+      expect(collapseAt(shape, half), `${alpha}°`).toBeCloseTo(0.5, 12);
+    }
+  });
+
+  /**
+   * Wholly collapsed, at either edge-on state: the region has grown to the whole
+   * chord, so every interior point is shaking. The far end reads exactly 0 —
+   * not a gap, but the boundary having arrived there: it is the last point to
+   * let go and the least loose, which is what a depth-into-the-collapse says.
+   */
+  it("covers the whole chord when the sail is wholly collapsed, at either edge", () => {
+    for (const alpha of [0, 1, 180, 179]) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(1);
+      for (const s of [0.01, 0.25, 0.5, 0.75, 0.99]) {
+        expect(collapseAt(shape, s), `${alpha}° at s=${s}`).toBeGreaterThan(0);
+      }
+
+      const breaking = shape.collapseFrom === "luff" ? 0 : 1;
+      expect(collapseAt(shape, breaking), `${alpha}°`).toBe(1);
+      expect(collapseAt(shape, 1 - breaking), `${alpha}°`).toBe(0);
+    }
+  });
+
+  /**
+   * Bounded, and monotone toward the edge that is going — the two things a
+   * flutter's amplitude ramp depends on, swept rather than spot-checked. Not a
+   * *step* bound: the region's slope is `1/collapsedFraction`, which is
+   * unbounded as the collapse first appears, so a fixed-step continuity check
+   * would be pinning the sweep rather than the function.
+   */
+  it("is bounded, and deepens monotonically toward the breaking edge", () => {
+    for (let alpha = 0; alpha <= 180; alpha += 0.5) {
+      const shape = shapeAtAlpha(alpha);
+      // Walk from the drawing end toward the breaking one, whichever that is.
+      const toward = shape.collapseFrom === "luff" ? -1 : 1;
+      let previous = -Infinity;
+      for (let i = 0; i <= 200; i += 1) {
+        const s = toward === 1 ? i / 200 : 1 - i / 200;
+        const current = collapseAt(shape, s);
+        expect(current, `${alpha}° at s=${s}`).toBeGreaterThanOrEqual(0);
+        expect(current, `${alpha}° at s=${s}`).toBeLessThanOrEqual(1);
+        expect(current, `${alpha}° at s=${s}`).toBeGreaterThanOrEqual(previous - 1e-12);
+        previous = current;
+      }
+    }
+  });
+
+  /**
+   * The fold's corner, seen from the drawing side. `collapseFrom` flips from
+   * luff to leech at exactly α = 90°, and nothing can see it: the fraction is a
+   * flat zero for tens of degrees either side, so the region is empty on both
+   * limbs and the switch moves no cloth.
+   */
+  it("switches edges at α = 90° without moving anything", () => {
+    for (const alpha of [89.9, 90, 90.1]) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(0);
+      for (const s of [0, 0.5, 1]) expect(collapseAt(shape, s), `${alpha}°`).toBe(0);
+    }
+    expect(shapeAtAlpha(89.9).collapseFrom).toBe("luff");
+    expect(shapeAtAlpha(90.1).collapseFrom).toBe("leech");
   });
 });
 
@@ -610,7 +738,7 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
       const apparent = wind(10, awa);
       expect(isRed(trimQuality(MAIN, 0, apparent))).toBe(true);
       expect(isRed(trimQuality(JIB, 0, apparent))).toBe(true);
-      expect(luffFraction(angleOfAttack(0, apparent))).toBe(0);
+      expect(collapsedFraction(angleOfAttack(0, apparent))).toBe(0);
     }
 
     // Dead downwind is the one place the cloth is *not* still, and the model is
@@ -619,7 +747,7 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     // luffing — a statement about that trim, not about oversheeting.
     const run = wind(10, 180);
     expect(isRed(trimQuality(MAIN, 0, run))).toBe(true);
-    expect(luffFraction(angleOfAttack(0, run))).toBe(1);
+    expect(collapsedFraction(angleOfAttack(0, run))).toBe(1);
   });
 
   it("cannot be badly oversheeted close hauled, because the physics says so", () => {
@@ -656,7 +784,7 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
       expect(deg(trim)).toBeGreaterThan(mostDrivingTrim(MAIN, apparent));
       expect(quality).toBeLessThan(0);
       expect(isRed(quality)).toBe(true);
-      expect(luffFraction(angleOfAttack(deg(trim), apparent))).toBe(0);
+      expect(collapsedFraction(angleOfAttack(deg(trim), apparent))).toBe(0);
     }
   });
 
@@ -667,7 +795,7 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
       const apparent = wind(10, awa);
       const eased = deg(-awa); // α = 0 exactly: the sail lies along the flow.
       expect(trimQualityColor(trimQuality(MAIN, eased, apparent))).toBe(RED);
-      expect(luffFraction(angleOfAttack(eased, apparent))).toBe(1);
+      expect(collapsedFraction(angleOfAttack(eased, apparent))).toBe(1);
     }
   });
 
