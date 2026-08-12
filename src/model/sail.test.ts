@@ -233,17 +233,72 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
     expect(luffFraction(deg(90))).toBe(0);
   });
 
-  it("passes through the middle of the transition halfway across", () => {
-    expect(luffFraction(deg((collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
+  /**
+   * The other edge-on state (pos-aa2): the flow arriving at the leech rather
+   * than the luff. `foil.ts` already reports a sail making nothing at α = 180°,
+   * and §3.3 now agrees with it.
+   *
+   * `toBeCloseTo` rather than `toBe` at the two thresholds because the fold
+   * subtracts: `π − deg(173)` is not bit-identical to `deg(7)`, so the ratio
+   * lands an ulp either side of exactly 1. `smoothstep` is cubic with zero
+   * slope at both ends, so what comes out is ~3ε² away from the exact answer —
+   * far inside twelve places, but not exact, and pinning it as exact would be
+   * pinning the arithmetic rather than the model.
+   */
+  it("collapses again edge-on at the leech", () => {
+    expect(luffFraction(deg(180))).toBe(1);
+    expect(luffFraction(deg(-180))).toBe(1);
+    expect(luffFraction(deg(180 - collapsed))).toBeCloseTo(1, 12);
+    expect(luffFraction(deg(180 - drawing))).toBeCloseTo(0, 12);
+    expect(luffFraction(deg(165))).toBe(0);
+    expect(luffFraction(deg(-165))).toBe(0);
   });
 
-  it("falls monotonically with |α|", () => {
+  it("passes through the middle of the transition halfway across", () => {
+    expect(luffFraction(deg((collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
+    expect(luffFraction(deg(180 - (collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
+  });
+
+  it("falls monotonically away from either edge-on state", () => {
+    // Away from the luff-first state at α = 0...
     let previous = luffFraction(0);
-    for (let degrees = 0; degrees <= 180; degrees += 0.05) {
+    for (let degrees = 0; degrees <= 90; degrees += 0.05) {
       const current = luffFraction(deg(degrees));
-      expect(current).toBeLessThanOrEqual(previous + 1e-15);
+      expect(current, `${degrees}°`).toBeLessThanOrEqual(previous + 1e-15);
       previous = current;
     }
+
+    // ...and away from the leech-first state at α = 180°, swept inward.
+    previous = luffFraction(deg(180));
+    for (let degrees = 180; degrees >= 90; degrees -= 0.05) {
+      const current = luffFraction(deg(degrees));
+      expect(current, `${degrees}°`).toBeLessThanOrEqual(previous + 1e-15);
+      previous = current;
+    }
+  });
+
+  /**
+   * `min(|α|, π − |α|)` has a corner at 90°, and §3.2/§3.3 care enough about C¹
+   * continuity — §4.2's colour ramp reads driving-force gradients — that the
+   * corner deserves an assertion rather than a reassuring comment. It does not
+   * show, because `smoothstep` is saturated with zero slope for tens of degrees
+   * on either side of it.
+   */
+  it("has no crease at α = 90°, where the fold has its corner", () => {
+    for (let degrees = 80; degrees <= 100; degrees += 0.05) {
+      expect(luffFraction(deg(degrees)), `${degrees}°`).toBe(0);
+    }
+  });
+
+  /**
+   * The fold subtracts from π, so an angle that arrives unwrapped would come
+   * out *negative* and the clamp would read it as a fully collapsed sail. 350°
+   * is really −10°, which draws.
+   */
+  it("normalises its input, so an unwrapped angle cannot read as collapsed", () => {
+    expect(luffFraction(deg(-10) + TAU)).toBe(luffFraction(deg(-10)));
+    expect(luffFraction(deg(350))).toBe(0);
+    expect(luffFraction(deg(190))).toBeCloseTo(luffFraction(deg(-170)), 15);
   });
 
   /**
@@ -270,6 +325,22 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
     const awa = 45;
     const force = driving(alpha - awa, wind(awa));
     expect(force).toBeCloseTo(expectedDriving(attachedCl(alpha), attachedCd(alpha), awa) * 0.5, 9);
+  });
+
+  /**
+   * The bug pos-aa2 was filed for, stated as a force.
+   *
+   * The main sheeted flat with the apparent wind dead astern puts the chord
+   * along the flow with the wind on its leech — α = exactly +180°, since
+   * `sailChordBearing(0)` is π and the flow bears 0. The sail is flogging and
+   * makes nothing, which `foil.ts` has always said (`Cl = 0`, `Cd = Cd0`); what
+   * it left behind was a small positive `Cd0·q·A` of drive and a luff fraction
+   * of zero calling the sail fully drawing. Both are now gone.
+   */
+  it("takes the force off a sail lying edge-on at its leech", () => {
+    expect(Math.abs(angleOfAttack(0, wind(180)))).toBe(Math.PI);
+    expect(sailForce(MAIN, 0, wind(180)).luffFraction).toBe(1);
+    expect(driving(0, wind(180))).toBe(0);
   });
 });
 

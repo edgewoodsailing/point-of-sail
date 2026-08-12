@@ -41,6 +41,7 @@ import {
   componentAcross,
   componentAlong,
   cos,
+  normalizeSigned,
   oppositeAngle,
   perpendicular,
   scale,
@@ -122,13 +123,38 @@ export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radia
 /**
  * How much of the sail has collapsed, from the luff aft (§3.3).
  *
- * Even in α by construction, because {@link LUFF}'s thresholds are magnitudes —
- * see the reasoning there. Continuous and monotone in `|α|`, and `smoothstep`
- * clamps, so neither limb needs a branch.
+ * **Even about both edge-on states, not just about zero.** A sail lies along
+ * the flow twice: at α = 0, where the wind arrives at the luff, and at
+ * α = ±180°, where it arrives at the leech instead. Neither one is drawing —
+ * `foil.ts` says so at both, reporting `Cl = 0` and `Cd = Cd0` at 180° as
+ * surely as at 0° — so the measure is distance from *whichever is nearer*
+ * rather than distance from zero. Folding about zero alone left this function
+ * calling a sail flogging edge-on at its leech "fully drawing", which is a lie
+ * the drawing then has to work around (pos-aa2).
+ *
+ * {@link LUFF}'s thresholds are magnitudes, which is what makes the fold about
+ * zero correct across tacks; see the reasoning there. The band this second fold
+ * adds is `|α| > 173°` and nothing else, so the rest of the polar is untouched
+ * by construction.
+ *
+ * Continuous, and `smoothstep` clamps, so no limb needs a branch.
  */
 export function luffFraction(alpha: Radians): number {
+  // Normalised first, or `π − |α|` goes negative for an angle that arrives
+  // unwrapped and the clamp turns that into a confident "fully collapsed" —
+  // α = 350°, which is really −10° and drawing, is the case that bites.
+  const magnitude = Math.abs(normalizeSigned(alpha));
+
+  // `min` has a corner at α = 90°, which ought to alarm anyone who has read
+  // `smoothstep`'s docblock: §4.2's colour ramp reads driving-force gradients,
+  // so a crease anywhere upstream shows. It is not one. 90° is more than ten
+  // times {@link LUFF.drawingAbove}, so `smoothstep` is saturated at 1 with
+  // zero slope on *both* sides of the corner and this comes out flat 0 through
+  // it — the crease is there in the argument and absent from the result.
+  const fromEdgeOn = Math.min(magnitude, Math.PI - magnitude);
+
   const span = LUFF.drawingAbove - LUFF.collapsedBelow;
-  return 1 - smoothstep((Math.abs(alpha) - LUFF.collapsedBelow) / span);
+  return 1 - smoothstep((fromEdgeOn - LUFF.collapsedBelow) / span);
 }
 
 /**
@@ -143,9 +169,9 @@ export function luffFraction(alpha: Radians): number {
  * The luff fraction scales the *whole* force rather than lift alone. That is
  * the "effective area" reading of §3.3: the collapsed portion, measured from
  * the luff aft, carries no load of either kind. What it drops is the flogging
- * drag a real luffing sail has — but near α = 0 that drag is only `Cd0` ≈ 0.02,
- * so the simplification is invisible against a drawing sail's hundreds of
- * newtons.
+ * drag a real luffing sail has — but at either edge-on state that drag is only
+ * `Cd0` ≈ 0.02, so the simplification is invisible against a drawing sail's
+ * hundreds of newtons.
  */
 export function sailForce(sail: Sail, sailAngle: Radians, apparent: ApparentWind): SailForce {
   const alpha = angleOfAttack(sailAngle, apparent);
@@ -206,10 +232,15 @@ const REFINE_PASSES = 2;
  * are within a fraction of a percent of each other at the coarse samples while
  * their true summits are not. Keeping only the best sample would let a rounding
  * difference decide which side of the boat the answer came from. The peaks are
- * few — `Cl` and `Cd` each turn over just once across the range, and the luff
- * notch at α = 0 can split one — so at 37 coarse samples, 18 per peak and 19
- * for the seed below, this runs to some 60 to 130 evaluations, around 30 µs.
- * Nothing beside a frame of rendering.
+ * few — `Cl` and `Cd` each turn over just once across the range, and each of
+ * the two luff notches, at α = 0 and at α = ±180°, can split one — so at 37
+ * coarse samples, 18 per peak and 19 for the seed below, this runs to some 60
+ * to 150 evaluations, around 30 µs. Nothing beside a frame of rendering.
+ *
+ * The notch at ±180° only comes within reach on a deep angle, where a trim near
+ * the centreline puts the flow on the leech, and it costs a refinement rather
+ * than an answer: `refine` keeps whichever candidate stands highest, and the
+ * force in that notch was `Cd0·q·A` before §3.3 zeroed it.
  *
  * The sweep is joined by one analytic candidate, {@link attachedTrimSeed},
  * which covers the one place a grid of any spacing is unsafe. See there.

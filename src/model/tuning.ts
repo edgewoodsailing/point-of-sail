@@ -123,18 +123,30 @@ export const FOIL: {
  * drawing a little past nominal zero incidence, on one side only. Representing
  * that honestly needs memory of which side the camber has popped to, which this
  * model does not carry.
+ *
+ * **They are measured from the nearer edge-on state, not from zero** (pos-aa2).
+ * A sail lies along the flow at α = ±180° as well as at α = 0 — the wind at the
+ * leech rather than the luff — and `foil.ts` already reports a sail making
+ * nothing at both. So `sail.ts` folds about 90° too, and these thresholds are
+ * read against `min(|α|, 180° − |α|)`. That reaches only `|α| > 173°`, and
+ * backing is untouched by it: a backed sail head to wind sits at α = 90°, which
+ * folds to 90° either way.
  */
 export const LUFF: {
   readonly collapsedBelow: Radians;
   readonly drawingAbove: Radians;
 } = {
-  /** At or below this `|α|` the sail is wholly collapsed and carries nothing. */
+  /**
+   * At or below this far from an edge-on state the sail is wholly collapsed and
+   * carries nothing.
+   */
   collapsedBelow: degreesToRadians(2),
 
   /**
-   * At or above this `|α|` the sail is wholly full. The 5° between the two is
-   * the transition width — how gradually the collapse propagates aft — and is
-   * the knob to move if the shake looks too abrupt or too mushy.
+   * At or beyond this far from an edge-on state the sail is wholly full. The 5°
+   * between the two is the transition width — how gradually the collapse
+   * propagates across the sail — and is the knob to move if the shake looks too
+   * abrupt or too mushy.
    */
   drawingAbove: degreesToRadians(7),
 };

@@ -48,9 +48,13 @@
  *   starboard with the wind on the starboard beam; `foil.ts` contemplates this
  *   case explicitly, and `Cl = 0, Cd = Cd0` there — a flogging sail making
  *   nothing). Depth → 0 again, so there is no pop there either. This case is
- *   easy to miss: `luffFraction` is blind to it, reporting a fully-drawing sail,
- *   so `(1 − luffFraction)` alone would draw full camber on an arbitrary side
- *   and flip it as α crossed 180°.
+ *   easy to miss, and when this module was written it had to carry it alone:
+ *   `luffFraction` was blind to the leech-first state and reported a fully
+ *   drawing sail, so `(1 − luffFraction)` would have drawn full camber on an
+ *   arbitrary side and flipped it as α crossed 180°. pos-aa2 has since folded
+ *   §3.3 about 90° too, so the two now agree rather than one covering for the
+ *   other — but `sin α` is still what supplies the *side*, and it collapses the
+ *   depth over a far wider band than the 7° §3.3 collapses over, so it stays.
  *
  * The visible consequence, chosen deliberately: a close-hauled sail reads
  * distinctly flatter than a reaching one. That is true on the water.

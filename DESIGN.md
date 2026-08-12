@@ -276,13 +276,14 @@ heading as **driving force**. The lateral component is *not* discarded — see
 Luffing is a *separate concept from trim quality* and must not be conflated with
 it (see [§4.2](#42-the-traffic-light)).
 
-A cambered sail needs some incidence to hold its shape. As α approaches zero the
-luff breaks first and the collapse propagates aft:
+A cambered sail needs some incidence to hold its shape. As the sail comes into
+line with the flow the cloth breaks and the collapse propagates across it. Write
+`d` for how far the sail is from lying along the flow:
 
 ```text
-|α| ≥ α_full  (≈ 7°)    → sail fully drawing, no flutter
-α_luff < |α| < α_full   → partial luff, breaking from the luff aft
-|α| ≤ α_luff  (≈ 2°)    → fully luffing, no drive
+d ≥ α_full  (≈ 7°)      → sail fully drawing, no flutter
+α_luff < d < α_full     → partial collapse, breaking from an edge inward
+d ≤ α_luff  (≈ 2°)      → fully collapsed, no drive
 ```
 
 **The thresholds are magnitudes, not signed angles**, because
@@ -298,11 +299,51 @@ drawing a little past nominal zero incidence, on one side only. Representing tha
 honestly needs memory of which side the camber has popped to, which the model
 does not carry and should not grow.
 
+**The distance `d` is measured from the nearer of the two edge-on states, not
+from zero.** A sail lies along the flow twice: at α = 0, where the wind arrives
+at the luff, and at α = ±180°, where it arrives at the *leech* instead — a boom
+eased right out on a run, with the wind coming over the back of the sail. So
+
+```text
+d = min(|α|, 180° − |α|)
+```
+
+which is even about 90° as well as about zero.
+
+*This was decided rather than assumed, and it could have gone the other way.*
+Against it: [§3.2](#32-sail-forces) already handles α ≈ 180° correctly and
+without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the *boat*
+was ever wrong and the change buys nothing measurable in newtons — it zeroes a
+force that was already negligible. For it, and decisive: the luff fraction is
+the one number that drives the flutter as well as the force, so a fraction of
+zero at α = 180° is the model asserting *fully drawing* about a sail that is
+flogging. The drawing would then show a sail collapsed and dead still at the
+same moment, which is exactly the undertrimmed-looks-like-overtrimmed confusion
+[§4.2](#42-the-traffic-light) exists to prevent, and a student reaches it simply
+by easing too far on a broad reach. A model that needs the renderer to paper
+over one of its numbers has the number wrong.
+
+The fold costs almost nothing elsewhere. It reaches only `|α| > 173°`; the rest
+of the polar is untouched by construction, and backing survives it — a backed
+sail head to wind sits at α = 90°, which folds to 90° either way. The corner
+`min` puts at α = 90° is not a crease in the result: 90° is more than ten times
+`α_full`, so the smoothstep is saturated with zero slope on both sides of it and
+the fraction is flat at zero straight through.
+
 We compute a **luff fraction** ∈ [0,1] — how much of the sail, measured from
 the luff aft, has collapsed. That single number drives both the flutter
 animation and the force reduction, so what the student sees and what the boat
 does can never disagree. It scales the whole force, lift and drag alike: the
 collapsed portion is simply not working.
+
+One simplification remains, deliberately. The fraction is still measured **from
+the luff aft** in both bands, though in the leech-first band the cloth breaks at
+the *leech* and the collapse runs forward. It is defensible because that band is
+7° wide and the fraction saturates to 1 across it — a sail that far over is
+shaking nearly everywhere, so which end it started from is close to moot — and
+it keeps one axis for [§4.1](#41-whats-drawn)'s deformation hook. Doing it
+properly, including a name that admits the fraction is no longer about the luff,
+is its own piece of work.
 
 ### 3.4 Backing a sail
 
