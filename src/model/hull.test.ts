@@ -71,8 +71,10 @@ describe("the hull-speed wall (DESIGN.md §3.5)", () => {
     //
     // pos-lcz moved this from 2% to 5%, and the widening is the change rather
     // than a slackening: at half hull speed the wall factor is 2^-n, so
-    // softening the exponent from 6 to 4 multiplies this share by four, from
-    // 1.1% to 4.7%. That is the definition of a softer wall — the same total
+    // softening the exponent from 6 to 4 multiplies the wall's contribution
+    // there by four and this share by very nearly as much, 1.24% to 4.66%
+    // (`hullSpeedWall` came down slightly at the same time, which is the rest
+    // of the difference). That is the definition of a softer wall — the same total
     // resistance spread further down the speed range — and it is the cost §3.5
     // records for holding the pointing angle together across 6–14 kt. The bound
     // tracks the shape; what it still forbids is the wall leaking into ordinary

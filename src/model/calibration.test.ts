@@ -435,7 +435,7 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
     // which is the one lesson that must not break at any wind.
     //
     // The headroom here shrank with pos-lcz's softer wall: a beam reach in
-    // 45 kt now settles at 10.31 kt where it used to reach about 8.9. Still a
+    // 45 kt now settles at 10.31 kt where it used to reach 8.88. Still a
     // boat, and still under this bound, but the bound is doing more work than
     // it was and it is worth knowing that before softening the wall again.
     for (const wind of [20, 30, 45]) {

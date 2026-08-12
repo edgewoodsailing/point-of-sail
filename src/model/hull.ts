@@ -34,7 +34,10 @@ import type { Kilograms, MetersPerSecond, Newtons } from "./units.ts";
  * which is invariant when both scale together. Scale the true wind and the boat
  * speed by the same factor and every one of them scales by that factor squared,
  * leaving the polar's *shape* untouched. This term is the exception: `v_hull` is
- * an absolute speed, so `B·v⁸/v_hull⁶` scales by the eighth power instead. Set
+ * an absolute speed, so `B·v^(n+2)/v_hull^n` scales by the (n+2)th power
+ * instead — the sixth, at the fourth-power wall set below. Written in terms of
+ * `n` because the previous revision of this paragraph quoted the powers of a
+ * sixth-power wall and went stale the moment the constant moved. Set
  * `RESISTANCE.hullSpeedWall` to zero and re-solve the quadratic to hold the
  * 10 kt beam reach, and the polar becomes exactly scale-invariant — a 45° VMG
  * peak, a run at 0.58 of a beam reach, and a beam reach of 0.555 kt per knot of
