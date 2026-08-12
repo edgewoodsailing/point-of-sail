@@ -76,7 +76,7 @@ export interface Oklch {
  * establishes before moving any number here.
  *
  * The stop at quality ¼ is authored a little *outside* sRGB — its blue channel
- * comes out at −0.007 — so it is the one anchor {@link clampToGamut} visibly
+ * comes out at −5.7e-4 — so it is the one anchor {@link clampToGamut} visibly
  * moves. Left as authored rather than pre-clamped, because the clamp's job is
  * to be the single place a gamut decision is made.
  */
@@ -133,7 +133,11 @@ export function oklchToLinearSrgb(color: Oklch): LinearSrgb {
 /**
  * How far outside `[0, 1]` a channel may stray before the colour counts as out
  * of gamut. Nothing legitimate misses by more than rounding; the anchor that
- * really is outside misses by 7e-3, four orders of magnitude clear of this.
+ * really is outside misses by 5.7e-4, nearly six orders of magnitude clear of
+ * this. `palette.test.ts` pins that figure, because it is the margin this
+ * tolerance is chosen against and a comment is a poor place to keep a
+ * measurement — this one had drifted in both directions at once, overstating
+ * the miss as 7e-3 while understating the headroom it leaves.
  */
 const CHANNEL_TOLERANCE = 1e-9;
 

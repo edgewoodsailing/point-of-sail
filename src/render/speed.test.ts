@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import sceneCss from "./scene.css?raw";
 import { HULL, STATIONS } from "../model/boat.ts";
 import type { Meters, Vec2 } from "../model/units.ts";
 import {
@@ -35,6 +36,69 @@ const ARROW_BARB = 0.4;
 const HULL_GAP = 0.2;
 
 const kt = knotsToMetersPerSecond;
+
+/**
+ * `scene.css` with its comments stripped.
+ *
+ * That stylesheet is heavily annotated, and several of its comments quote the
+ * declarations they explain. Scanning the raw text would let a commented-out or
+ * merely *quoted* declaration answer for a live one, which is the same class of
+ * mistake as reading a declaration that loses the cascade.
+ */
+const STYLESHEET = sceneCss.replace(/\/\*[\s\S]*?\*\//g, "");
+
+/**
+ * The three terms of `--pos-rule-speed`, read out of `scene.css`.
+ *
+ * The stroke is the one input to the arrow's edge margin that is not in metres
+ * and does not live in TypeScript, so restating it here — as this test used to
+ * — meant `scene.css` could raise it and nothing would notice (pos-7nt). The
+ * margin is generous enough that the invariant would have held anyway, but the
+ * figure in `speed.ts`'s `EDGE_KEEP_OUT` comment would have gone quietly wrong,
+ * which is the failure this repository keeps writing tests against.
+ *
+ * Parsed rather than evaluated because `clamp()` needs a viewport to resolve
+ * and the test supplies several. Anything it cannot read — an unknown shape, a
+ * missing declaration, or more than one — throws with instructions, since
+ * silently falling back to a default or to the first match would restore
+ * exactly the coupling it is here to remove.
+ */
+const SPEED_STROKE = parseStrokeClamp("--pos-rule-speed");
+
+function parseStrokeClamp(property: string): {
+  minPx: number;
+  vminPercent: number;
+  maxPx: number;
+} {
+  const declarations = [...STYLESHEET.matchAll(new RegExp(`${property}\\s*:\\s*([^;]+);`, "g"))];
+  if (declarations.length === 0) throw new Error(`${property} is not declared in scene.css.`);
+  if (declarations.length > 1) {
+    // Reading the first match would be reading a declaration that need not win
+    // the cascade: a `@media` override later in the file paints a different
+    // stroke while this test carries on checking the old one — which is the
+    // drift pos-7nt exists to close, reintroduced through the tripwire itself.
+    throw new Error(
+      `${property} is declared ${declarations.length} times in scene.css. This test reads a ` +
+        `single declaration and cannot resolve a cascade, so it would silently check a value ` +
+        `the browser does not paint. Fold them into one, or teach this which one wins and ` +
+        `re-check EDGE_KEEP_OUT's comment in speed.ts against the result.`,
+    );
+  }
+  const declared = declarations[0]![1]!.trim();
+  const terms = /^clamp\(\s*([\d.]+)px\s*,\s*([\d.]+)vmin\s*,\s*([\d.]+)px\s*\)$/.exec(declared);
+  if (terms === null) {
+    throw new Error(
+      `${property} is \`${declared}\`, which this test cannot read. It understands ` +
+        `clamp(<min>px, <n>vmin, <max>px). Teach it the new shape, then re-check ` +
+        `EDGE_KEEP_OUT's comment in speed.ts against the overhang that falls out.`,
+    );
+  }
+  return {
+    minPx: Number(terms[1]),
+    vminPercent: Number(terms[2]),
+    maxPx: Number(terms[3]),
+  };
+}
 
 /** Every `x y` pair in some path data, in order. */
 function pathPoints(d: string): Vec2[] {
@@ -189,14 +253,42 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
    * strip comes off the short axis and the surface is shorter than the
    * viewport. Assuming the two were equal — as this test first did — understates
    * the overhang by up to a factor of two.
+   *
+   * The clamp's terms come from {@link SPEED_STROKE}, which reads them out of
+   * `scene.css`, so this stays a derivation of the stroke the browser will
+   * actually paint rather than a second copy of it.
    */
   const halfStrokeMeters = (viewport: [number, number], stripPx: number): Meters => {
     const [width, height] = viewport;
     const surfaceShort = Math.min(width, height - stripPx);
     const vmin = Math.min(width, height);
-    const strokePx = Math.min(4, Math.max(1.6, (0.45 * vmin) / 100));
+    const { minPx, vminPercent, maxPx } = SPEED_STROKE;
+    // `clamp(MIN, VAL, MAX)` is `max(MIN, min(VAL, MAX))` — MIN wins outright if
+    // someone ever writes one above MAX. Nesting it the other way round would
+    // agree on every sane declaration and quietly disagree on that one.
+    const strokePx = Math.max(minPx, Math.min((vminPercent * vmin) / 100, maxPx));
     return (strokePx / 2) * (SHORT_SPAN / surfaceShort);
   };
+
+  it("reads the stroke width from the stylesheet that actually sets it", () => {
+    // The pin itself. `--pos-rule-speed` is the one input to the overhang that
+    // does not live in TypeScript, and until pos-7nt this test restated it as a
+    // literal — so raising it in `scene.css` left the suite green, `speed.ts`'s
+    // comment stale, and the round cap a little further through the viewport
+    // edge. Parsing it means the CSS cannot move on its own.
+    expect(SPEED_STROKE).toEqual({ minPx: 1.6, vminPercent: 0.45, maxPx: 4 });
+    // And the property this parsed is the one `.pos-speed-mark` actually paints
+    // with. Matching `stroke-width: var(--pos-rule-speed)` anywhere in the file
+    // would be satisfied by a dead rule, or by a different element using the
+    // same custom property, while the arrow itself had moved to a literal — so
+    // the margin would again be derived from a width the arrow does not use.
+    // The check has to name the selector the sentence above names.
+    const rules = [...STYLESHEET.matchAll(/([^{}]*)\{([^}]*)\}/g)].filter(([, selector]) =>
+      selector!.includes(".pos-speed-mark"),
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0]![2]).toMatch(/stroke-width:\s*var\(--pos-rule-speed\)/);
+  });
 
   it("leaves room for the stroke, which overhangs the tip it is drawn on", () => {
     // The module keeps the tail radius private, so it is recovered the only way

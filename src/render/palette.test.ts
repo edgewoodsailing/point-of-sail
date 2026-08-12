@@ -12,7 +12,21 @@ import {
 } from "./palette.ts";
 import { formatNumber } from "./svg.ts";
 
-/** Samples across the ramp. Fine enough to catch a flat spot or a reversal. */
+/**
+ * Samples across the ramp. Fine enough to catch a flat spot or a reversal.
+ *
+ * **Load-bearing for the CVD monotonicity block below — do not raise it
+ * casually.** The *emitted* ramp is quantised: `clampToGamut` floors chroma to
+ * the 1e-4 step `formatNumber` prints at, and near an anchor, where
+ * `smoothstep` flattens the lightness rise to almost nothing, one step down in
+ * chroma can just outweigh the gain. At 200 samples that never lands on a
+ * reversal; at 400 tritanopia dips by 4e-5, and at 5000 all three do. The ideal
+ * unquantised ramp is strictly monotonic out to 100 000 samples, so this is a
+ * rounding artifact of emitting a finite decimal rather than a fault in the
+ * ramp — DESIGN.md §4.4 states the caveat in the same terms. Raising this
+ * constant is fine if the strict assertions below gain a tolerance of about
+ * 1e-4 at the same time; raising it alone just fails.
+ */
 const SAMPLES = 200;
 
 /**
@@ -107,6 +121,11 @@ describe("the gamut clamp (the check stylelint cannot make here)", () => {
     // Stated as a property of the *authored* colour, so this test fails if
     // someone later moves that anchor inside and leaves the clamp unexercised.
     expect(oklchToLinearSrgb(AUTHORED[1]!).blue).toBeLessThan(0);
+    // How far outside, pinned rather than left to a comment. `palette.ts` quotes
+    // this margin twice — once to say which anchor the clamp moves, once as the
+    // distance CHANNEL_TOLERANCE is chosen against — and both said 7e-3 until
+    // this was measured. A figure that only lives in prose drifts silently.
+    expect(oklchToLinearSrgb(AUTHORED[1]!).blue).toBeCloseTo(-5.72e-4, 6);
     expect(trimQualityStop(0.25).chroma).toBeLessThan(AUTHORED[1]!.chroma);
     // Lightness and hue are what OKLCH lets us hold while chroma gives.
     expect(trimQualityStop(0.25).lightness).toBeCloseTo(0.62, 9);
@@ -176,42 +195,39 @@ describe("quality at and past its ends", () => {
 
 describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
   /*
-   * What this block establishes, and what it deliberately does not.
+   * What this block establishes, and why it asserts lightness rather than hue.
    *
-   * §4.4 argues the ramp survives red-green deficiency on the blue-yellow axis
-   * and quotes simulated blue channels of 34 → 58 → 102 → 177 → 215 under both
-   * deuteranopia and protanopia. **Those numbers do not reproduce.** Measured
-   * here with Machado 2009 at severity 1.0 — and Viénot 1999 agrees on the
-   * shape — the anchors give:
+   * §4.4's accessibility claim is that the ramp stays *ordered* for a student
+   * who cannot name its colours. The property that delivers that is simulated
+   * relative luminance: it rises across the whole sweep without a reversal for
+   * all three deficiency types, which is a stronger guarantee than a
+   * blue-yellow one, since that would cover protanopia and deuteranopia only
+   * and this covers tritanopia too. Machado 2009 at severity 1.0 below. Viénot
+   * 1999 agrees on the two red-green cases — the only ones it models; its
+   * tritanopia counterpart is Brettel 1997 — but neither is implemented here,
+   * so Machado is what these assertions actually run on.
+   *
+   * **Blue is deliberately not asserted**, and it would fail if it were. The
+   * quality-¼ anchor is authored a little *outside* sRGB — linear blue −5.7e-4,
+   * the figure the gamut block above pins — so it shows as 0 once clamped and
+   * displayed, while the red anchor has 23. Every dichromat model preserves the
+   * S-cone signal, so no honest simulation makes that amber bluer than that red:
    *
    *   deuteranopia  10 →   0 →  59 →  86 → 147
    *   protanopia    18 →   0 →  43 →  65 → 134
    *   tritanopia    36 →  85 → 132 → 172 → 213
    *
-   * Neither red-green case is monotonic, and the reason is structural rather
-   * than a matter of which simulation one picks: the quality-¼ anchor sits on
-   * the sRGB boundary with a blue channel of exactly 0, while the red anchor
-   * has 23. Every dichromat model preserves the S-cone signal, so no honest
-   * simulation can make that amber bluer than that red. (Only tritanopia's blue
-   * is monotonic, which is the case §4.4's blue-yellow argument does *not*
-   * cover.)
-   *
-   * What does hold, and what is asserted below, is the property §4.4 explicitly
-   * disclaims: **simulated lightness**. Its own anchors run L 52 → 62 → 72 → 80
-   * → 86, and the simulated relative luminance of the ramp rises without a
-   * single reversal for all three deficiency types across the whole sweep. That
-   * is what a student who cannot name these colours actually reads, so it is
-   * what the ramp has to guarantee, and it is a stronger claim than the one
-   * asked for because it covers tritanopia too.
-   *
-   * Reconciling §4.4's prose with these numbers — or retuning the amber anchor
-   * until the blue claim becomes true — is pos-kxg. Do not "fix" the ramp here
-   * to make a test pass.
+   * An earlier §4.4 claimed a monotonic blue channel across the red-green cases
+   * on figures that do not reproduce. pos-kxg corrected the section, and §4.4
+   * now carries these measurements along with why retuning the amber cannot
+   * rescue the blue claim. Read it before adding a blue assertion here — the
+   * prose was what was wrong, not the ramp, and the ramp is not to be "fixed"
+   * here to make a test pass.
    */
 
   const DEFICIENCIES = ["protanopia", "deuteranopia", "tritanopia"] as const;
 
-  it.each(DEFICIENCIES)("stays ordered under %s, with no reversal anywhere", (deficiency) => {
+  it.each(DEFICIENCIES)("stays ordered under %s across the sampled ramp", (deficiency) => {
     const luminance = sweep().map((color) => simulatedLuminance(color, deficiency));
     for (let i = 1; i < luminance.length; i += 1) {
       expect(luminance[i]!).toBeGreaterThan(luminance[i - 1]!);
