@@ -79,6 +79,17 @@ body {
   min-width: 0;
 }
 
+/* A readout, not a control: speed is settled, never set. */
+.pos-sim .scaffold-row > input:disabled {
+  opacity: 0.55;
+}
+
+.pos-sim .scaffold-value {
+  flex: 0 0 4.5rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 /*
  * The wind arrow. Deliberately a different hue from anything on the boat, so it
  * reads as an annotation rather than as a part of the rig — pos-qmk.3 will make

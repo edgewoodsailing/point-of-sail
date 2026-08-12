@@ -3,6 +3,7 @@ import "./shell.css";
 import { SWING_LIMIT } from "./model/boat.ts";
 import { rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
+import { settle } from "./model/simulation.ts";
 import type { Degrees, Meters, Newtons, Radians, Vec2 } from "./model/units.ts";
 import {
   add,
@@ -39,15 +40,18 @@ if (surface === null) {
  * - **The jib is set**, against §3.7's main-alone default, so both sails are
  *   visible without touching a control.
  * - **The trim is on the leeward side.** This wind and heading give an apparent
- *   wind 155° off the starboard bow — a broad reach — where the previous
+ *   wind 153° off the starboard bow — a broad reach — where the previous
  *   `mainAngle: +25°` put the boom to *windward* at an angle of attack of 180°:
  *   flow arriving at the leech, no force, and a sail that correctly draws dead
  *   flat. A fine state, a useless first paint. Eased to port both sails sit near
  *   α = 80° and belly forward, which is what a run looks like.
+ *
+ * The speed is not written down, because it is not an input: {@link settle}
+ * supplies it. On this heading at this trim the boat comes out at 4.59 kt.
  */
-let state: SimState = {
+let state: SimState = settle({
   wind: { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
-  motion: { heading: degreesToRadians(35), speed: knotsToMetersPerSecond(4) },
+  motion: { heading: degreesToRadians(35), speed: 0 },
   trim: {
     mainAngle: degreesToRadians(-75),
     jibAngle: degreesToRadians(-70),
@@ -55,7 +59,7 @@ let state: SimState = {
   },
   mainHeld: false,
   jibHeld: false,
-};
+});
 
 const scene = createScene(surface);
 const sails = createSailLayer();
@@ -130,12 +134,56 @@ draw(state);
 /** Controls that re-read the state, so a change from anywhere reaches them all. */
 const followers: (() => void)[] = [];
 
-/** The one way the scaffolding changes state: patch, redraw, resync the strip. */
-function apply(patch: Partial<SimState>): SimState {
-  state = { ...state, ...patch };
+/** Patch, redraw, resync the strip. The speed is taken as given. */
+function commit(next: SimState): SimState {
+  state = next;
   draw(state);
   for (const follow of followers) follow();
   return state;
+}
+
+/**
+ * The one way the scaffolding changes state: patch it, then **settle the speed**
+ * before drawing anything.
+ *
+ * Speed is an output, not an input, and letting it be typed in was actively
+ * misleading. Nothing stops you setting 4 kt in a flat calm, and the drawing
+ * then honestly reports the 4 kt of apparent wind the boat is making for itself
+ * — sails cambered, drive negative, all correct, and all describing a boat that
+ * cannot exist. Ruining an intuition is a high price for a slider.
+ *
+ * {@link settle} is the right tool rather than a running integrator: it is the
+ * *same* `step` the simulator uses, iterated to the balance point, so what the
+ * page shows is by construction a speed the boat really reaches — and it needs
+ * no animation loop, which this bead is explicitly not about.
+ */
+function apply(patch: Partial<SimState>): SimState {
+  return commit(settle({ ...state, ...patch }));
+}
+
+/**
+ * At most one settle per frame.
+ *
+ * A slider fires `input` far faster than anything can paint, and settling is
+ * cheap only where the boat is actually sailing: 0.3 ms on a reach, but ~17 ms
+ * in a flat calm or five degrees off the wind, where §3.5's `1/t` approach
+ * spends the whole 18,000-step budget. Those are exactly the places a heading
+ * drag passes through, so one settle per frame is what keeps a drag from
+ * stuttering in the no-go zone.
+ *
+ * The thunk reads the control's value when it *fires*, never when it was
+ * queued, so a coalesced drag lands on where the finger actually is.
+ */
+function perFrame(run: () => void): () => void {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      run();
+    });
+  };
 }
 
 const controls = document.querySelector<HTMLElement>(".pos-sim .controls");
@@ -166,7 +214,10 @@ if (controls !== null) {
     // Safari 16.4, above the floor vite.config.ts pins (§4.4). Below it the
     // property is a silent expando and the control has no accessible name.
     input.setAttribute("aria-label", label);
-    input.addEventListener("input", () => onInput(Number(input.value)));
+    input.addEventListener(
+      "input",
+      perFrame(() => onInput(Number(input.value))),
+    );
     // So a state set from the console does not leave the strip lying, and the
     // next drag therefore jump.
     followers.push(() => {
@@ -175,6 +226,36 @@ if (controls !== null) {
 
     const row = scaffold(label);
     row.append(input);
+    controls.append(row);
+  };
+
+  /**
+   * A slider that can only be read. Speed is a *consequence* of the wind, the
+   * heading and the trim, so it is shown the way the boat reports it rather
+   * than offered as something to set — see {@link apply}. The bar is here
+   * because a number alone makes it hard to see the boat gathering way as you
+   * ease a sail in.
+   */
+  const readout = (label: string, min: number, max: number, read: () => number): void => {
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = "any";
+    input.disabled = true;
+    input.setAttribute("aria-label", label);
+
+    const value = document.createElement("output");
+    value.className = "scaffold-value";
+
+    followers.push(() => {
+      const knots = read();
+      input.value = String(knots);
+      value.textContent = `${knots.toFixed(2)} kt`;
+    });
+
+    const row = scaffold(label);
+    row.append(input, value);
     controls.append(row);
   };
 
@@ -204,13 +285,7 @@ if (controls !== null) {
     (degrees) => apply({ motion: { ...state.motion, heading: degreesToRadians(degrees) } }),
   );
 
-  slider(
-    "Boat kt",
-    -2,
-    8,
-    (of) => metersPerSecondToKnots(of.motion.speed),
-    (knots) => apply({ motion: { ...state.motion, speed: knotsToMetersPerSecond(knots) } }),
-  );
+  readout("Boat kt", -3, 7, () => metersPerSecondToKnots(state.motion.speed));
 
   slider(
     "Main",
@@ -242,6 +317,10 @@ if (controls !== null) {
   const jibRow = scaffold("Jib set");
   jibRow.append(jibSet);
   controls.append(jibRow);
+
+  // Once through, so the readouts show the opening state rather than nothing
+  // until the first thing is touched.
+  for (const follow of followers) follow();
 }
 
 // --- Scaffolding: a diagnostic handle ---------------------------------------
@@ -270,14 +349,29 @@ const pos = {
   },
 
   /**
-   * Patch the state and redraw. Angles are radians, like the model — use
-   * `pos.deg(45)` if you are typing degrees.
+   * Patch the state, settle the speed, redraw. Angles are radians, like the
+   * model — use `pos.deg(45)` if you are typing degrees.
    */
   set: (patch: Partial<SimState>): SimState => apply(patch),
 
   /** Patch just the trim, which is the field most worth poking at. */
   trim: (patch: Partial<SimState["trim"]>): SimState =>
     apply({ trim: { ...state.trim, ...patch } }),
+
+  /**
+   * Patch **without** settling — the escape hatch the strip deliberately no
+   * longer offers.
+   *
+   * The controls settle because a speed you typed in is usually a speed the
+   * boat cannot hold, and reasoning from one wrecks your intuition. That is a
+   * good default and a bad law: reproducing a transient, or checking what the
+   * drawing does at a speed the boat is only passing through, needs exactly the
+   * unsettled state. Named `force` so it is never reached for by accident.
+   */
+  force: (patch: Partial<SimState>): SimState => commit({ ...state, ...patch }),
+
+  /** Settle the speed where it stands, e.g. after a `force`. */
+  settle: (): SimState => commit(settle(state)),
 
   deg: degreesToRadians,
   kt: knotsToMetersPerSecond,
