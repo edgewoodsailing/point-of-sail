@@ -48,9 +48,13 @@
  *   starboard with the wind on the starboard beam; `foil.ts` contemplates this
  *   case explicitly, and `Cl = 0, Cd = Cd0` there — a flogging sail making
  *   nothing). Depth → 0 again, so there is no pop there either. This case is
- *   easy to miss: `luffFraction` is blind to it, reporting a fully-drawing sail,
- *   so `(1 − luffFraction)` alone would draw full camber on an arbitrary side
- *   and flip it as α crossed 180°.
+ *   easy to miss, and when this module was written it had to carry it alone:
+ *   `luffFraction` was blind to the leech-first state and reported a fully
+ *   drawing sail, so `(1 − luffFraction)` would have drawn full camber on an
+ *   arbitrary side and flipped it as α crossed 180°. pos-aa2 has since folded
+ *   §3.3 about 90° too, so the two now agree rather than one covering for the
+ *   other — but `sin α` is still what supplies the *side*, and it collapses the
+ *   depth over a far wider band than the 7° §3.3 collapses over, so it stays.
  *
  * The visible consequence, chosen deliberately: a close-hauled sail reads
  * distinctly flatter than a reaching one. That is true on the water.
@@ -188,6 +192,14 @@ export interface SailShape {
    * How much of the sail has collapsed, from the luff aft — the model's number,
    * carried through untouched for pos-dmg.2. `s < luffFraction` is the
    * fluttering region, because `s` and this are measured on the same axis.
+   *
+   * **One band where that axis is wrong, and pos-dmg.2 should know before it
+   * wires the shake.** Past |α| = 173° the flow arrives at the leech (§3.3
+   * collapses the sail there too, since pos-aa2), and the cloth breaks at the
+   * *leech* and runs forward — so `s < luffFraction` shakes the forward end of
+   * a sail whose after end is the one letting go. It is not a sliver: the
+   * fraction is 0.35 at α = 175° and only reaches 1 at 178°. pos-83f owns
+   * reporting which end it breaks from and drawing it that way.
    */
   readonly luffFraction: number;
 }

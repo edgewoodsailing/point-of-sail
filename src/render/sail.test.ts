@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, STATIONS, SWING_LIMIT, jibClewPosition, mainClewPosition } from "../model/boat.ts";
 import { foilCoefficients } from "../model/foil.ts";
-import { angleOfAttack, dynamicPressure, sailForce } from "../model/sail.ts";
+import { angleOfAttack, dynamicPressure, luffFraction, sailForce } from "../model/sail.ts";
 import type { SimState } from "../model/simulation.ts";
 import { FOIL, LUFF } from "../model/tuning.ts";
 import type { Radians, Vec2 } from "../model/units.ts";
@@ -292,11 +292,12 @@ describe("camber collapses where the sail cannot hold a shape", () => {
     expect(previous).toBeGreaterThan(0);
   });
 
-  it("goes flat again edge-on at the leech, where luffFraction is blind", () => {
+  it("goes flat again edge-on at the leech", () => {
     // α ≈ ±180° is the flow arriving at the leech — a flogging sail making
-    // nothing, which `foil.ts` contemplates but `luffFraction` reports as fully
-    // drawing. Without sin α the drawing would show full camber here, on an
-    // arbitrary side, and flip it as α crossed 180°.
+    // nothing, which `foil.ts` contemplates and which §3.3 also collapses since
+    // pos-aa2. `sin α` collapsed it here first and over a much wider band, and
+    // still supplies the side: without it the drawing would show full camber
+    // here, on an arbitrary side, and flip it as α crossed 180°.
     const trim = deg(90);
     expect(camberDepth(MAIN, trim, wind(10, 90))).toBeCloseTo(0, 12);
 
@@ -334,7 +335,12 @@ describe("camber depth", () => {
       const apparent = wind(12, awa);
       for (const trim of trimSweep(5)) {
         const alpha = angleOfAttack(trim, apparent);
-        if (Math.abs(alpha) < LUFF.drawingAbove) continue;
+        // Only where the sail is *fully* drawing, so `expected` need not carry
+        // the luff term. Asked of `luffFraction` rather than compared against
+        // `LUFF.drawingAbove` by hand: §3.3 owns which angles those are, and it
+        // has moved once already — pos-aa2 folded the thresholds about 90° as
+        // well as about zero, which this guard silently missed.
+        if (luffFraction(alpha) > 0) continue;
         const expected =
           MAIN.foot *
           MAX_DRAFT_FRACTION *
