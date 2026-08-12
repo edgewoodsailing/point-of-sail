@@ -52,8 +52,41 @@
    * fully luffing, which is exactly when the light is red.
    */
   --pos-rule-sail: clamp(2.2px, 0.7vmin, 6px);
+
+  /*
+   * The wind ring's track and its graduations: the lightest lines in the
+   * drawing, and lighter than the hull on purpose. They are a scale to read the
+   * boat against, not a thing to look at, and at 5.65 m they enclose everything
+   * — a hull-weight circle around the whole scene would frame the drawing like a
+   * border and pull the eye outward, away from the sails.
+   */
+  --pos-rule-wind: clamp(1px, 0.28vmin, 2.6px);
+
+  /*
+   * The wind arrow, which carries the hull's weight because it is the one thing
+   * out here you are meant to reach for (§5). It is also the only mark that
+   * answers "where is the wind" at a glance from across a table, so it has to
+   * survive the same viewing angle the sails do.
+   */
+  --pos-rule-wind-arrow: clamp(1.6px, 0.45vmin, 4px);
+
+  /*
+   * The speed arrow. Heavier than the wind's track and lighter than the sails:
+   * it is a readout rather than a control, and pos-dmg.3 will paint it with the
+   * §4.2 ramp, so it needs enough width to carry a colour but not enough to
+   * compete with the cloth for attention.
+   */
+  --pos-rule-speed: clamp(1.6px, 0.45vmin, 4px);
   --pos-ink: oklch(38% 0.03 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
+
+  /*
+   * The wind's own hue, deliberately outside everything on the boat: the hull's
+   * ink is 250° at a chroma of 0.03, and §4.2's trim ramp runs 30° to 145°. A
+   * saturated blue at 235° belongs to neither, so the ring reads as an
+   * annotation about the world rather than as part of the rig.
+   */
+  --pos-wind-ink: oklch(62% 0.13 235deg);
 }
 
 .pos-sim .pos-hull-outline {
@@ -105,5 +138,56 @@
 /* A struck jib is absent entirely (§4.1) — from painting, hit-testing and the
    accessibility tree alike. */
 .pos-sim .pos-struck {
+  display: none;
+}
+
+/* The wind ring's track and its seven points-of-sail graduations (§4.1, §5). */
+.pos-sim .pos-wind-track,
+.pos-sim .pos-wind-ticks {
+  fill: none;
+  stroke: var(--pos-wind-ink);
+  stroke-width: var(--pos-rule-wind);
+  stroke-linecap: round;
+}
+
+.pos-sim .pos-wind-arrow {
+  fill: none;
+  stroke: var(--pos-wind-ink);
+  stroke-width: var(--pos-rule-wind-arrow);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/*
+ * The speed indicator is a readout, never a control, and above hull speed it
+ * runs past `contentRadius` and crosses the ring — which pos-bwd.2 makes a drag
+ * target. Transparent to the pointer, so that overlap can never intercept a drag
+ * meant for the wind. This is the structural half of the decision; the paint
+ * order in `scene.ts` is only the visible half.
+ */
+.pos-sim .pos-speed {
+  pointer-events: none;
+}
+
+.pos-sim .pos-speed-mark {
+  fill: none;
+
+  /*
+   * The seam pos-dmg.3 writes to, exactly as `.pos-sailcloth` above is pos-
+   * dmg.1's: it sets `--pos-speed-ink` on the layer's group, the property
+   * inherits down to this path, and because the value runs through the CSS
+   * parser an `oklch()` colour works everywhere at the support floor rather than
+   * in Safari alone (§4.4). The fallback means this bead ships in plain ink and
+   * pos-dmg.3 needs no CSS change at all.
+   */
+  stroke: var(--pos-speed-ink, var(--pos-ink));
+  stroke-width: var(--pos-rule-speed);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Not under way: no arrow at all, rather than a round-capped dot at the stem
+   that would never go away. */
+.pos-sim .pos-stopped {
   display: none;
 }
