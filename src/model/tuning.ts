@@ -206,9 +206,20 @@ export const RESISTANCE: {
    *
    * pos-lcz moved this from 22.5 to 21.9, which is not a tuning pass in its own
    * right — it is what holds the 10 kt beam reach at 5.55 kt while the exponent
-   * came down from 6 to 4. Below hull speed a softer exponent means a *smaller*
-   * wall factor, so the coefficient had to fall slightly to keep the beam reach
-   * from creeping up. The two move together and should be re-solved together.
+   * came down from 6 to 4.
+   *
+   * **The direction is the opposite of the intuition, so it is worth spelling
+   * out.** Below hull speed the wall factor is a number *less than one* raised
+   * to the exponent, and raising a fraction to a higher power makes it smaller.
+   * So a *softer* exponent gives a *larger* factor down here: at the 5.55 kt
+   * beam reach, `(5.55/5.646)⁴ = 0.934` against `⁶ = 0.902`. Dropping the
+   * exponent while holding `B` therefore *adds* resistance at the beam reach and
+   * pushes it below 5.55 kt, and `B` has to come down to put it back. A softer
+   * wall is only softer where it was supposed to bite — past hull speed — and it
+   * is slightly *firmer* everywhere below, which is the same fact `hull.test.ts`
+   * records as the wall's share at half hull speed going from 1.24% to 4.66%.
+   *
+   * The two move together and should be re-solved together.
    *
    * What has not changed is what the term is for: the wall a displacement hull
    * hits, so that no amount of sail area gets a Rhodes 19 to 9 knots in the

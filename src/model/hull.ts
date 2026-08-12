@@ -224,9 +224,18 @@ const TERMINAL_FRACTION = 1 - 1 / Math.E;
  * be, but the ten seconds is a calibration anchor rather than a promise.
  *
  * **The wall term is deliberately left out of the mapping.** Right at hull speed
- * the curve is an order of magnitude stiffer, and inverting *that* slope would
- * derive a six-tonne boat: the lag we care about is the ordinary one, gathering
+ * the curve is far stiffer than the quadratic alone — `R′(v_hull)` is 3.35× the
+ * `2A·v_hull` this derivation uses — and inverting *that* slope would derive a
+ * boat of about 3.7 tonnes: the lag we care about is the ordinary one, gathering
  * way on a reach, not the last tenth of a knot against the wall.
+ *
+ * Both figures are exponent-dependent and were re-measured for pos-lcz's fourth
+ * power; at the sixth they were 4.21× and ≈ 4.6 t. The previous wording said
+ * "an order of magnitude" and "a six-tonne boat", and neither reproduces at
+ * either exponent — 4.21× is not an order of magnitude and does not imply six
+ * tonnes — so this is a correction as well as an update. The point it was making
+ * survives both: the slope at the wall is several times the one the lag is
+ * anchored to, and anchoring to it would derive a boat several times too heavy.
  *
  * `HULL.hullSpeed` stands in for `v_terminal` as a *scale* — a typical speed for
  * this boat under sail — and not as a claim about where it settles, which

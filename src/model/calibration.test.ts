@@ -346,8 +346,24 @@ describe("the no-go zone (DESIGN.md §3.6)", () => {
  * a hair more `RESISTANCE.keelStall` slides the whole band up — and was
  * considered and declined, because it would move the boat to make a test
  * comfortable while the underlying drift stayed where it was. So if a later
- * pass pushes this to 41°, this file *should* go red: that is the assertion
- * doing its job at the bound that actually matters, not a flaky number.
+ * pass drops this to **39°**, this file *should* go red: that is the assertion
+ * doing its job at the bound that actually matters, not a flaky number. (41°
+ * would pass — the bound is 40–50 — and only the low side is at risk here.)
+ *
+ * **And it is knife-edge rather than merely tight, which a whole degree hides.**
+ * The peak is a discrete argmax over a very flat maximum. At 14 kt,
+ * VMG(40°) = 3.789249 kt against VMG(39°) = 3.787679 — a gap of **0.04%**. The
+ * whole opening range is like this: the winning degree beats its runner-up by
+ * 0.09% at 6 kt, 0.02% at 8, 0.06% at 10 and 0.01% at 12. So any sub-percent
+ * numerical difference — a platform's `Math.pow`, a `Math.cos` a few ulp out —
+ * can move the reported peak a degree.
+ *
+ * That only threatens the suite at 14 kt, and that is the point worth carrying:
+ * everywhere else the runner-up degree is *also* inside 40–50, so a flip is
+ * invisible. At 14 kt the runner-up is 39°, outside it. If this ever fails on a
+ * machine where nothing changed, read that as the flatness of the maximum and
+ * not as the physics having moved — check VMG(39) against VMG(40) before
+ * touching a constant.
  *
  * **Why it cannot simply be tightened further.** Every force in the model is
  * homogeneous of degree two in speed, so scaling the wind and the boat speed
