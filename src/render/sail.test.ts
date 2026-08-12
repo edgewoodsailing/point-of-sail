@@ -34,7 +34,9 @@ import {
   camberProfile,
   collapseAt,
   createSailLayer,
+  flutterEnvelope,
   jibShape,
+  luffFlutter,
   mainShape,
   pressureFactor,
   rigDrawing,
@@ -81,6 +83,16 @@ function chordPoint(shape: SailShape, s: number): Vec2 {
 /** The drawn deviation from the chord at a chord fraction, as a vector. */
 function bulge(shape: SailShape, s: number): Vec2 {
   return subtract(sailPoint(shape, s), chordPoint(shape, s));
+}
+
+/**
+ * A shape at a chosen angle of attack. The boom stays on the centreline and
+ * the wind is moved instead, since α = AWA + trim — which keeps every case
+ * here a legal trim, including the α = 180° one that needs the boom amidships
+ * with the wind dead astern.
+ */
+function shapeAtAlpha(alphaDegrees: number): SailShape {
+  return mainShape(0, wind(10, alphaDegrees));
 }
 
 /** The direction the wind is blowing *toward*. */
@@ -393,16 +405,6 @@ describe("camber depth", () => {
 // --- Where the collapse is ---------------------------------------------------
 
 describe("the collapsed region runs from the edge that is breaking (pos-83f)", () => {
-  /**
-   * A shape at a chosen angle of attack. The boom stays on the centreline and
-   * the wind is moved instead, since α = AWA + trim — which keeps every case
-   * here a legal trim, including the α = 180° one that needs the boom amidships
-   * with the wind dead astern.
-   */
-  function shapeAtAlpha(alphaDegrees: number): SailShape {
-    return mainShape(0, wind(10, alphaDegrees));
-  }
-
   it("carries the model's fraction and edge onto the shape", () => {
     for (const alpha of [0, 3, 5, 15, 90, 175, 180]) {
       const apparent = wind(10, alpha);
@@ -608,6 +610,383 @@ describe("the per-point deformation hook (the seam pos-dmg.2 inherits)", () => {
         expect(aft, `${alpha}°`).toBeLessThan(forward);
       }
     }
+  });
+});
+
+// --- The luffing flutter ----------------------------------------------------
+
+/**
+ * pos-dmg.2's travelling sine (DESIGN.md §4.1), asserted where it is made: the
+ * geometry, not the DOM. The `node` environment cannot exercise the layer's
+ * animation loop at all, and nothing here should be read as evidence about
+ * frame rate on a tablet — see the module docblock in `sail.ts` for what was
+ * and was not measured.
+ */
+describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
+  /**
+   * Mirrors `FLUTTER_AMPLITUDE_FRACTION` in `sail.ts`, restated rather than
+   * imported for the same reason {@link MAX_DRAFT_FRACTION} is: so the sizes
+   * below are pinned by an independent number.
+   */
+  const FLUTTER_AMPLITUDE_FRACTION = 0.04;
+
+  const chordLength = (shape: SailShape): number => magnitude(subtract(shape.clew, shape.tack));
+
+  /** The ripple's peak, in metres, before the envelope scales it down. */
+  const peakRipple = (shape: SailShape): number =>
+    chordLength(shape) * FLUTTER_AMPLITUDE_FRACTION;
+
+  /**
+   * The ripple alone: what the hook adds on top of the attenuated camber it
+   * replaces. Recovered rather than read off the implementation, so the
+   * attenuate-then-add form itself is under test.
+   */
+  function ripple(shape: SailShape, s: number, time: number): number {
+    const deform = luffFlutter(shape, time);
+    if (deform === undefined) return 0;
+    const camber = shape.depth * camberProfile(s, shape.draftPosition);
+    return deform(s, camber) - camber * (1 - collapseAt(shape, s));
+  }
+
+  /** The travelling sine with its envelope divided out, in −1..1. */
+  function wave(shape: SailShape, s: number, time: number): number {
+    return ripple(shape, s, time) / (peakRipple(shape) * flutterEnvelope(shape, s));
+  }
+
+  /** Where the envelope peaks, as a chord fraction, and how big it is there. */
+  function envelopePeak(shape: SailShape): { at: number; value: number } {
+    let best = { at: 0, value: 0 };
+    for (let i = 0; i <= 1000; i += 1) {
+      const value = flutterEnvelope(shape, i / 1000);
+      if (value > best.value) best = { at: i / 1000, value };
+    }
+    return best;
+  }
+
+  it("does not exist at all while the sail is drawing", () => {
+    for (const alpha of [7, 8, 15, 45, 90, 135, 170, 173]) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(0);
+      expect(luffFlutter(shape, 0.4), `${alpha}°`).toBeUndefined();
+      // Which is what keeps the ordinary case free: the bare Bézier, not a
+      // polyline of 32 identical-to-the-curve samples.
+      expect(sailPathData(shape, luffFlutter(shape, 0.4)), `${alpha}°`).not.toContain("L");
+    }
+  });
+
+  /**
+   * The bead's first acceptance criterion, swept rather than spot-checked, and
+   * on both limbs: the flutter is present exactly when §3.3 reports a collapse
+   * and never otherwise.
+   */
+  it("appears exactly when the model reports a collapse, at either edge", () => {
+    for (let alpha = 0; alpha <= 180; alpha += 0.25) {
+      const shape = shapeAtAlpha(alpha);
+      expect(luffFlutter(shape, 1.7) !== undefined, `${alpha}°`).toBe(
+        shape.collapsedFraction > 0,
+      );
+    }
+  });
+
+  it("leaves the tack and the clew exactly where they are, at every phase", () => {
+    for (const alpha of [0, 2, 3, 5, 175, 177, 180]) {
+      const shape = shapeAtAlpha(alpha);
+      for (const time of [0, 0.05, 0.11, 0.37, 1.9, 60]) {
+        const points = sailPoints(shape, luffFlutter(shape, time));
+        expect(points[0], `${alpha}° at ${time}s`).toEqual(shape.tack);
+        expect(points[SAIL_SAMPLES], `${alpha}° at ${time}s`).toEqual(shape.clew);
+      }
+    }
+  });
+
+  /**
+   * §4.1's whole point, and the thing the old `s < collapsedFraction` axis got
+   * backwards: a sail *just* starting to break shows a small ripple at the edge
+   * the flow arrives at, and nowhere else. At α = 5° and α = 175° the same 35%
+   * of cloth has gone — at opposite ends.
+   */
+  it("starts at the edge the flow arrives at, and nowhere else", () => {
+    for (const [alpha, edge, expected] of [
+      [5, "luff", 0.09],
+      [175, "leech", 0.91],
+    ] as const) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapseFrom, `${alpha}°`).toBe(edge);
+      expect(shape.collapsedFraction, `${alpha}°`).toBeCloseTo(0.352, 3);
+
+      expect(envelopePeak(shape).at, `${alpha}°`).toBeCloseTo(expected, 2);
+      // And the far end of the sail is not moving at all.
+      const far = edge === "luff" ? 0.9 : 0.1;
+      expect(ripple(shape, far, 0.3), `${alpha}°`).toBe(0);
+    }
+  });
+
+  /**
+   * "Amplitude scales with how deeply it is luffing." `collapseAt` alone reads
+   * 1 at the breaking edge however little cloth has gone, so without the
+   * `collapsedFraction` scalar a sail 1% collapsed would shiver at full
+   * amplitude in a sliver.
+   */
+  it("grows with the collapse rather than arriving at full size", () => {
+    let previous = 0;
+    // Deepening the collapse. 7° is fully drawing; 3° is 0.896 collapsed, which
+    // is where the cross-fade below starts and where this claim stops being
+    // exactly true — see the next test for what happens across it.
+    for (let alpha = 6.75; alpha >= 3; alpha -= 0.25) {
+      const shape = shapeAtAlpha(alpha);
+      const peak = envelopePeak(shape).value * peakRipple(shape);
+      expect(peak, `${alpha}°`).toBeGreaterThan(previous);
+      previous = peak;
+    }
+    // And the deepest collapse of all is bigger still than where it left off.
+    expect(envelopePeak(shapeAtAlpha(0)).value * peakRipple(shapeAtAlpha(0))).toBeGreaterThan(
+      previous,
+    );
+  });
+
+  /**
+   * **The cross-fade is not quite monotone in amplitude**, and the honest thing
+   * is to bound the dip rather than to assert a growth that is not there. While
+   * the ramp is swapping ends the two halves pull opposite ways, so the mixture
+   * is flatter than either of them.
+   *
+   * The normalisation in `flutterEnvelope` is what keeps that to 5.3%, at
+   * α = 2.44°; without it the mixture cancels and the dip is 37%, which is a
+   * ripple visibly shrinking and swelling as a boat comes head to wind. What is
+   * left is a twentieth of an amplitude that is itself 5.7 px peak to peak on a
+   * phone, spread over about a degree of angle of attack.
+   */
+  it("dips no more than a tenth in amplitude while the ramp swaps ends", () => {
+    let highest = 0;
+    let deepestDip = 0;
+    for (let alpha = 3; alpha >= 0; alpha -= 0.05) {
+      const shape = shapeAtAlpha(alpha);
+      const peak = envelopePeak(shape).value * peakRipple(shape);
+      highest = Math.max(highest, peak);
+      deepestDip = Math.max(deepestDip, (highest - peak) / highest);
+    }
+    expect(deepestDip).toBeGreaterThan(0);
+    expect(deepestDip).toBeLessThan(0.1);
+  });
+
+  /**
+   * The sizes, in the units that decide whether a student can see it. Pinned
+   * because visibility is the acceptance criterion and a silent change to any
+   * of the three flutter constants would move them.
+   *
+   * The binding case is the jib on a 320 px phone, where `SHORT_SPAN` = 12 m
+   * spans 320 px, so a metre is 26.7 px. A wholly collapsed jib then shivers
+   * 4.4 px peak to peak against a 2.2 px stroke.
+   */
+  it("is drawn big enough to spot and small enough not to read as camber", () => {
+    const pxPerMeter = 320 / (2 * SCENE.shortRadius);
+
+    /** Peak-to-peak in CSS px on that phone. */
+    const spread = (shape: SailShape): number =>
+      2 * envelopePeak(shape).value * peakRipple(shape) * pxPerMeter;
+
+    const flogging = shapeAtAlpha(0);
+    expect(flogging.collapsedFraction).toBe(1);
+    expect(envelopePeak(flogging).value * peakRipple(flogging)).toBeCloseTo(0.1065, 4);
+    expect(spread(flogging)).toBeCloseTo(5.68, 2);
+
+    const jib = jibShape(0, wind(10, 0));
+    expect(jib.collapsedFraction).toBe(1);
+    expect(envelopePeak(jib).value * peakRipple(jib)).toBeCloseTo(0.0824, 4);
+    expect(spread(jib)).toBeCloseTo(4.39, 2);
+
+    // Just breaking: a ripple, not a flap. 1.6 px peak to peak on that phone.
+    const breaking = shapeAtAlpha(5);
+    expect(envelopePeak(breaking).value * peakRipple(breaking)).toBeCloseTo(0.0302, 4);
+    expect(spread(breaking)).toBeCloseTo(1.61, 2);
+
+    // And never mistakable for camber: full draft on the main is 0.473 m.
+    expect(0.1065).toBeLessThan(0.25 * MAIN.foot * MAX_DRAFT_FRACTION);
+  });
+
+  /**
+   * It *travels*, and it travels with the flow — aft when the wind arrives at
+   * the luff, forward when it arrives at the leech. Asserted as an exact phase
+   * invariance rather than by eyeballing two frames: a wave moving at one chord
+   * a second satisfies `wave(s + v·dt, t + dt) = wave(s, t)`.
+   *
+   * This is the one thing that reads `collapseFrom` outside `collapseAt`, and
+   * it is only the sign of the phase gradient — `s` stays a monotone position
+   * on the drawn chord, which is what the phase depends on.
+   */
+  it("travels with the flow, at one chord length a second", () => {
+    const chordsPerSecond = 1;
+    for (const alpha of [0, 180]) {
+      const shape = shapeAtAlpha(alpha);
+      const toward = shape.collapseFrom === "luff" ? 1 : -1;
+      for (const s of [0.3, 0.5, 0.7]) {
+        for (const dt of [0.01, 0.05, 0.1]) {
+          expect(
+            wave(shape, s + toward * chordsPerSecond * dt, 0.4 + dt),
+            `${alpha}° at s=${s} +${dt}s`,
+          ).toBeCloseTo(wave(shape, s, 0.4), 10);
+        }
+      }
+    }
+  });
+
+  /**
+   * **The decision §4.1 left to the animation** (`collapseAt`'s docblock and
+   * §4.1 both say it is this bead's to make): while the collapse is partial the
+   * ripple sits at the *detached* edge, and once the whole chord has let go it
+   * sits at the *unsupported* one — the leech, which whips because nothing is
+   * holding it.
+   *
+   * Note the asymmetry is only apparent. On the leech-first limb `collapseAt`
+   * at full collapse already *is* `s`, so the cross-fade is the identity there
+   * and the whole effect is head to wind. The next test pins that.
+   */
+  it("moves the shake to the unsupported leech once the whole sail has let go", () => {
+    for (const alpha of [0, 1, 2, 178, 179, 180]) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(1);
+      expect(envelopePeak(shape).at, `${alpha}°`).toBeCloseTo(0.9, 2);
+      // Dead still where it is pinned to the mast, whichever way the flow came.
+      expect(ripple(shape, 0.02, 0.3), `${alpha}°`).toBeCloseTo(0, 3);
+    }
+  });
+
+  it("changes nothing at all on the leech-first limb, where collapseAt already is s", () => {
+    const flogging = shapeAtAlpha(180);
+    expect(flogging.collapseFrom).toBe("leech");
+    for (let i = 0; i <= 100; i += 1) {
+      expect(collapseAt(flogging, i / 100), `s=${i / 100}`).toBeCloseTo(i / 100, 12);
+    }
+  });
+
+  /**
+   * The cross-fade's onset is above `collapsedFraction` 0.9 — |α| < 2.9° — so
+   * every partial collapse §4.1 cares about is left exactly where `collapseAt`
+   * puts it, with no ripple outside the region at all.
+   */
+  it("leaves every partial collapse exactly where collapseAt puts it", () => {
+    let checked = 0;
+    for (let alpha = 0; alpha <= 180; alpha += 0.25) {
+      const shape = shapeAtAlpha(alpha);
+      if (!(shape.collapsedFraction > 0 && shape.collapsedFraction <= 0.9)) continue;
+      checked += 1;
+      for (let i = 0; i <= 200; i += 1) {
+        const s = i / 200;
+        if (collapseAt(shape, s) === 0) {
+          expect(flutterEnvelope(shape, s), `${alpha}° at s=${s}`).toBe(0);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
+  /**
+   * Above the onset the `s` term is not gated on the region, so it does reach a
+   * little past the boundary onto cloth §3.3 still calls "drawing" — and the
+   * honest thing is to measure that overhang rather than to claim there is
+   * none. Gating it would trade a smear for a real discontinuity in the drawn
+   * shape at the boundary, which is the worse of the two.
+   *
+   * **Measured at the points that are actually drawn**, which is the number
+   * that matters: {@link sailPoints} evaluates 31 interior samples, and the
+   * worst overhang at any of them, over every partial collapse of both limbs,
+   * is 0.217 of peak — 0.026 m on the main, 2.2 px of amplitude on a 1024 px
+   * iPad. It falls on the single sample at `s = 0.969`, at α = 2.55°, where
+   * 96.6% of the sail has gone and the drawn camber is 1.2 mm. Sampled on the
+   * continuum instead it reaches 0.40, at `s = 0.954` — between two samples,
+   * so never on screen.
+   */
+  it("bounds what it can move outside the collapsed region", () => {
+    let worst = 0;
+    for (let alpha = 0; alpha <= 180; alpha += 0.05) {
+      const shape = shapeAtAlpha(alpha);
+      if (!(shape.collapsedFraction > 0 && shape.collapsedFraction < 1)) continue;
+      for (let i = 1; i < SAIL_SAMPLES; i += 1) {
+        const s = i / SAIL_SAMPLES;
+        if (collapseAt(shape, s) > 0) continue;
+        worst = Math.max(worst, flutterEnvelope(shape, s));
+      }
+    }
+    expect(worst).toBeLessThan(0.25);
+    // 2.2 px of amplitude on the tablet §4.5 sizes everything against.
+    const iPadPxPerMeter = 1024 / (2 * SCENE.shortRadius);
+    expect(worst * peakRipple(shapeAtAlpha(2.55)) * iPadPxPerMeter).toBeLessThan(2.5);
+    // Not zero: the cross-fade above is what puts it there, and a future change
+    // that made this exactly 0 would have removed the flogging behaviour.
+    expect(worst).toBeGreaterThan(0);
+  });
+
+  /**
+   * Both ends of the drawn chord are attachments — the mast or
+   * `STATIONS.jibTack`, and the clew, which is a grab point. The hook is never
+   * called there, but that alone would leave the first interior sample carrying
+   * nearly full amplitude beside a fixed point and draw a spike rather than a
+   * ripple. The end taper is what makes the flutter grow out of the attachment.
+   */
+  it("grows out of its attachments instead of spiking off them", () => {
+    for (const alpha of [0, 2, 3, 5, 175, 178, 180]) {
+      const shape = shapeAtAlpha(alpha);
+      const peak = envelopePeak(shape).value;
+      const first = flutterEnvelope(shape, 1 / SAIL_SAMPLES);
+      const last = flutterEnvelope(shape, 1 - 1 / SAIL_SAMPLES);
+      expect(first, `${alpha}° first sample`).toBeLessThan(0.35 * peak);
+      expect(last, `${alpha}° last sample`).toBeLessThan(0.35 * peak);
+    }
+  });
+
+  /**
+   * The polyline is a chord-by-chord approximation of a curve that now carries
+   * three ripples as well as the camber, so §4.1's 0.4 mm faceting figure is
+   * about the *base* camber and does not cover this. Measured over both sails,
+   * every collapse and five phases, the worst sagitta is 9.65 mm — 0.26 px on a
+   * 320 px phone against a 2.2 px stroke, and 1.16 px on a 1440 px desktop
+   * against a 6 px one. `stroke-linejoin: round` covers the rest.
+   */
+  it("facets by well under a stroke width even at three ripples a chord", () => {
+    let worst = 0;
+    for (const make of [mainShape, jibShape]) {
+      for (let alpha = 0; alpha <= 180; alpha += 0.5) {
+        const shape = make(0, wind(10, alpha));
+        for (const time of [0, 0.07, 0.13, 0.21, 0.29]) {
+          const deform = luffFlutter(shape, time);
+          if (deform === undefined) continue;
+          const points = sailPoints(shape, deform);
+          for (let i = 0; i < points.length - 1; i += 1) {
+            const midpoint = scale(add(points[i]!, points[i + 1]!), 0.5);
+            const onCurve = sailPoint(shape, (i + 0.5) / SAIL_SAMPLES, deform);
+            worst = Math.max(worst, magnitude(subtract(onCurve, midpoint)));
+          }
+        }
+      }
+    }
+    expect(worst).toBeLessThan(0.011);
+    expect(worst * (320 / (2 * SCENE.shortRadius))).toBeLessThan(0.3);
+    expect(worst * (1440 / (2 * SCENE.shortRadius))).toBeLessThan(1.2);
+  });
+
+  it("emits nothing a renderer would choke on, at any collapse or phase", () => {
+    for (const make of [mainShape, jibShape]) {
+      for (let alpha = 0; alpha <= 180; alpha += 0.5) {
+        for (const time of [0, 0.083, 0.5, 3.7, 1e4]) {
+          const shape = make(0, wind(10, alpha));
+          const d = sailPathData(shape, luffFlutter(shape, time));
+          expect(d, `${alpha}° at ${time}s`).not.toMatch(/NaN|Infinity|e[+-]/i);
+          for (const value of d.match(/-?\d+(\.\d+)?/g) ?? []) {
+            expect(Number.isFinite(Number(value)), `${alpha}° at ${time}s`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("is deterministic, so an unchanged sail at an unchanged phase rewrites nothing", () => {
+    const shape = shapeAtAlpha(4);
+    expect(sailPathData(shape, luffFlutter(shape, 2.5))).toBe(
+      sailPathData(shape, luffFlutter(shape, 2.5)),
+    );
+    expect(sailPathData(shape, luffFlutter(shape, 2.5))).not.toBe(
+      sailPathData(shape, luffFlutter(shape, 2.6)),
+    );
   });
 });
 

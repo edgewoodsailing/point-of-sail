@@ -118,14 +118,16 @@ import {
   sailForce,
 } from "../model/sail.ts";
 import type { SimState } from "../model/simulation.ts";
-import type { Meters, Radians, Vec2 } from "../model/units.ts";
+import type { Meters, Radians, Seconds, Vec2 } from "../model/units.ts";
 import {
+  TAU,
   add,
   knotsToMetersPerSecond,
   magnitude,
   perpendicular,
   scale,
   sin,
+  smoothstep,
   subtract,
 } from "../model/units.ts";
 import type { ApparentWind } from "../model/wind.ts";
@@ -535,6 +537,208 @@ export function collapseAt(shape: SailShape, chordFraction: number): number {
  */
 export type SailDeformation = (chordFraction: number, camberOffset: Meters) => Meters;
 
+// --- The luffing flutter (pos-dmg.2) ----------------------------------------
+
+/**
+ * Peak ripple, as a fraction of the chord.
+ *
+ * Over-drawn for the same reason {@link MAX_DRAFT_FRACTION} is, and calibrated
+ * against the same binding case: the jib on a 320 px phone, where `SHORT_SPAN`
+ * puts its 2.29 m foot at 61 px. A wholly collapsed jib then shivers 4.4 px peak
+ * to peak against a 2.2 px stroke — a shiver rather than a thickened line — and
+ * the main 5.7 px. (The drawn figure is below `4% × chord` because
+ * {@link flutterEnvelope} peaks at 0.9, not at 1.) A quarter of full camber, so
+ * a fluttering sail can never be mistaken for a drawing one at a glance. This is
+ * a knob to move by eye against the running drawing; `sail.test.ts` pins the
+ * pixel sizes so that moving it is a deliberate act.
+ */
+const FLUTTER_AMPLITUDE_FRACTION = 0.04;
+
+/**
+ * Ripples across the whole chord, so a sail's wavelength scales with its own
+ * size and the shorter-footed jib shivers finer than the main — which is what a
+ * pair of flogging sails does.
+ *
+ * Three across the chord means the 35% of cloth gone at α = 175° carries about
+ * one wave: a single bulge shivering at the leech, not a corrugation.
+ */
+const FLUTTER_WAVES = 3;
+
+/** Flaps per second. A real sail beats at a few hertz; 20 frames a cycle at 60 fps. */
+const FLUTTER_HZ = 3;
+
+/**
+ * How far in from each end the ripple fades, in chord fractions.
+ *
+ * **Both ends of the drawn chord are attachments**, whatever the flow is doing:
+ * the tack is the mast or `STATIONS.jibTack`, and the clew is on the boom end or
+ * the jib sheet. {@link sailPathData} pins the endpoints by never calling the
+ * hook there, but that alone would leave the first interior sample — at
+ * `1/SAIL_SAMPLES` of the chord — carrying nearly full amplitude next to a fixed
+ * point, which draws a spike at the mast rather than a shivering sail. The taper
+ * is what turns that corner into a ripple that grows out of the attachment.
+ *
+ * At 0.1 the fade spans a little over three samples at each end, so the flutter
+ * is at full amplitude across the middle 80% of the chord while the first and
+ * last interior samples carry under a third of the peak — which `sail.test.ts`
+ * asserts at every collapse rather than leaving to the eye.
+ */
+const FLUTTER_END_TAPER = 0.1;
+
+/**
+ * The collapsed fraction at which the amplitude ramp starts crossing from the
+ * aerodynamic answer to the structural one. See {@link flutterEnvelope}.
+ *
+ * 0.9 is reached at |α| ≈ 2.9° — inside a band where `(1 − collapsedFraction)`
+ * has already taken the camber below a tenth and the sail is drawn as very
+ * nearly a straight line. Nothing §4.1 asks the *partial* collapse to teach
+ * survives that far in, which is why the cross-fade can be put here without
+ * touching the case the bead is about.
+ */
+const FLOG_ONSET = 0.9;
+
+/** Fades the ripple into the chord's two fixed ends. See {@link FLUTTER_END_TAPER}. */
+function endTaper(chordFraction: number): number {
+  return (
+    smoothstep(chordFraction / FLUTTER_END_TAPER) *
+    smoothstep((1 - chordFraction) / FLUTTER_END_TAPER)
+  );
+}
+
+/**
+ * The ripple's amplitude at a chord fraction, as a fraction of its peak: 0
+ * where the sail is still drawing, rising to 1 where it is shaking hardest.
+ *
+ * Three factors, and each answers a different sentence of §4.1.
+ *
+ * **Where it shakes** is {@link collapseAt}, not `s < collapsedFraction` — the
+ * region is `collapseAt(shape, s) > 0`, which runs aft from the luff or forward
+ * from the leech according to where the flow arrives, without this function
+ * having to know which.
+ *
+ * **How hard it shakes** is `collapsedFraction` as a plain scalar, which is what
+ * makes "a sail that is *just* starting to break shows a **small** ripple"
+ * literally true: `collapseAt` alone is 1 at the breaking edge however little
+ * cloth has gone, so a sail 1% collapsed would shiver at full amplitude in a
+ * sliver. Multiplying by the fraction ties the ripple's size to the same number
+ * that is flattening the camber and taking the force off (§3.3).
+ *
+ * **Which end whips at full collapse** is the one thing §4.1 left to the
+ * animation, and this is where it is settled. `collapseAt` is an *aerodynamic*
+ * ramp — depth into the **detached** region — and it is right while the collapse
+ * is partial. Once the whole chord has let go there is no pressure gradient left
+ * to measure and the honest question is structural: a flogging sail moves most
+ * at its **unsupported** edge, which is the leech, because nothing holds it. So
+ * the ramp cross-fades from `collapseAt` to a plain `s` — 0 at the luff, 1 at
+ * the leech — over `collapsedFraction ∈ [FLOG_ONSET, 1]`.
+ *
+ * **On the leech-first limb the cross-fade is the identity.** At
+ * `collapsedFraction = 1` with the collapse from the leech, `collapseAt(s)` is
+ * already exactly `s`. So the whole effect is on the luff-first limb — head to
+ * wind — where the aerodynamic ramp would otherwise peak at the end pinned to
+ * the mast.
+ *
+ * **The normalisation is what makes the cross-fade survivable, and it is not
+ * decoration.** On that limb the two ramps point at opposite ends, so mixing
+ * them *cancels*: halfway across, the raw mixture is nearly flat at half height,
+ * and the ripple would visibly shrink by a third and swell again as a sail came
+ * head to wind. Dividing by the mixture's own peak fixes the amplitude while
+ * letting the shape slide, and the peak is available in closed form rather than
+ * by scanning, because the mixture is piecewise linear in `s` with its only
+ * interior breakpoint at the collapse boundary — where it can never exceed both
+ * ends. So the maximum is at `s = 0` or `s = 1`, and those are the two terms
+ * below. It reduces to exactly 1 wherever it should: at `flogging = 0`, and
+ * everywhere on the leech-first limb.
+ *
+ * What the transition then draws is a progression rather than a swap: the sail
+ * breaks at the luff, the shake spreads over the whole cloth, and once the
+ * chord is wholly gone it concentrates at the leech.
+ *
+ * **It can ripple a little cloth the model still calls "drawing".** The `s` term
+ * is not gated on the region, so above `FLOG_ONSET` it reaches past the
+ * boundary — which by then is within `1 − collapsedFraction < 0.1` of the leech,
+ * inside {@link endTaper}'s fade, on cloth whose remaining camber is under a
+ * tenth of full. `sail.test.ts` measures that overhang rather than arguing it
+ * away. Gating it would trade a smear for a discontinuity in the drawn shape at
+ * the boundary, which is the worse of the two.
+ */
+export function flutterEnvelope(shape: SailShape, chordFraction: number): number {
+  return envelopeAt(shape, flutterRamp(shape), chordFraction);
+}
+
+/**
+ * The two numbers {@link flutterEnvelope} would otherwise re-solve at every
+ * sample. Both are pure functions of the `SailShape` and neither varies across
+ * a sweep of `s`, so they are hoisted for the reason {@link pointAt} gives
+ * about the handle weights: a deformation is evaluated `SAIL_SAMPLES − 1` times
+ * a frame, per sail.
+ */
+interface FlutterRamp {
+  /** How far the ramp has crossed toward the free edge: 0 partial, 1 flogging. */
+  readonly flogging: number;
+  /** What the mixture peaks at — the normaliser the docblock above derives. */
+  readonly peak: number;
+}
+
+function flutterRamp(shape: SailShape): FlutterRamp {
+  const flogging = smoothstep((shape.collapsedFraction - FLOG_ONSET) / (1 - FLOG_ONSET));
+  const mix = (from: number, to: number): number => from + flogging * (to - from);
+  return {
+    flogging,
+    // The mixture is piecewise linear in `s` with its only interior breakpoint
+    // at the collapse boundary, which can never exceed both ends — so its
+    // maximum is at one end or the other, and these are those two.
+    peak: Math.max(mix(collapseAt(shape, 0), 0), mix(collapseAt(shape, 1), 1)),
+  };
+}
+
+/** {@link flutterEnvelope}, once the per-shape numbers are already solved. */
+function envelopeAt(shape: SailShape, ramp: FlutterRamp, chordFraction: number): number {
+  // Guards the divide: with nothing collapsed both ends of the mixture are
+  // zero, and there is no ripple to normalise in the first place.
+  if (shape.collapsedFraction <= 0) return 0;
+
+  const detached = collapseAt(shape, chordFraction);
+  const mixed = detached + ramp.flogging * (chordFraction - detached);
+  return (mixed / ramp.peak) * shape.collapsedFraction * endTaper(chordFraction);
+}
+
+/**
+ * §4.1's travelling sine, as a {@link SailDeformation} — or `undefined` when
+ * nothing has collapsed, which is what makes an undrawn flutter free.
+ *
+ * `undefined` is exactly what {@link sailPathData} wants to emit the bare
+ * Bézier, so a sail that is drawing costs six numbers and no sampling at all;
+ * the polyline appears only while there is something to shake.
+ *
+ * The deformation is §4.1's form verbatim —
+ * `offset · (1 − collapseAt(shape, s)) + ripple(s)` — so the collapsed portion
+ * goes flat *and* ripples while the portion still drawing keeps its camber.
+ * That is the whole reason the seam returns a replacement rather than an addend.
+ *
+ * **The wave travels with the flow**, which is the one place this function reads
+ * `collapseFrom`, and it is not the axis error §4.1 warns about: *where* it
+ * shakes is {@link flutterEnvelope}'s business and comes from `collapseAt`. This
+ * is only the sign of the phase gradient — the ripple runs aft when the flow
+ * arrives at the luff, and forward when it arrives at the leech, which is what
+ * sailing by the lee (§3.3) actually looks like. `s` stays a monotone position
+ * on the drawn chord either way, which is what the phase depends on.
+ */
+export function luffFlutter(shape: SailShape, time: Seconds): SailDeformation | undefined {
+  if (shape.collapsedFraction <= 0) return undefined;
+
+  const amplitude = magnitude(subtract(shape.clew, shape.tack)) * FLUTTER_AMPLITUDE_FRACTION;
+  const travel = shape.collapseFrom === "luff" ? -1 : 1;
+  const phase = travel * FLUTTER_HZ * time;
+  const ramp = flutterRamp(shape);
+
+  return (chordFraction, camberOffset) =>
+    camberOffset * (1 - collapseAt(shape, chordFraction)) +
+    amplitude *
+      envelopeAt(shape, ramp, chordFraction) *
+      sin(TAU * (FLUTTER_WAVES * chordFraction + phase));
+}
+
 /**
  * The chord as a vector, and the **unit** normal the camber runs along.
  *
@@ -644,6 +848,33 @@ export function sailPathData(shape: SailShape, deform?: SailDeformation): string
 /** Set on the jib's group when the jib is struck; `scene.css` hides it. */
 const STRUCK_CLASS = "pos-struck";
 
+/**
+ * How far ahead of the main the jib's ripple runs, in seconds.
+ *
+ * Two sails flogging on the same phase read as one mechanism rather than as two
+ * pieces of cloth, and head to wind is exactly where both collapse at once.
+ * Deliberately not half a period (0.167 s at {@link FLUTTER_HZ}), which would
+ * only trade lockstep for antiphase; 0.13 s is 0.39 of a beat, so the two never
+ * settle into a pattern. Applied as an offset on the *clock* rather than as a
+ * parameter, so {@link luffFlutter} needs to know nothing about which sail it is
+ * deforming.
+ */
+const JIB_FLUTTER_LEAD: Seconds = 0.13;
+
+/**
+ * The phase the ripple is frozen at when the viewer has asked for less motion.
+ *
+ * Held rather than flattened, deliberately. The flutter is *information* — it is
+ * how §4.2 keeps an undertrimmed sail distinguishable from an overtrimmed one,
+ * which are otherwise both red — so removing it would remove a reading rather
+ * than an ornament. A still crinkle says "this sail has let go" without anything
+ * on the page moving.
+ */
+const STILL_PHASE: Seconds = 0;
+
+/** Named so the one place that consults the viewer's preference is greppable. */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
 /** One sail's group and the path its cloth is drawn on. */
 function createSail(className: string): { group: SVGGElement; cloth: SVGPathElement } {
   const group = svgElement("g", { class: `pos-sail ${className}` });
@@ -669,9 +900,39 @@ function createSail(className: string): { group: SVGGElement; cloth: SVGPathElem
  * genuinely absent from rendering, hit-testing and the accessibility tree, which
  * is what "absent entirely" has to mean for pos-bwd.1.
  *
- * pos-dmg.2 widens `update` to take an elapsed time; a method with a defaulted
- * second parameter stays assignable to {@link Layer}, so `scene.ts` need not
- * change for it.
+ * ## The flutter drives itself
+ *
+ * An earlier note here predicted pos-dmg.2 would widen `update` to take an
+ * elapsed time. It did not, and the reason is worth recording: `update` is
+ * called when the *state* changes, and a travelling wave has to move when
+ * nothing changes at all. Widening the signature would have made every caller
+ * responsible for running a clock — and there is exactly one caller, `main.ts`,
+ * whose whole design is that state changes drive drawing.
+ *
+ * So this layer keeps a `requestAnimationFrame` loop of its own, and the split
+ * is where the cost is:
+ *
+ * - **`update` does the expensive half, once per state change.** {@link
+ *   rigDrawing} measures 55 µs for the rig, nearly all of it `optimalTrim`
+ *   sweeping each sail's range for §4.2's denominator. Nothing about it changes
+ *   between animation frames, so the result is cached and the loop never
+ *   re-derives it.
+ * - **The loop does the cheap half**, which is two {@link sailPathData} calls
+ *   over {@link SAIL_SAMPLES} intervals — the trim quality, the camber depth and
+ *   the collapsed fraction are all read off the cached shapes. Measured at 27 µs
+ *   for both cloths with the flutter applied, against 2 µs for two sails
+ *   drawing, so a whole animated frame costs less than half of one state change.
+ *
+ * **And it only runs while something is shaking.** A drawing sail has
+ * `collapsedFraction === 0`, {@link luffFlutter} returns `undefined`, the bare
+ * Bézier goes out, and no frame is scheduled — so the ordinary case costs
+ * nothing per frame rather than a little. The loop stops on the frame that stops
+ * the flutter, and `update` restarts it.
+ *
+ * Both figures are node measurements of this file's arithmetic and string
+ * building. **They say nothing about SVG path parsing, layout or rasterisation
+ * on a tablet**, which is the half of the bead's 60 fps criterion that no test
+ * in this repo can reach.
  */
 export function createSailLayer(): Layer {
   const element = svgElement("g", { class: "pos-rig" });
@@ -691,14 +952,54 @@ export function createSailLayer(): Layer {
 
   element.append(main.group, jib.group);
 
+  /** The last state's geometry, which the animation redraws without re-deriving. */
+  let rig: RigDrawing | null = null;
+
+  // Whether a frame is already queued, rather than its handle: nothing here
+  // ever cancels one. A pending frame repaints from whatever `rig` says when it
+  // runs, so a state change that lands first is picked up rather than raced.
+  let pending = false;
+
+  // Consulted rather than subscribed to: `Layer` has no teardown, so a listener
+  // registered here could never be removed. Turning the preference *on* is seen
+  // by the next frame the loop runs; turning it off is seen at the next state
+  // change, which on a page whose whole point is dragging is the next touch.
+  const stillness = matchMedia(REDUCED_MOTION_QUERY);
+
+  function fluttering(): boolean {
+    if (rig === null) return false;
+    return rig.main.shape.collapsedFraction > 0 || (rig.jib?.shape.collapsedFraction ?? 0) > 0;
+  }
+
+  /** Both cloths at one instant on the flutter's clock. Nothing else per frame. */
+  function paintCloth(time: Seconds): void {
+    if (rig === null) return;
+    main.cloth.setAttribute("d", sailPathData(rig.main.shape, luffFlutter(rig.main.shape, time)));
+    if (rig.jib === null) return;
+    const shape = rig.jib.shape;
+    jib.cloth.setAttribute(
+      "d",
+      sailPathData(shape, luffFlutter(shape, time + JIB_FLUTTER_LEAD)),
+    );
+  }
+
+  function schedule(): void {
+    if (pending || !fluttering() || stillness.matches) return;
+    pending = true;
+    requestAnimationFrame((now) => {
+      pending = false;
+      paintCloth(now / 1000);
+      schedule();
+    });
+  }
+
   return {
     element,
     update(state: SimState): void {
-      const rig = rigDrawing(state);
+      rig = rigDrawing(state);
 
       boom.setAttribute("x2", formatNumber(rig.main.shape.clew.x));
       boom.setAttribute("y2", formatNumber(rig.main.shape.clew.y));
-      main.cloth.setAttribute("d", sailPathData(rig.main.shape));
       // On the group, not the path: the property inherits down to the cloth,
       // and a later bead colouring a telltale or a clew handle inherits the
       // same value rather than deriving a second one (§4.2).
@@ -707,11 +1008,14 @@ export function createSailLayer(): Layer {
       // Struck: hidden, and no stale geometry or colour computed or written for
       // it. What is left behind on the group is stale, and harmlessly so — the
       // group is `display: none`, and the frame that unstrikes the jib rewrites
-      // both before anything paints.
+      // both before anything paints. `paintCloth` skips it on the same test.
       jib.group.classList.toggle(STRUCK_CLASS, rig.jib === null);
-      if (rig.jib === null) return;
-      jib.cloth.setAttribute("d", sailPathData(rig.jib.shape));
-      setSailInk(jib.group, rig.jib.quality);
+      if (rig.jib !== null) setSailInk(jib.group, rig.jib.quality);
+
+      // The same clock the loop runs on, so a state change lands on the phase
+      // the ripple was already at instead of restarting the wave.
+      paintCloth(stillness.matches ? STILL_PHASE : performance.now() / 1000);
+      schedule();
     },
   };
 }
