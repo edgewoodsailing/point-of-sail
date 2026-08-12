@@ -550,12 +550,18 @@ export type SailDeformation = (chordFraction: number, camberOffset: Meters) => M
  *
  * **Head to wind is not where the ripple is largest**, which is worth knowing
  * before quoting either of those as a maximum. {@link flutterEnvelope} tops out
- * at **0.942**, not at full collapse but at `collapsedFraction ≈ 0.95` —
- * α = 2.68°, in the middle of the cross-fade — and at `s = 0.10` rather than at
- * the leech. So the largest ripple the drawing can show is about 5% above the
- * figures above: 5.9 px on the main and 4.6 px on the jib. `sail.test.ts` pins
- * that maximum as well as the flogging case, because it is the one that has to
- * stay legible and the one a change to any of these constants would move first.
+ * at exactly **0.945**, not at full collapse but at the cross-fade's midpoint,
+ * `collapsedFraction = (FLOG_ONSET + 1) / 2 = 0.95` — α = 2.6768° — and at
+ * `s = FLUTTER_END_TAPER` rather than at the leech. Neither coordinate is a
+ * numerical accident: the mixture is already falling in `s` on that limb, so
+ * the peak sits where the taper stops biting, and at the midpoint
+ * `smoothstep(0.5) = 0.5` puts both ends of the mixture at 0.5, where the
+ * normaliser's two branches meet in a kink. There the envelope is
+ * `cf − FLUTTER_END_TAPER · (1 − cf)`. So the largest ripple the drawing can
+ * show is 5% above the figures above: **5.96 px** on the main and **4.61 px**
+ * on the jib. `sail.test.ts` evaluates that maximum where it lives rather than
+ * sweeping up to it, because it is the figure that has to stay legible and the
+ * one a change to any of these constants would move first.
  *
  * A quarter of full camber, so a fluttering sail can never be mistaken for a
  * drawing one at a glance. This is a knob to move by eye against the running
@@ -1046,10 +1052,16 @@ export function createSailLayer(): Layer {
    * luffing, main drawing" is an ordinary state — the two trims are independent
    * — so without this the main's identical bare Bézier would be rewritten sixty
    * times a second, paying an attribute write and a path re-parse for a shape
-   * that has not moved. `sailPathData` is deterministic (`sail.test.ts` says
-   * so), which is what makes the comparison sound rather than merely likely.
-   * Read back from the element rather than cached beside it, so the check cannot
-   * go stale against the DOM.
+   * that has not moved.
+   *
+   * **What makes skipping sound is that `d` is the whole description of the
+   * drawn cloth** — nothing else about the path is written per frame — so an
+   * equal string means an equal shape on screen. Not `sailPathData`'s
+   * determinism, which points the other way: that guarantees equal shape ⇒
+   * equal string, and its absence would only ever cost a redundant write, never
+   * draw the wrong thing. Determinism would be the load-bearing fact if the
+   * string were cached beside the element; read back from the element itself,
+   * as here, the check cannot go stale against the DOM and does not need it.
    */
   function drawCloth(path: SVGPathElement, d: string): void {
     if (path.getAttribute("d") !== d) path.setAttribute("d", d);

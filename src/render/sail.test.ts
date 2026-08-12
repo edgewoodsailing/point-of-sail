@@ -817,8 +817,8 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
 
   /**
    * **The largest ripple is not the flogging one**, which the test above would
-   * leave you believing. The envelope tops out at 0.942 — 5% above its
-   * full-collapse value — at `collapsedFraction ≈ 0.95`, α = 2.68°, and at
+   * leave you believing. The envelope tops out at exactly 0.945 — 5% above its
+   * full-collapse value — at `collapsedFraction = 0.95`, α = 2.6768°, and at
    * `s = 0.10` rather than at the leech: the normalised cross-fade is broadest
    * halfway across, so the peak sits higher there than at either end of it.
    *
@@ -828,16 +828,42 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
    */
   it("is largest in the middle of the cross-fade, not head to wind", () => {
     // **Evaluated at the maximum rather than swept up to it.** A sampled sweep
-    // reports its own step size here: the ridge is narrow in α and sits exactly
-    // on the taper's inner corner, so coarsening from 0.001° to 0.05° walks the
-    // answer from 0.9448 down to 0.9243. The maximum is instead reached in
-    // closed form — at `collapsedFraction = 0.95` the cross-fade weight is
-    // `smoothstep(0.5) = 0.5`, both ends of the mixture are 0.5, and at s = 0.1
-    // the taper has just reached 1, giving exactly 0.945 — and a synthetic shape
-    // can be put there directly. That fraction is reachable: α ≈ 2.677°.
-    const atPeak = collapsingShape(0.95, "luff");
-    expect(flutterEnvelope(atPeak, 0.1)).toBeCloseTo(0.945, 12);
-    expect(shapeAtAlpha(2.677).collapsedFraction).toBeCloseTo(0.95, 3);
+    // reports its own step size here: the ridge is narrow in α, so coarsening
+    // from 0.001° to 0.05° walks the answer from 0.9448 down to 0.9243, and
+    // *both* refining and coarsening would turn a pinned running maximum red.
+    //
+    // Neither coordinate of the maximum is a numerical accident, which is what
+    // makes evaluating it there legitimate rather than a convenient spot check:
+    //
+    //   s  = FLUTTER_END_TAPER exactly — the mixture is already falling in `s`
+    //        on this limb, so the peak sits where the taper stops biting and
+    //        not one sample later.
+    //   cf = (FLOG_ONSET + 1) / 2 exactly — the cross-fade midpoint, where
+    //        `smoothstep(0.5) = 0.5` puts both ends of the mixture at 0.5 and
+    //        the normaliser's two branches, `max(1 − w, w)`, meet in a kink.
+    //        The kink is the maximum.
+    //
+    // There the envelope is `cf − taper · (1 − cf)` = 0.95 − 0.1 × 0.05 = 0.945.
+    // Asserted with a tolerance rather than exactly: the value through the code
+    // path is 0.9449999999999996, and demanding equality would pin the
+    // implementation's association order rather than the number.
+    const FLOG_ONSET = 0.9;
+    const FLUTTER_END_TAPER = 0.1;
+    const midCrossFade = (FLOG_ONSET + 1) / 2;
+    expect(midCrossFade).toBe(0.95);
+
+    const atPeak = collapsingShape(midCrossFade, "luff");
+    expect(flutterEnvelope(atPeak, FLUTTER_END_TAPER)).toBeCloseTo(0.945, 12);
+    expect(flutterEnvelope(atPeak, FLUTTER_END_TAPER)).toBeCloseTo(
+      midCrossFade - FLUTTER_END_TAPER * (1 - midCrossFade),
+      12,
+    );
+
+    // And that fraction is reachable rather than hypothetical — bracketed
+    // rather than pinned to a root, so this says the trim exists without also
+    // pinning where the sweep happens to land on it. cf = 0.95 at α = 2.6768°.
+    expect(shapeAtAlpha(2.67).collapsedFraction).toBeGreaterThan(midCrossFade);
+    expect(shapeAtAlpha(2.68).collapsedFraction).toBeLessThan(midCrossFade);
 
     // Bigger than head to wind, and further forward than the leech.
     expect(flutterEnvelope(atPeak, 0.1)).toBeGreaterThan(
