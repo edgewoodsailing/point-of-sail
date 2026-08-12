@@ -35,6 +35,7 @@ import {
   collapseAt,
   createSailLayer,
   flutterEnvelope,
+  flutterRamp,
   jibShape,
   luffFlutter,
   mainShape,
@@ -653,6 +654,16 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
     return ripple(shape, s, time) / (peakRipple(shape) * flutterEnvelope(shape, s));
   }
 
+  /**
+   * A shape at a chosen collapsed fraction and edge, for the two places where
+   * the quantity under test is a function of the *fraction* rather than of a
+   * trim — so it can be evaluated at its maximum instead of swept up to it.
+   * Everything but the two collapse fields is the main's real geometry.
+   */
+  function collapsingShape(collapsedFraction: number, collapseFrom: "luff" | "leech"): SailShape {
+    return { ...shapeAtAlpha(0), collapsedFraction, collapseFrom };
+  }
+
   /** Where the envelope peaks, as a chord fraction, and how big it is there. */
   function envelopePeak(shape: SailShape): { at: number; value: number } {
     let best = { at: 0, value: 0 };
@@ -816,31 +827,43 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
    * the flogging case.
    */
   it("is largest in the middle of the cross-fade, not head to wind", () => {
+    // **Evaluated at the maximum rather than swept up to it.** A sampled sweep
+    // reports its own step size here: the ridge is narrow in α and sits exactly
+    // on the taper's inner corner, so coarsening from 0.001° to 0.05° walks the
+    // answer from 0.9448 down to 0.9243. The maximum is instead reached in
+    // closed form — at `collapsedFraction = 0.95` the cross-fade weight is
+    // `smoothstep(0.5) = 0.5`, both ends of the mixture are 0.5, and at s = 0.1
+    // the taper has just reached 1, giving exactly 0.945 — and a synthetic shape
+    // can be put there directly. That fraction is reachable: α ≈ 2.677°.
+    const atPeak = collapsingShape(0.95, "luff");
+    expect(flutterEnvelope(atPeak, 0.1)).toBeCloseTo(0.945, 12);
+    expect(shapeAtAlpha(2.677).collapsedFraction).toBeCloseTo(0.95, 3);
+
+    // Bigger than head to wind, and further forward than the leech.
+    expect(flutterEnvelope(atPeak, 0.1)).toBeGreaterThan(
+      envelopePeak(shapeAtAlpha(0)).value,
+    );
+
+    // And nothing anywhere exceeds it. Swept coarsely on purpose — as an upper
+    // bound a sparse grid can only understate, so this cannot pass by luck.
     let highest = 0;
-    let highestAt = { alpha: 0, s: 0, collapsed: 0 };
-    for (let alpha = 0; alpha <= 180; alpha += 0.02) {
-      const shape = shapeAtAlpha(alpha);
-      if (shape.collapsedFraction <= 0) continue;
-      for (let i = 0; i <= 1000; i += 1) {
-        const value = flutterEnvelope(shape, i / 1000);
-        if (value > highest) {
-          highest = value;
-          highestAt = { alpha, s: i / 1000, collapsed: shape.collapsedFraction };
+    for (const make of [mainShape, jibShape]) {
+      for (let alpha = 0; alpha <= 180; alpha += 0.01) {
+        const shape = make(0, wind(10, alpha));
+        if (shape.collapsedFraction <= 0) continue;
+        for (let i = 0; i <= 500; i += 1) {
+          highest = Math.max(highest, flutterEnvelope(shape, i / 500));
         }
       }
     }
+    expect(highest).toBeLessThanOrEqual(0.945 + 1e-12);
 
-    expect(highest).toBeCloseTo(0.942, 3);
-    expect(highestAt.alpha).toBeCloseTo(2.68, 2);
-    expect(highestAt.collapsed).toBeCloseTo(0.95, 2);
-    expect(highestAt.s).toBeCloseTo(0.1, 3);
-
-    // 5.9 px peak to peak on the main, 4.6 on the jib, on a 320 px phone —
-    // above the flogging figures above rather than below them.
+    // 5.96 px peak to peak on the main and 4.61 on the jib, on a 320 px phone —
+    // *above* the flogging figures above rather than below them.
     const pxPerMeter = 320 / (2 * SCENE.shortRadius);
-    const spread = (shape: SailShape): number => 2 * highest * peakRipple(shape) * pxPerMeter;
-    expect(spread(shapeAtAlpha(0))).toBeCloseTo(5.94, 2);
-    expect(spread(jibShape(0, wind(10, 0)))).toBeCloseTo(4.59, 2);
+    const spread = (shape: SailShape): number => 2 * 0.945 * peakRipple(shape) * pxPerMeter;
+    expect(spread(shapeAtAlpha(0))).toBeCloseTo(5.96, 2);
+    expect(spread(jibShape(0, wind(10, 0)))).toBeCloseTo(4.61, 2);
   });
 
   /**
@@ -891,14 +914,23 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
   });
 
   /**
-   * The invariant the closed-form normaliser stands or falls on. Dividing by a
-   * peak that is not the real peak would let the envelope climb past 1, and the
-   * ripple would then be drawn deeper than the amplitude constant allows —
-   * silently, since nothing else bounds it. Swept over both sails, every
-   * collapse either side of the fold, and the whole chord.
+   * **The invariant the closed-form normaliser stands or falls on, tested on the
+   * quantity it is actually about.**
+   *
+   * An earlier version of this test swept `flutterEnvelope` for `≤ 1` and
+   * claimed that proved the normaliser. It does not, and the reason is worth
+   * keeping: the envelope is `ramp × collapsedFraction × endTaper(s)`, and both
+   * extra factors bite hardest exactly where the ramp peaks. On the luff limb at
+   * full collapse the ramp peaks at `s = 1`, where `endTaper` is *zero* — so the
+   * envelope sweep never sees the quantity at all. It tops out at 0.945, leaving
+   * 5% of headroom through which a normaliser understated by 5% would sail
+   * unnoticed, drawing a ripple deeper than `FLUTTER_AMPLITUDE_FRACTION` allows.
+   *
+   * `flutterRamp` is that quantity with the two dampers off, and swept over both
+   * sails and every collapse it reaches **exactly** 1 and never exceeds it.
    */
-  it("never leaves 0..1, which is what says the normaliser found the real peak", () => {
-    // Reduced to two assertions rather than one per sample: the sweep is
+  it("has a ramp that reaches exactly 1 and never passes it", () => {
+    // Reduced to a few assertions rather than one per sample: the sweep is
     // 1.4 million points, and `expect` at every one of them is what makes a
     // test like this time out instead of run.
     let lowest = Infinity;
@@ -908,7 +940,7 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
       for (let alpha = 0; alpha <= 180; alpha += 0.05) {
         const shape = make(0, wind(10, alpha));
         for (let i = 0; i <= 200; i += 1) {
-          const value = flutterEnvelope(shape, i / 200);
+          const value = flutterRamp(shape, i / 200);
           lowest = Math.min(lowest, value);
           if (value > highest) {
             highest = value;
@@ -919,8 +951,19 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
     }
     expect(lowest).toBeGreaterThanOrEqual(0);
     expect(highest, highestAt).toBeLessThanOrEqual(1);
-    // And it does reach the top, so this is a bound the sweep actually visits.
-    expect(highest).toBeGreaterThan(0.9);
+    // Equality reached, so `≤ 1` is tight here rather than roomy. This is what
+    // the envelope sweep could not do.
+    expect(highest).toBeCloseTo(1, 12);
+  });
+
+  it("has a ramp of 0 wherever there is nothing collapsed to shake", () => {
+    for (const alpha of [8, 20, 90, 160, 173]) {
+      const shape = shapeAtAlpha(alpha);
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(0);
+      for (const s of [0, 0.25, 0.5, 0.75, 1]) {
+        expect(flutterRamp(shape, s), `${alpha}° at s=${s}`).toBe(0);
+      }
+    }
   });
 
   it("changes nothing at all on the leech-first limb, where collapseAt already is s", () => {
@@ -1007,24 +1050,20 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
       }
     }
 
-    // Compared against the envelope maximum the test above *pins*, not against
-    // one re-swept here: a running maximum over a sampled sweep is a property
-    // of the step size as much as of the function, and pinning it to three
-    // decimals would pin the sweep.
-    const largestAnywhere = 0.942 * peakRipple(shapeAtAlpha(0));
-
     // Measured in metres rather than as a share of *this* shape's own peak: at a
     // collapse so slight that only one sample falls inside the region, that
     // sample necessarily is the peak, and the ratio reads 0.99 while the sail
     // moves two hundredths of a pixel. The size is the thing that matters.
     //
-    // The first two are **pinned measurements of the current constants, not
-    // bounds** — the margin to any round number is a few percent, and it is
-    // `FLUTTER_END_TAPER` against `1 / SAIL_SAMPLES` that sets it, so dropping
-    // the taper to 0.09 turns them red. That is the intent: these exist to fail
-    // when a taste constant moves, not to certify a safety factor.
+    // A `worstEnd < 0.25 × largestAnywhere` assertion used to sit here as well.
+    // It is gone rather than loosened: it passed with 3% of margin, all of it
+    // set by `FLUTTER_END_TAPER` against `1 / SAIL_SAMPLES` and none of it a
+    // design property, and leaving it beside the honest bounds below would have
+    // left the coincidence doing the guarding.
+    //
+    // This one **is** a pinned measurement of the current constants rather than
+    // a bound, and is meant to fail when one of them moves.
     expect(worstEnd).toBeCloseTo(0.0266, 4);
-    expect(worstEnd / largestAnywhere).toBeCloseTo(0.239, 3);
 
     // These two *are* bounds, and they are the ones that mean something: under
     // a pixel on a phone, and under two and a half on the tablet §4.5 sizes

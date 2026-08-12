@@ -1015,9 +1015,10 @@ a quarter of full camber, so a shaking sail can never be read as a drawing one.
 Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
 shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
 px. **The largest ripple is not the flogging one**: the amplitude envelope tops
-out 5% higher, at `collapsedFraction ≈ 0.95` and a tenth of the way aft — in the
-middle of the cross-fade described below, which is broadest there — so the
-biggest thing the drawing shows is 4.6 px on that jib and 5.9 px on the main.
+out 5% higher, at exactly 0.945, at `collapsedFraction = 0.95` and a tenth of the
+way aft — in the middle of the cross-fade described below, which is broadest
+there — so the biggest thing the drawing shows is 4.61 px on that jib and 5.96 px
+on the main.
 It **travels with the flow** at one chord a second, so the ripples run aft
 when the wind arrives at the luff and forward when it arrives at the leech, and
 the jib's clock is offset from the main's so two flogging sails do not read as
@@ -1129,12 +1130,17 @@ flutter uses each where it is true: pos-dmg.2 cross-fades the amplitude ramp fro
 `collapsedFraction ∈ [0.9, 1]`. This section left that decision to the animation
 and the animation made it; what follows is what it costs.
 
-The onset is at |α| < 2.98°, so **every partial collapse is left exactly where
-`collapseAt` puts it**, with no ripple outside the region at all — the case above
-is untouched. And on the leech-first limb the cross-fade is the *identity*, not a
-mirror: at full collapse from the leech, `collapseAt(shape, s)` already is `s`.
-So the whole effect is head to wind, where the aerodynamic ramp would otherwise
-shake a sail hardest against its own mast.
+**Two things stop 0.9 being a magic number, and they are what make the
+cross-fade cheap enough to be worth it.** Below the onset the weight is
+*exactly* 0, because `smoothstep` clamps — so every partial collapse, which is
+the whole of what this section is about, is left byte for byte where `collapseAt`
+puts it, with no ripple outside the collapsed region at all. And on the
+leech-first limb the cross-fade is the **identity**, not a mirror: at full
+collapse from the leech, `collapseAt(shape, s)` already *is* `s` — 0.25 reads
+0.250, 0.90 reads 0.900. The onset itself is |α| = 2.98°. So the entire effect of
+this constant is one case: a sail head to wind, on the luff limb, where
+`collapseAt` is `1 − s` and would otherwise shake the sail hardest against its
+own mast.
 
 Two consequences are worth writing down rather than discovering.
 
@@ -1147,7 +1153,12 @@ Two consequences are worth writing down rather than discovering.
   amplitude while letting the shape slide, and leaves a residual dip of 5.3%.
   What that draws is a progression rather than a swap: the sail breaks at the
   luff, the shake spreads over the whole cloth, and once the chord is wholly
-  gone it concentrates at the leech.
+  gone it concentrates at the leech. `render/sail.ts` exposes that normalised
+  ramp separately from the envelope, because it is the only form in which the
+  closed form can be *checked*: the envelope multiplies it by the collapsed
+  fraction and by the end taper, and both bite hardest exactly where the ramp
+  peaks, so sweeping the envelope tops out around 0.945 and would wave through a
+  normaliser understated by 5%. Swept on the ramp itself it reaches exactly 1.
 - **A little ripple overhangs the boundary.** The chord-fraction term is not
   gated on the collapsed region, so above the onset it reaches onto cloth §3.3
   still calls drawing. At the points actually drawn the worst case is 0.217 of

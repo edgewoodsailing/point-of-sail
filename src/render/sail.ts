@@ -604,10 +604,25 @@ const FLUTTER_END_TAPER = 0.1;
  * aerodynamic answer to the structural one. See {@link flutterEnvelope}.
  *
  * 0.9 is reached at |α| = 2.98° — inside a band where `(1 − collapsedFraction)`
- * has already taken the camber below a tenth and the sail is drawn as very
- * nearly a straight line. Nothing §4.1 asks the *partial* collapse to teach
- * survives that far in, which is why the cross-fade can be put here without
- * touching the case the bead is about.
+ * has already taken the camber to a tenth and the sail is drawn as very nearly a
+ * straight line. Nothing §4.1 asks the *partial* collapse to teach survives that
+ * far in, which is why the cross-fade can be put here without touching the case
+ * the bead is about.
+ *
+ * **Two facts keep this from being a magic number**, and both are worth having
+ * here rather than only in {@link flutterEnvelope}:
+ *
+ * - **Below it the cross-fade weight is exactly 0**, because `smoothstep`
+ *   clamps. So every partial collapse — the whole of what §4.1 and this bead are
+ *   about — is left byte for byte where `collapseAt` puts it, with no ripple
+ *   outside the collapsed region at all. This constant cannot reach the case a
+ *   reader is most likely to worry about.
+ * - **On the leech-first limb the cross-fade is the identity, not a mirror.** At
+ *   `collapsedFraction = 1` breaking from the leech, `collapseAt(shape, s)` *is*
+ *   `s` — 0.25 reads 0.250, 0.90 reads 0.900 — so mixing the two changes
+ *   nothing there at any weight. The entire effect of this constant is one case:
+ *   a sail head to wind, on the luff limb, where `collapseAt` is `1 − s` and
+ *   would otherwise shake the sail hardest against its own mast.
  */
 const FLOG_ONSET = 0.9;
 
@@ -677,24 +692,45 @@ function endTaper(chordFraction: number): number {
  * the boundary, which is the worse of the two.
  */
 export function flutterEnvelope(shape: SailShape, chordFraction: number): number {
-  return envelopeAt(shape, flutterRamp(shape), chordFraction);
+  return envelopeAt(shape, rampTerms(shape), chordFraction);
 }
 
 /**
- * The two numbers {@link flutterEnvelope} would otherwise re-solve at every
- * sample. Both are pure functions of the `SailShape` and neither varies across
- * a sweep of `s`, so they are hoisted for the reason {@link pointAt} gives
- * about the handle weights: a deformation is evaluated `SAIL_SAMPLES − 1` times
- * a frame, per sail.
+ * **Where** the shake sits along the chord, normalised to a peak of exactly 1 —
+ * the cross-fade above with neither the depth scalar nor the end taper on it.
+ *
+ * Split out from {@link flutterEnvelope} and exported because it is the only
+ * form in which the normaliser can be *checked*. The invariant the closed form
+ * stands on is `mixed / peak ≤ 1` with equality reached, and the envelope
+ * multiplies that by `collapsedFraction` and by {@link endTaper} — both of which
+ * bite hardest exactly where the mixture peaks. On the luff limb at full
+ * collapse the peak is at `s = 1`, where the taper is *zero*, so sweeping the
+ * envelope cannot see the quantity at all: it tops out around 0.945 and would
+ * wave through a normaliser understated by 5%. `sail.test.ts` sweeps this
+ * instead, and reaches exactly 1.
+ *
+ * It is also the honest name for what §4.1 calls the amplitude ramp, so this is
+ * a shape the module should have had either way.
  */
-interface FlutterRamp {
+export function flutterRamp(shape: SailShape, chordFraction: number): number {
+  return rampAt(shape, rampTerms(shape), chordFraction);
+}
+
+/**
+ * The two numbers {@link flutterRamp} would otherwise re-solve at every sample.
+ * Both are pure functions of the `SailShape` and neither varies across a sweep
+ * of `s`, so they are hoisted for the reason {@link pointAt} gives about the
+ * handle weights: a deformation is evaluated `SAIL_SAMPLES − 1` times a frame,
+ * per sail.
+ */
+interface RampTerms {
   /** How far the ramp has crossed toward the free edge: 0 partial, 1 flogging. */
   readonly flogging: number;
   /** What the mixture peaks at — the normaliser the docblock above derives. */
   readonly peak: number;
 }
 
-function flutterRamp(shape: SailShape): FlutterRamp {
+function rampTerms(shape: SailShape): RampTerms {
   const flogging = smoothstep((shape.collapsedFraction - FLOG_ONSET) / (1 - FLOG_ONSET));
   const mix = (from: number, to: number): number => from + flogging * (to - from);
   return {
@@ -706,15 +742,19 @@ function flutterRamp(shape: SailShape): FlutterRamp {
   };
 }
 
-/** {@link flutterEnvelope}, once the per-shape numbers are already solved. */
-function envelopeAt(shape: SailShape, ramp: FlutterRamp, chordFraction: number): number {
+/** {@link flutterRamp}, once the per-shape numbers are already solved. */
+function rampAt(shape: SailShape, terms: RampTerms, chordFraction: number): number {
   // Guards the divide: with nothing collapsed both ends of the mixture are
   // zero, and there is no ripple to normalise in the first place.
   if (shape.collapsedFraction <= 0) return 0;
 
   const detached = collapseAt(shape, chordFraction);
-  const mixed = detached + ramp.flogging * (chordFraction - detached);
-  return (mixed / ramp.peak) * shape.collapsedFraction * endTaper(chordFraction);
+  return (detached + terms.flogging * (chordFraction - detached)) / terms.peak;
+}
+
+/** {@link flutterEnvelope}, once the per-shape numbers are already solved. */
+function envelopeAt(shape: SailShape, terms: RampTerms, chordFraction: number): number {
+  return rampAt(shape, terms, chordFraction) * shape.collapsedFraction * endTaper(chordFraction);
 }
 
 /**
@@ -744,12 +784,12 @@ export function luffFlutter(shape: SailShape, time: Seconds): SailDeformation | 
   const amplitude = magnitude(subtract(shape.clew, shape.tack)) * FLUTTER_AMPLITUDE_FRACTION;
   const travel = shape.collapseFrom === "luff" ? -1 : 1;
   const phase = travel * FLUTTER_HZ * time;
-  const ramp = flutterRamp(shape);
+  const terms = rampTerms(shape);
 
   return (chordFraction, camberOffset) =>
     camberOffset * (1 - collapseAt(shape, chordFraction)) +
     amplitude *
-      envelopeAt(shape, ramp, chordFraction) *
+      envelopeAt(shape, terms, chordFraction) *
       sin(TAU * (FLUTTER_WAVES * chordFraction + phase));
 }
 
@@ -972,6 +1012,17 @@ export function createSailLayer(): Layer {
   // Whether a frame is already queued, rather than its handle: nothing here
   // ever cancels one. A pending frame repaints from whatever `rig` says when it
   // runs, so a state change that lands first is picked up rather than raced.
+  //
+  // **It stays `true` for as long as a hidden tab holds the callback, and that
+  // is the parked state rather than a stall.** A hidden document gets no
+  // rendering opportunities, and the callback list is only drained during one,
+  // so the entry waits rather than being dropped — in Blink, WebKit and Gecko
+  // alike — and runs at the first opportunity after the tab is shown again.
+  // Freezing a backgrounded page pauses those tasks rather than cancelling
+  // them, and discarding it tears the whole document down. So the loop cannot
+  // be left wedged, and meanwhile `update` still paints directly, so nothing is
+  // ever drawn stale. The one visible artefact is that the ripple resumes on a
+  // new phase in a single frame, which nobody sees: they were looking elsewhere.
   let pending = false;
 
   // Subscribed to, not merely consulted. An earlier version read `.matches` and
@@ -1025,6 +1076,11 @@ export function createSailLayer(): Layer {
     if (pending || !fluttering() || stillness.matches) return;
     pending = true;
     requestAnimationFrame((now) => {
+      // **First statement, deliberately.** If a paint below ever threw, the loop
+      // would stop — but the next `update` would re-arm it. Clear this at the
+      // end instead and a single throw parks the animation for the life of the
+      // page, because nothing would ever set it false again. The two lines look
+      // interchangeable and are not.
       pending = false;
       // Re-checked *inside* the frame, not only before arming it: a preference
       // turned on while this frame was in flight would otherwise land the ripple
