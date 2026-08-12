@@ -895,11 +895,18 @@ quiet, and slow; without this, it would look identical to a well-trimmed one.
 The scale is driven by **driving-force ratio, not angular error**:
 
 ```text
-quality = F_drive(current angle) / F_drive(best angle at this apparent wind)
+quality = F_drive(current angle) / max(F_drive(best angle at this apparent wind), 0.05 · q · A)
 ```
 
 Best angle is found by sampling the sail's range each frame — a few dozen
 evaluations, negligible cost.
+
+Read the denominator as `F_drive(best)` everywhere a student can sail: the
+second term is a floor that binds only inside the no-go zone, below an apparent
+wind angle of about 8°, where the best trim available is itself worth nothing.
+It is what stops the ratio being 0/0 in irons, and
+[below](#where-the-best-trim-is-itself-worth-nothing) is the whole of why it is
+written as a dimensionless coefficient rather than as a force.
 
 This choice matters pedagogically. Keyed to *angle*, a fixed 10° error would
 look equally bad everywhere. Keyed to *force*, the color falloff is
@@ -922,10 +929,13 @@ undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
 
 The denominator needs a floor, because in the no-go zone it goes to zero. The
 optimal-trim search reports the honest in-irons answer — a non-positive best
-force, and *exactly* zero below an apparent wind angle of about 4.3°, where
-the best a sail can do is lie along the wind making nothing: every trim that
-holds its shape there drives *backwards* (a boom right out at 4° off the wind
-pulls 200 N astern), so the maximum lands on a luffing trim at exactly zero.
+force, and *exactly* zero below an apparent wind angle of 4.3°: the main is
+still at zero *at* 4.3° and first drives at 4.4°, with 0.06 N, reaching 0.22 N
+at 4.5°, while the jib crosses a tenth of a degree sooner. Not because
+everything luffs there — a boom right out at 4° off the wind is fully attached,
+and pulling 200 N *astern*. Every trim that holds its shape drives backwards,
+so the maximum lands on a luffing trim at exactly zero.
+
 The bare ratio there is 0/0. Worse than undefined: a sail sitting on the
 optimum at 5° off the wind would read fully green while making 1 N and going
 nowhere, then snap to red as the best force crossed zero.

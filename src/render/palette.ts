@@ -297,16 +297,25 @@ function mix(from: number, to: number, t: number): number {
  *
  * Both ends genuinely overshoot in normal use. Above 1, because the optimum in
  * the denominator comes from a sampled search (`model/sail.ts`) and a trim
- * between two samples can beat it by a hair. Below 0, because driving force
- * goes negative in irons — which `model/sail.ts` explicitly hands to §4.2 as
- * this side's problem. Both mean "as bad as the ramp goes" or "as good as it
- * goes", so the clamp is the answer rather than an error.
+ * between two samples can beat it by a hair — measured at 7e-5 over the points
+ * of sail. Below 0, because driving force goes negative in irons and with a
+ * backed sail. Both mean "as bad as the ramp goes" or "as good as it goes", so
+ * the clamp is the answer rather than an error.
  *
  * A *non-finite* quality is different: it is `0/0` from a zero denominator, so
  * it is a bug upstream, and it throws in dev and test builds the way
  * `units.ts`'s `clampRatio` does. In the production bundle the check is dropped
  * and it paints red, because a student mid-lesson is better served by a wrongly
  * red sail than by a page that has stopped.
+ *
+ * **It is unreachable from the one caller there is, and that is the point of
+ * keeping it.** `render/sail.ts`'s `trimQuality` settled what §4.2 does with a
+ * vanishing optimum (pos-dmg.1): it floors the denominator at a drive
+ * coefficient, and returns 0 outright in a flat calm, where the floor itself
+ * would be zero. So the denominator it divides by is positive whenever there
+ * is any wind at all, and zero never reaches here. This throw guards the
+ * *next* caller — pos-dmg.3's speed-arrow ratio divides by a ghost-boat speed
+ * that is zero in exactly the same circumstances — rather than the current one.
  */
 function clampQuality(quality: number): number {
   if (import.meta.env.DEV && !Number.isFinite(quality)) {

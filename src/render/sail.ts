@@ -354,12 +354,13 @@ const MINIMUM_USEFUL_DRIVE_COEFFICIENT = 0.05;
  *
  * **The denominator is floored, and only where the optimum itself is vanishing.**
  * `optimalTrim` reports the honest in-irons answer — a non-positive best
- * force, and exactly zero below AWA ≈ 4.3°, where the best a sail can do is
- * lie along the wind making nothing. (Not because everything luffs there:
- * a boom right out at AWA 4° is fully attached and pulling 200 N *astern*.
- * Every trim that holds its shape drives backwards, so the maximum lands on a
- * luffing trim at exactly zero.) It hands the ratio to this side as §4.2's
- * problem. Taken bare it is 0/0, and worse than undefined:
+ * force, and exactly zero below AWA 4.3°: the main is still at zero *at* 4.3°
+ * and first drives at 4.4°, with 0.06 N, while the jib crosses a tenth of a
+ * degree sooner. Not because everything luffs there — a boom right out at AWA
+ * 4° is fully attached, and pulling 200 N *astern*. Every trim that holds its
+ * shape drives backwards, so the maximum lands on a luffing trim at exactly
+ * zero. That is handed to this side as §4.2's problem, and taken bare it is
+ * 0/0 — worse than undefined:
  * a sail sitting on the optimum at AWA 5° would read *fully green* while making
  * 1 N and going nowhere, then snap to red as the best force crossed zero. So
  * the denominator is `max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT · q · A)`.
