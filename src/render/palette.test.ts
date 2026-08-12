@@ -12,7 +12,21 @@ import {
 } from "./palette.ts";
 import { formatNumber } from "./svg.ts";
 
-/** Samples across the ramp. Fine enough to catch a flat spot or a reversal. */
+/**
+ * Samples across the ramp. Fine enough to catch a flat spot or a reversal.
+ *
+ * **Load-bearing for the CVD monotonicity block below — do not raise it
+ * casually.** The *emitted* ramp is quantised: `clampToGamut` floors chroma to
+ * the 1e-4 step `formatNumber` prints at, and near an anchor, where
+ * `smoothstep` flattens the lightness rise to almost nothing, one step down in
+ * chroma can just outweigh the gain. At 200 samples that never lands on a
+ * reversal; at 400 tritanopia dips by 4e-5, and at 5000 all three do. The ideal
+ * unquantised ramp is strictly monotonic at any resolution, so this is a
+ * rounding artifact of emitting a finite decimal rather than a fault in the
+ * ramp — DESIGN.md §4.4 states the caveat in the same terms. Raising this
+ * constant is fine if the strict assertions below gain a tolerance of about
+ * 1e-4 at the same time; raising it alone just fails.
+ */
 const SAMPLES = 200;
 
 /**
@@ -188,8 +202,10 @@ describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
    * relative luminance: it rises across the whole sweep without a reversal for
    * all three deficiency types, which is a stronger guarantee than a
    * blue-yellow one, since that would cover protanopia and deuteranopia only
-   * and this covers tritanopia too. Machado 2009 at severity 1.0 below; Viénot
-   * 1999 agrees on everything asserted here.
+   * and this covers tritanopia too. Machado 2009 at severity 1.0 below. Viénot
+   * 1999 agrees on the two red-green cases — the only ones it models; its
+   * tritanopia counterpart is Brettel 1997 — but neither is implemented here,
+   * so Machado is what these assertions actually run on.
    *
    * **Blue is deliberately not asserted**, and it would fail if it were. The
    * quality-¼ anchor sits on the sRGB boundary with a blue channel of 0 while
@@ -210,7 +226,7 @@ describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
 
   const DEFICIENCIES = ["protanopia", "deuteranopia", "tritanopia"] as const;
 
-  it.each(DEFICIENCIES)("stays ordered under %s, with no reversal anywhere", (deficiency) => {
+  it.each(DEFICIENCIES)("stays ordered under %s across the sampled ramp", (deficiency) => {
     const luminance = sweep().map((color) => simulatedLuminance(color, deficiency));
     for (let i = 1; i < luminance.length; i += 1) {
       expect(luminance[i]!).toBeGreaterThan(luminance[i - 1]!);
