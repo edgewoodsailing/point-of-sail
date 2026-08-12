@@ -28,12 +28,23 @@ import type { Kilograms, MetersPerSecond, Newtons } from "./units.ts";
  * and at a stated cost; §3.5 records the decision.
  *
  * **Why this constant, alone in the model, has that power.** Every force here
- * is homogeneous of degree two in speed: sail force is dynamic pressure times
- * coefficients that depend only on angles, the keel's induced drag is `F²/v²`
- * with `F` itself going as `v²`, and its stall ratio is capacity over load,
- * which is invariant when both scale together. Scale the true wind and the boat
- * speed by the same factor and every one of them scales by that factor squared,
- * leaving the polar's *shape* untouched. This term is the exception: `v_hull` is
+ * is homogeneous of degree two in speed. Scale the true wind and the boat speed
+ * together by λ and each one scales by λ²:
+ *
+ * - Sail force is dynamic pressure times coefficients that depend only on
+ *   angles. The apparent wind vector scales by λ and its *angle* does not move,
+ *   so the coefficients are untouched and the force goes as λ².
+ * - `A·v²` is quadratic by construction.
+ * - {@link keelInducedDrag} looks like the exception and is not, which is worth
+ *   spelling out because `k·F²/v²` reads like a term that breaks the scaling.
+ *   Take `F → λ²F` and `v → λv` in `D = k·F²·v²/(v⁴ + S²)`. The saturation
+ *   `S = k·F/(2·keelStall)` scales as λ², so the numerator picks up λ⁴ from `F²`
+ *   and λ² from `v²` — λ⁶ — while the denominator picks up λ⁴ from both `v⁴`
+ *   and `S²`. The ratio is **λ²**, like everything else. The `1/v²` is real but
+ *   it is cancelled by the load it is carrying.
+ *
+ * So the polar's *shape* is untouched by the wind. This term is the exception:
+ * `v_hull` is
  * an absolute speed, so `B·v^(n+2)/v_hull^n` scales by the (n+2)th power
  * instead — the sixth, at the fourth-power wall set below. Written in terms of
  * `n` because the previous revision of this paragraph quoted the powers of a

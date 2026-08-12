@@ -451,14 +451,23 @@ it.
 
 #### The wall exponent is the model's only wind-scale
 
-Everything else in this model is *homogeneous of degree two* in speed. Sail
-force is dynamic pressure times coefficients that depend only on angles; the
-keel's induced drag is `k·F²/v²` with `F` itself going as `v²`; the keel's stall
-ratio is capacity over load, which is unchanged when both scale together; and
-`A·v²` is quadratic by construction. Scale the true wind and the boat's speed by
-the same factor and every one of those scales by that factor squared — so the
-balance `F_drive = R(v)` is preserved, and the *shape* of the polar does not
-move at all.
+Everything else in this model is *homogeneous of degree two* in speed. Scale the
+true wind and the boat's speed together by λ, and each force scales by λ²:
+
+- **Sail force** is dynamic pressure times coefficients that depend only on
+  angles. The apparent wind vector scales by λ while its angle stays put, so the
+  coefficients don't move and the force goes as λ².
+- **`A·v²`** is quadratic by construction.
+- **The keel's induced drag** looks like the exception and isn't — worth writing
+  out, because `k·F²/v²` reads like a term that breaks the scaling. Put
+  `F → λ²F` and `v → λv` into `D = k·F²·v²/(v⁴ + S²)`. The saturation
+  `S = k·F/(2·k_stall)` scales as λ², so the numerator gains λ⁴ from `F²` and λ²
+  from `v²` — λ⁶ — while the denominator gains λ⁴ from `v⁴` and from `S²` alike.
+  The ratio is λ². The `1/v²` is real, and it is cancelled by the load it
+  carries.
+
+So the balance `F_drive = R(v)` is preserved under λ, and the *shape* of the
+polar does not move at all.
 
 The wall term is the exception, because `v_hull` is an absolute speed:
 `B·v^(n+2)/v_hull^n` scales by the (n+2)th power instead. That is not a detail.
