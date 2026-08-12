@@ -372,9 +372,11 @@ problem was one end of the polar.
 more than it can carry stalls, and the boat sideslips rather than growing an
 unbounded drag. Worse, in a model with no leeway an unbounded drag would push a
 sheeted-in boat *backwards* and then reverse as soon as it did. So the keel is
-given a stall — the drag is scaled by how hard the keel is loaded relative to
-what it can hold, which recovers `k·F²/v²` at speed and a flat plate's `v²` at
-rest, going to zero there as any water drag must.
+given a stall — the drag is scaled by how much lift the keel can hold relative
+to how hard it is being asked to pull, a ratio that grows with `v²` because that
+is what a foil's capacity does. That recovers `k·F²/v²` where there is capacity
+to spare and a flat plate's `v²` where there is not, going to zero at rest as
+any water drag must.
 
 Both constants are honestly fudges and live in `tuning.ts` accordingly. The
 scale is about four times what a 3'3" keel's own induced drag comes to, because
@@ -502,6 +504,21 @@ moved it is the keel's stall ceiling in [§3.5](#35-hull-resistance-and-integrat
 The **main-only column is not yet met** and is not this section's to meet: it
 belongs to [§3.7](#37-sailing-under-main-alone)'s upwind bonus, which changes
 the sloop numbers too and so has to recalibrate against this table.
+
+**This table is one wind speed, and the model knows it.** [§2.1](#21-initial-state-a-random-solvable-problem)
+opens anywhere in 6–14 kt and [§5](#5-direct-manipulation)'s slider has no
+ceiling, and the three qualitative lessons weaken monotonically as the breeze
+fills in — the closest useful angle runs from 49° at 6 kt to 39° at 14 kt, and
+the run climbs from 55% of a beam reach to 78% of it. Partly that is real, since
+a displacement hull meets its wall on both points of sail as the wind rises. The
+rest is the wall not being sharp enough to hold the speed down while the keel's
+`1/v²` charge falls away — the same softness as the broad-reach shortfall above,
+and by 20 kt it puts a beam reach 25% *over* hull speed. `calibration.test.ts`
+asserts the looser bounds that do hold across 6–14 kt, so the limit is stated
+rather than discovered; `pos-lcz` is the bead for narrowing it, and the lever it
+will have to reach for is the wall exponent, which
+[§3.5](#35-hull-resistance-and-integration) currently treats as shape rather
+than knob.
 
 The last row matters as much as the speeds. Main-only falls off *hardest close
 hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't

@@ -189,26 +189,47 @@ describe("the keel's induced drag (DESIGN.md §3.5)", () => {
     expect(keelInducedDrag(speed, LOADED)).toBeCloseTo(RESISTANCE.keelStall * LOADED, 9);
   });
 
-  it("stays gently sloped, which is what lets the integrator take it explicitly", () => {
-    // `simulation.ts` leaves this term out of the linearised denominator
-    // because its slope is negative — the term falls as the boat speeds up —
-    // and a negative stiffness there works against the damping the denominator
-    // exists to provide. That is only safe if the slope is small next to the
-    // mass over a frame, which is what this measures: `|dD/dv|·dt/m` stays
-    // under a part in a hundred at 60 Hz.
-    const dt = 1 / 60;
+  it("changes the sign of its slope at the stall, which is why it is taken explicitly", () => {
+    // The reason `simulation.ts` keeps this term out of the linearised
+    // denominator. It is not that the slope is negative — it is that the slope
+    // is *both*: the drag climbs to the ceiling above and falls away after it,
+    // so a boat below the keel's stall stiffens with speed and one above it
+    // softens. Both halves are ordinary sailing, close hauled and reaching
+    // respectively, so there is no regime the term could be safely folded into
+    // a denominator that must stay positive.
+    const h = 1e-6;
+    const slopeAt = (speed: MetersPerSecond, load: Newtons) =>
+      (keelInducedDrag(speed + h, load) - keelInducedDrag(speed - h, load)) / (2 * h);
+
+    const peak = Math.sqrt((RESISTANCE.sideForce * LOADED) / (2 * RESISTANCE.keelStall));
+    expect(slopeAt(peak / 2, LOADED)).toBeGreaterThan(0);
+    expect(slopeAt(peak * 2, LOADED)).toBeLessThan(0);
+  });
+
+  it("stays gently sloped, which is what makes leaving it explicit safe", () => {
+    // Omitting a term from the denominator costs whatever damping it would have
+    // added, and that is only negligible if its slope is small next to the mass
+    // over a step. Measured at `MAX_STEP` rather than at a frame: 0.1 s is the
+    // longest step the clamp allows, and it is also the step `settle` runs at,
+    // so a bound taken at 60 Hz would understate the worst case sixfold.
+    //
+    // The peak slope grows as the square root of the load — the ceiling rises
+    // with `F` while the speed it is reached at rises with `√F` — so which
+    // loads are sampled matters. 5000 N is far past anything a Rhodes 19's rig
+    // makes in a wind a student would set, and it comes to 0.026.
+    const dt: Seconds = 0.1;
     const h = 1e-6;
     let steepest = 0;
 
-    for (const load of [50, 200, LOADED, 2000]) {
-      for (let speed = 0.05; speed <= 8; speed += 0.05) {
+    for (const load of [50, 200, LOADED, 2000, 5000]) {
+      for (let speed = 0.01; speed <= 8; speed += 0.01) {
         const slope =
           (keelInducedDrag(speed + h, load) - keelInducedDrag(speed - h, load)) / (2 * h);
         steepest = Math.max(steepest, Math.abs(slope));
       }
     }
 
-    expect((steepest * dt) / EFFECTIVE_MASS).toBeLessThan(0.01);
+    expect((steepest * dt) / EFFECTIVE_MASS).toBeLessThan(0.05);
   });
 });
 

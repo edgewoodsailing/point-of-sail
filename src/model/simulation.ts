@@ -78,9 +78,10 @@ const MAX_STEP: Seconds = 0.1;
  *
  * §3.5's force balance, composed from pieces that already exist: `apparentWind`
  * for what the sails feel, `rigForce` for what they do about it, and
- * `hullResistance` for what the water does about that. Because resistance is
- * signed along the direction of motion, the numerator is the design document's
- * `F_drive − R(v)` unmodified — no branch for going astern.
+ * `hullResistance` plus `keelInducedDrag` for the two ways the water charges
+ * for it. Because both drags are signed along the direction of motion, the
+ * numerator is the design document's `F_drive − R(v) − D_keel(v)` unmodified —
+ * no branch for going astern.
  *
  * Frames longer than {@link MAX_STEP} are taken as {@link MAX_STEP}; anything
  * that is not a length of time at all advances nothing.
@@ -93,7 +94,7 @@ export function step(state: SimState, dt: Seconds): SimState {
  * One integration step of `dt` seconds, with no clamp on `dt`.
  *
  * ```text
- * v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
+ * v += (F_drive − R(v) − D_keel(v)) · dt / (m_effective + R′(v) · dt)
  * ```
  *
  * **Why the denominator carries `R′(v)·dt`.** Written the obvious way —
@@ -128,19 +129,28 @@ export function step(state: SimState, dt: Seconds): SimState {
  * what `simulation.test.ts` pins.
  *
  * The other property {@link settle} leans on is exact: the fixed point is
- * `F_drive = R(v)`, independent of `dt`, since the increment vanishes only
- * where the numerator does.
+ * `F_drive = R(v) + D_keel(v)`, independent of `dt`, since the increment
+ * vanishes only where the numerator does. `simulation.test.ts` asserts that
+ * balance with all three terms — checking only the first two would pass on a
+ * settle that had converged wrong by exactly the keel's charge, which upwind
+ * is over a hundred newtons.
  *
  * **The keel's induced drag is charged in the numerator and left out of the
  * denominator**, which is not an oversight either. The denominator is a
- * stiffness, and that term's is *negative* — a boat going faster makes its side
- * force more cheaply, so `D` falls as `v` rises. Adding a negative stiffness to
- * `m + R′·dt` would work against the very thing the linearisation is there to
- * do, and a large enough one would drive the denominator through zero. Leaving
- * it explicit costs nothing: unlike the sixth-power wall, `keelInducedDrag` is
- * bounded and gently sloped everywhere — its steepest is where it peaks near
- * the keel's stall, and even there `|dD/dv|·dt / m` is a few parts in a
- * thousand at frame length.
+ * stiffness, and this is the one term in the balance whose stiffness **changes
+ * sign**: `keelInducedDrag` rises to a peak at the keel's stall and falls away
+ * after it, so `dD/dv` is positive below that speed and negative above. Both
+ * halves are ordinary sailing — close hauled in 10 kt the boat sits just under
+ * the peak at +17 N/(m/s), and by a beam reach it is past it at −25.
+ *
+ * A negative stiffness in `m + R′·dt` works against the very thing the
+ * linearisation is there to do, and a large enough one would drive the
+ * denominator through zero. Since half the polar would contribute one, the term
+ * stays out of the denominator entirely rather than being included with a sign
+ * test. That costs only the damping a positive stiffness would have added,
+ * which is small: unlike the sixth-power wall, `keelInducedDrag` is bounded and
+ * gently sloped everywhere, and `|dD/dv|·dt / m` stays under a percent even at
+ * the longest step {@link MAX_STEP} allows. `hull.test.ts` measures it.
  */
 function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);

@@ -108,11 +108,13 @@ export function hullResistanceSlope(speed: MetersPerSecond): number {
  * case — and, being a drag, it would reverse as soon as the boat did, leaving
  * the speed chattering about zero.
  *
- * So the keel is given a stall. Writing `x` for how hard it is loaded relative
- * to what it can carry, the drag is `k·F²/v²` scaled by `x²/(1 + x²)`: the
- * unstalled foil at small loads, and a flat plate's `v²` at large ones, which
- * goes to zero at rest as any water drag must. Gathering the algebra, with
- * `S` the `v²` at which the keel is fully loaded,
+ * So the keel is given a stall. Writing `x` for how much lift it can carry
+ * relative to how hard it is being asked to pull — capacity over load, which
+ * grows with `v²` because that is what a foil's capacity does — the drag is
+ * `k·F²/v²` scaled by `x²/(1 + x²)`: the unstalled foil where there is capacity
+ * to spare, and a flat plate's `v²` where there is not, which goes to zero at
+ * rest as any water drag must. Gathering the algebra, with `S` the `v²` at
+ * which the keel is fully loaded, so that `x = v²/S`,
  *
  * ```text
  * D = k·F²·v² / (v⁴ + S²)
@@ -126,7 +128,15 @@ export function hullResistanceSlope(speed: MetersPerSecond): number {
  */
 export function keelInducedDrag(speed: MetersPerSecond, sideForce: Newtons): Newtons {
   const load = Math.abs(sideForce);
-  if (load === 0) return 0;
+
+  // Both zeroes taken early, and not only for the arithmetic they save. At rest
+  // the ratio below is 0/0 — the numerator carries a `v²`, and the denominator
+  // is `S²`, which underflows to zero once the side force is small enough
+  // (1e-200 N does it). A NaN reaching the integrator would poison the speed
+  // permanently, since every later step adds to it, which is the same failure
+  // `clampStep` in `simulation.ts` exists to prevent. Cheaper to close here
+  // than to reason about how small a side force can get.
+  if (speed === 0 || load === 0) return 0;
 
   // Where the unstalled limb `k·F²/v²` and the stalled limb cross. The peak of
   // the blend sits there, at exactly `keelStall · F`, which is what makes that

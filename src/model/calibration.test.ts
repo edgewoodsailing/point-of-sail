@@ -48,9 +48,9 @@ const WIND_SPEED = kt(10);
 const TOLERANCE = 0.1;
 
 /** A boat heading north with the true wind `twa` off the bow, at rest or moving. */
-function boat(twa: Radians, jibSet: boolean, speed = 0): SimState {
+function boat(twa: Radians, jibSet: boolean, speed = 0, wind = WIND_SPEED): SimState {
   return {
-    wind: { from: twa, speed: WIND_SPEED },
+    wind: { from: twa, speed: wind },
     motion: { heading: 0, speed },
     trim: { mainAngle: 0, jibAngle: 0, jibSet },
     mainHeld: false,
@@ -71,8 +71,8 @@ function boat(twa: Radians, jibSet: boolean, speed = 0): SimState {
  * and the day they diverge again this helper is measuring the branch a polar
  * means.
  */
-function wellTrimmed(twa: Radians, jibSet = true, from = 0): SimState {
-  let state = boat(twa, jibSet, from);
+function wellTrimmed(twa: Radians, jibSet = true, from = 0, wind = WIND_SPEED): SimState {
+  let state = boat(twa, jibSet, from, wind);
 
   for (let pass = 0; pass < 8; pass += 1) {
     const settled = settle(state);
@@ -91,9 +91,27 @@ function wellTrimmed(twa: Radians, jibSet = true, from = 0): SimState {
   return state;
 }
 
-/** The steady speed at this true wind angle, in knots. */
-function speedAt(twaDegrees: number, jibSet = true, from?: number): Knots {
-  return metersPerSecondToKnots(settle(wellTrimmed(deg(twaDegrees), jibSet, from)).motion.speed);
+/**
+ * The steady speed at this true wind angle, in knots.
+ *
+ * Memoised, because settling a polar is not cheap — each call is eight `settle`
+ * runs and each of those is a few hundred frames — and the sweeps below revisit
+ * the same angles from both directions. Without it the smoothness sweep alone
+ * spends half of vitest's default per-test timeout, and a slower machine starts
+ * failing on the clock rather than on the physics.
+ */
+const cache = new Map<string, Knots>();
+
+function speedAt(twaDegrees: number, jibSet = true, from = 0, wind = WIND_SPEED): Knots {
+  const key = `${twaDegrees}|${jibSet}|${from}|${wind}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+
+  const speed = metersPerSecondToKnots(
+    settle(wellTrimmed(deg(twaDegrees), jibSet, from, wind)).motion.speed,
+  );
+  cache.set(key, speed);
+  return speed;
 }
 
 /** Progress made straight upwind: the number that decides how high to point. */
@@ -276,6 +294,105 @@ describe("the no-go zone (DESIGN.md §3.6)", () => {
   });
 });
 
+/**
+ * Everything above is 10 kt, because that is the only wind §3.6 quotes. §2.1
+ * opens the simulator anywhere in **6–14 kt**, though, and §5's slider has no
+ * stated ceiling — so the lessons the table exists to protect have to survive a
+ * range the table says nothing about, and it is worth knowing how well.
+ *
+ * They weaken with the wind, in one direction and for one reason. The keel's
+ * charge for side force falls away as the boat speeds up — that is the `1/v²`
+ * in it, and it is what a real keel does — but §3.5's hull wall is not sharp
+ * enough to hold the speed down in reply, so above about 12 kt the boat gets
+ * fast and its keel gets cheap together. Measured, well trimmed, at the best
+ * upwind VMG angle and the run/beam ratio:
+ *
+ * ```text
+ * wind      4     6     8    10    12    14    16    20    30
+ * angle    49°   49°   47°   44°   41°   39°   37°   34°   30°
+ * run/beam 0.52  0.55  0.62  0.68  0.74  0.78  0.81  0.85  0.89
+ * ```
+ *
+ * Inside 6–14 kt this is defensible and largely real: boats do point higher and
+ * do close the reach-to-run gap as the breeze fills in, since a displacement
+ * hull runs into its wall on both points of sail. Past it the model drifts off
+ * what a Rhodes 19 would do — 34° of pointing in 20 kt is nothing afloat, and
+ * it goes with a beam reach at 7.1 kt, 25% over hull speed, which is the same
+ * wall being too soft showing up in the other place.
+ *
+ * The bounds below are the ones that actually hold across the opening range,
+ * not the ones that hold at 10 kt. They are deliberately looser than the 10 kt
+ * assertions and are here to say where the calibration stops being calibration,
+ * so that nobody reads the 10 kt tests as a claim about the model at large.
+ * pos-lcz is the bead for narrowing it, and expects to tighten these.
+ */
+describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
+  /** The wind speeds §2.1 opens on. */
+  const OPENING_RANGE = [6, 8, 10, 12, 14];
+
+  function vmgPeak(wind: number): number {
+    let best = -Infinity;
+    let at = 0;
+    for (let twa = 15; twa <= 70; twa += 1) {
+      const vmg = speedAt(twa, true, 0, kt(wind)) * cos(deg(twa));
+      if (vmg > best) {
+        best = vmg;
+        at = twa;
+      }
+    }
+    return at;
+  }
+
+  it("keeps a reach the fastest point of sail across the opening range", () => {
+    // This one survives intact, at every wind tried.
+    for (const wind of OPENING_RANGE) {
+      const beam = speedAt(90, true, 0, kt(wind));
+      expect(beam, `${wind} kt`).toBeGreaterThan(speedAt(45, true, 0, kt(wind)));
+      expect(beam, `${wind} kt`).toBeGreaterThan(speedAt(135, true, 0, kt(wind)));
+      expect(beam, `${wind} kt`).toBeGreaterThan(speedAt(180, true, 0, kt(wind)));
+    }
+  });
+
+  it("keeps a run slower than a reach, but less so as the wind fills in", () => {
+    // 0.68 at 10 kt against 0.78 at 14 kt. The lesson holds everywhere in the
+    // range; how loudly it is taught does not. The 10 kt test asserts 0.75 —
+    // this is the honest bound for the range as a whole.
+    for (const wind of OPENING_RANGE) {
+      const ratio = speedAt(180, true, 0, kt(wind)) / speedAt(90, true, 0, kt(wind));
+      expect(ratio, `${wind} kt`).toBeLessThan(0.8);
+    }
+
+    // And the direction of the drift, pinned so that it is a known property
+    // rather than a surprise: more wind always narrows the gap.
+    expect(speedAt(180, true, 0, kt(14)) / speedAt(90, true, 0, kt(14))).toBeGreaterThan(
+      speedAt(180, true, 0, kt(6)) / speedAt(90, true, 0, kt(6)),
+    );
+  });
+
+  it("keeps the closest useful angle in the range a keelboat sails", () => {
+    // 49° in 6 kt down to 39° in 14 kt. Wider than the 40–50° the 10 kt test
+    // pins, and the widening is monotone in the wind.
+    for (const wind of OPENING_RANGE) {
+      expect(vmgPeak(wind), `${wind} kt`).toBeGreaterThanOrEqual(35);
+      expect(vmgPeak(wind), `${wind} kt`).toBeLessThanOrEqual(55);
+    }
+
+    expect(vmgPeak(14)).toBeLessThan(vmgPeak(6));
+  });
+
+  it("stays a boat rather than a machine in a wind nobody would sail in", () => {
+    // Not a calibration claim — §5's slider has no ceiling, and this is the
+    // floor under what happens past the range anyone tuned. The speeds stay
+    // finite and bounded, and the boat never sails dead upwind however hard it
+    // blows, which is the one lesson that must not break at any wind.
+    for (const wind of [20, 30, 45]) {
+      expect(speedAt(0, true, 0, kt(wind)), `${wind} kt`).toBe(0);
+      expect(speedAt(90, true, 0, kt(wind)), `${wind} kt`).toBeLessThan(12);
+      expect(vmgPeak(wind), `${wind} kt`).toBeGreaterThan(20);
+    }
+  });
+});
+
 describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
   it("makes the most-drive trim also the fastest trim", () => {
     // `optimalTrim` maximises driving force at the apparent wind as it stands,
@@ -284,15 +401,20 @@ describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
     // same question, and a student sheeting to the green light could in
     // principle be sailing slower than one who ignored it.
     //
-    // They come out together: swept over every legal trim, the fastest settled
-    // speed is the one the drive-maximising trim reaches, to within a
-    // hundredth of a knot everywhere. That is not luck — near the optimum the
-    // drive is flat, and the side force varies far too gently across that
-    // flat top to move the answer — but it is worth pinning, because the day
-    // it stops being true §4.2 is lying to the student.
-    for (const twa of [30, 45, 90, 135, 180]) {
+    // They come out together, near enough. Swept over every legal trim at one
+    // degree, the fastest settled speed beats the drive-maximising trim by at
+    // most 0.015 kt — measured across 4 to 45 kt of wind and the whole range of
+    // angles, worst at 5 kt on a close reach. That is not luck: near the
+    // optimum the drive is flat, and the side force varies far too gently
+    // across that flat top to move the answer. But it is not zero either, so
+    // the bound below is set above the largest gap found rather than at the
+    // resolution of this sweep, which would be pinning the sampling.
+    //
+    // Worth pinning because the day it stops being true, §4.2 is lying to the
+    // student — sheeting to the green light would be leaving speed behind.
+    for (const twa of [30, 45, 60, 90, 135, 180]) {
       let fastest = -Infinity;
-      for (let angle = -90; angle <= 90; angle += 2) {
+      for (let angle = -90; angle <= 90; angle += 1) {
         const swept = settle({
           ...boat(deg(twa), true),
           trim: { mainAngle: deg(angle), jibAngle: deg(angle), jibSet: true },
@@ -300,7 +422,7 @@ describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
         fastest = Math.max(fastest, metersPerSecondToKnots(swept.motion.speed));
       }
 
-      expect(speedAt(twa), `TWA ${twa}°`).toBeGreaterThan(fastest - 0.01);
+      expect(speedAt(twa), `TWA ${twa}°`).toBeGreaterThan(fastest - 0.03);
     }
   });
 });
