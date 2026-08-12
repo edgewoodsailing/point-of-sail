@@ -125,9 +125,13 @@ function settledSpeeds(state: SimState, ceiling: Knots): Knots[] {
 function worstFold(windKnots: number): { width: Knots; where: string } {
   let width = 0;
   let where = "none";
-  // Comfortably past anything §3.6 reaches at this wind, and never so low that
-  // a high branch could hide above the ceiling and read as a single crossing.
-  const ceiling = Math.max(3, windKnots * 1.4);
+  // High enough that a fast branch can never hide above it and leave a fold
+  // reading as a single crossing, and no higher, because every knot of ceiling
+  // is samples spent. Scaled to the wind in light air; flattened at 12 kt above
+  // that, which is nearly double the fastest speed this model can reach at any
+  // wind at all — §3.2's depowering holds a beam reach to 6.41 kt in 45 kt of
+  // breeze, and §3.5's wall would want a great deal more than 12 to be passed.
+  const ceiling = Math.min(Math.max(3, windKnots * 1.4), 12);
 
   for (const jibSet of [false, true]) {
     for (let twa = 0; twa <= 180; twa += TWA_STEP_DEGREES) {
@@ -182,7 +186,7 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
   it("has one settled speed per trim, at every wind and every point of sail", () => {
     // Spanning the slider: below §2.1's opening range, across it, and above the
     // wind at which §3.2's depowering takes over.
-    for (const wind of [2, 6, 10, 14, 20]) {
+    for (const wind of [2, 6, 10, 14, 20, 30]) {
       const found = worstFold(wind);
       expect(found.width, `${wind} kt true: fold at ${found.where}`).toBe(0);
     }
