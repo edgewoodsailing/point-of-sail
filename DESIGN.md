@@ -413,8 +413,8 @@ which is even about 90° as well as about zero.
 Against it: [§3.2](#32-sail-forces) already handles α ≈ 180° correctly and
 without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the *boat*
 was ever wrong and the change buys nothing measurable in newtons — it zeroes a
-force that was already negligible. For it, and decisive: the luff fraction is
-the one number that drives the flutter as well as the force, so a fraction of
+force that was already negligible. For it, and decisive: the collapsed fraction
+is the one number that drives the flutter as well as the force, so a fraction of
 zero at α = 180° is the model asserting *fully drawing* about a sail that is
 flogging. The drawing would then show a sail collapsed and dead still at the
 same moment, which is exactly the undertrimmed-looks-like-overtrimmed confusion
@@ -443,23 +443,33 @@ sail head to wind sits at α = 90°, which folds to 90° either way. The corner
 `α_full`, so the smoothstep is saturated with zero slope on both sides of it and
 the fraction is flat at zero straight through.
 
-We compute a **luff fraction** ∈ [0,1] — how much of the sail, measured from
-the luff aft, has collapsed. That single number drives both the flutter
-animation and the force reduction, so what the student sees and what the boat
-does can never disagree. It scales the whole force, lift and drag alike: the
-collapsed portion is simply not working.
+We compute a **collapsed fraction** ∈ [0,1] — how much of the sail has let go —
+and, beside it, the **edge the collapse propagates from**: the luff or the
+leech. The fraction drives both the flutter animation and the force reduction,
+so what the student sees and what the boat does can never disagree. It scales
+the whole force, lift and drag alike: the collapsed portion is simply not
+working. *Which* portion it is does not enter the force at all — a third of the
+cloth carries a third of the load whichever third it is — so the edge is a
+number the drawing spends and the physics ignores.
 
-One simplification remains, deliberately, and it is worth stating without
-flattering it. The fraction is still measured **from the luff aft** in both
-bands, though in the leech-first band the cloth breaks at the *leech* and the
-collapse runs forward. The band is only 7° wide, but the fraction does not
-saturate across it: it is 0.35 at α = 175° and does not reach 1 until 178°. So
-through the first half of the band the drawing will shake the forward third of a
-sail whose *leech* is the end actually breaking. What the simplification buys is
-a single axis for [§4.1](#41-whats-drawn)'s deformation hook, and that — not any
-claim that the error is negligible — is why it stands for now. Doing it properly,
-including a name that admits the fraction is no longer about the luff, is its own
-piece of work.
+The edge falls straight out of the fold. The two limbs of `min(|α|, 180° − |α|)`
+*are* the two edge-on states: below 90° the flow is arriving at the luff and the
+collapse runs aft, above it the flow is arriving at the leech and the collapse
+runs forward. Reporting the fraction alone would not do, and the error it would
+leave is not a sliver — the fraction is 0.35 at α = 175° and does not reach 1
+until 178°, so through the first half of that band a drawing measured from the
+luff would shake the forward third of a sail whose *after* end is the one
+letting go. Keeping [§4.1](#41-whats-drawn)'s deformation hook honest is the
+whole reason the second field exists.
+
+The two are reported separately rather than folded into one signed fraction.
+A sign would have to flip at α = 90°, which is exactly where the fraction is
+zero and there is no collapse to attribute to an edge, and every consumer would
+then spend a line recovering a magnitude before it could use one. As it stands,
+between the bands the fraction is 0 and the edge merely names the one a collapse
+*would* arrive at; the tie at exactly |α| = 90° is broken toward the luff and is
+unobservable, because nothing reads the edge without also reading a fraction of
+zero.
 
 ### 3.4 Backing a sail
 
