@@ -44,6 +44,27 @@ import { apparentWind } from "./wind.ts";
  *   measures, by running it against a curve that folds on purpose. Without that,
  *   "no fold found" and "the grid cannot see folds" are the same passing test.
  *
+ * **The grid below was checked against a much finer one rather than argued for.**
+ * Walking `stallBlendWidth` down until folds appear and running both grids at
+ * every width, against a reference five times finer in trim, ten times in speed
+ * and twice in TWA:
+ *
+ * ```text
+ * blend    this grid          reference grid
+ * 20°      2.400 kt, 58 hits  2.390 kt, 575 hits
+ * 25°      2.000 kt,  9 hits  1.980 kt,  84 hits
+ * 28°      1.500 kt,  3 hits  1.490 kt,  20 hits
+ * 30°      1.000 kt,  1 hit   1.070 kt,   5 hits
+ * 32°      none               none
+ * ```
+ *
+ * It finds a fold at every width where the finer grid finds one, and sizes it to
+ * within 0.07 kt. Read the third column rather than the second, though: at 30°
+ * it is down to a **single** cell, so the margin is thin exactly where a fold is
+ * about to become invisible. The shipped 50° is eighteen degrees clear of the
+ * 32° threshold, so that thinness is about how small a regression this would
+ * catch, not about whether it can see the boat it has.
+ *
  * **On the equality tolerance.** Settled speeds are compared to four decimal
  * places rather than to machine precision, and that floor is `settle`'s own
  * convergence tolerance rather than anything physical: it stops when a step

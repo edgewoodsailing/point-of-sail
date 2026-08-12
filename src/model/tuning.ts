@@ -127,12 +127,14 @@ export const FOIL: {
    * The two are both needed and neither is sufficient: with the maximum in
    * place and this left at 20°, the fold returns at 2.40 kt.
    *
-   * The margin is deliberate, as it was before. 35° is the narrowest width with
-   * no fold anywhere; 50° sits the same fraction above that threshold as the old
-   * 20° sat above its own 14°, which leaves a later pass room to move the
-   * neighbouring constants without falling back over the edge. Widening further
-   * is not free — it is what puts lift under a sail at large incidence, and
-   * §4.2's "sheeted flat is a mistake" is spent out of the same account.
+   * The margin is deliberate, as it was before. Swept at every wind from 2 to
+   * 10 kt, **31° still folds** — by 0.9 kt at 4 kt of wind — and **32° is the
+   * narrowest width that is clean everywhere**. 50° sits half again past that,
+   * where the old 20° sat 1.43× past its own 14°, so there is room for a later
+   * pass to move the neighbouring constants without falling back over the edge.
+   * Widening further is not free — it is what puts lift under a sail at large
+   * incidence, and §4.2's "sheeted flat is a mistake" is spent out of the same
+   * account.
    */
   stallBlendWidth: degreesToRadians(50),
 

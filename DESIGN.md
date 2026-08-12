@@ -341,9 +341,10 @@ parameterisation* could not fix the rest, because it **relocated** the fold into
 lighter air rather than removing it — a gentler fall closes the same loop at a
 lower speed — and no width was clean at every wind while the polar still met
 [§3.6](#36-calibration-targets). What made 50° work is that the attached limb
-now has its own maximum, so the width governs the falloff alone. 35° is the
-narrowest width with no fold anywhere; 50° keeps the same margin over that
-threshold as the old 20° kept over its own 14°.
+now has its own maximum, so the width governs the falloff alone. Swept at every
+wind from 2 to 10 kt, 31° still folds — by 0.9 kt at 4 kt — and **32° is the
+narrowest width that is clean everywhere**; 50° sits half again past that, where
+the old 20° sat 1.43× past its own 14°.
 
 **Where the search for this fix did *not* lead is worth recording**, because
 both directions look plausible and cost a week each. The keel's induced drag is

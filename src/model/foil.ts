@@ -35,7 +35,7 @@
  *
  * The stall is still the crossfade's doing, and the blend is not redundant:
  * with the maximum in place but the blend left at its old 20°, the fold comes
- * straight back at 2.40 kt. Both halves are load-bearing.
+ * straight back — 2.40 kt at 6 kt of wind. Both halves are load-bearing.
  *
  * This module knows nothing about the Rhodes 19. Aspect ratio is a parameter,
  * so the curves can be exercised at any span and `sail.ts` supplies
