@@ -684,9 +684,11 @@ gentler curve is a gentler thing to linearize.)
 **Since [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
 depowering, no wind reaches that failure at all**, and it would be dishonest to
 leave the paragraph above reading as a live threat. The drive is capped at its
-13 kt value, so the boat settles at about 6.4 kt whether it is given 55 kt of
-wind or a thousand, and at those speeds the naive step and the implicit one
-agree to four decimal places with no overshoot between them. The step stays
+13 kt value, so the boat stops accelerating with the wind — re-trimmed for the
+gale it is in, it settles at 6.38–6.40 kt whether it is given 55 kt of wind or a
+thousand, and carrying a trim found in 10 kt it settles at 4.40–4.50 kt. At
+either, the naive step and the implicit one agree to six decimal places with no
+overshoot between them. The step stays
 implicit anyway, for two reasons that have nothing to do with which winds are
 reachable today: it costs a single extra term, and what makes the failure
 unreachable is now a *tuning constant* — raise `DEPOWERING.fullPowerWind` far
