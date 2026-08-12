@@ -407,7 +407,8 @@ describe("the collapsed region runs from the edge that is breaking (pos-83f)", (
     for (const alpha of [0, 3, 5, 15, 90, 175, 180]) {
       const apparent = wind(10, alpha);
       const shape = shapeAtAlpha(alpha);
-      expect(shape.collapsedFraction, `${alpha}°`).toBe(collapsedFraction(angleOfAttack(0, apparent)));
+      const fromModel = collapsedFraction(angleOfAttack(0, apparent));
+      expect(shape.collapsedFraction, `${alpha}°`).toBe(fromModel);
       expect(shape.collapseFrom, `${alpha}°`).toBe(alpha > 90 ? "leech" : "luff");
     }
   });
@@ -557,19 +558,51 @@ describe("the per-point deformation hook (the seam pos-dmg.2 inherits)", () => {
     });
   });
 
+  /**
+   * The collapsed portion goes flat and ripples; the rest keeps its camber. An
+   * addend-only hook could not have expressed the first half.
+   *
+   * Written through `collapseAt` rather than a hand-rolled `s < fraction`,
+   * because this is the executable form pos-dmg.2 is meant to copy and the axis
+   * is the thing it must not get wrong. Run at both bands with the *same*
+   * collapsed fraction: the flattening has to follow the breaking edge, which
+   * is the luff at α = 5° and the leech at α = 175°.
+   */
   it("supports the attenuate-then-add form pos-dmg.2 needs", () => {
-    // The collapsed portion goes flat and ripples; the rest keeps its camber.
-    // An addend-only hook could not have expressed the first half.
-    const luffing = 0.4;
-    const flutter = (s: number, offset: number): number =>
-      offset * (s < luffing ? 0 : 1) + 0.05 * Math.sin(12 * s - 3);
+    for (const alpha of [5, 175]) {
+      const collapsing = mainShape(0, wind(10, alpha));
+      expect(collapsing.collapsedFraction, `${alpha}°`).toBeCloseTo(0.352, 3);
 
-    const points = sailPoints(shape, flutter);
-    for (const point of points) {
-      expect(Number.isFinite(point.x)).toBe(true);
-      expect(Number.isFinite(point.y)).toBe(true);
+      const ripple = (s: number): number => 0.05 * Math.sin(12 * s - 3);
+      const flutter = (s: number, offset: number): number =>
+        offset * (1 - collapseAt(collapsing, s)) + ripple(s);
+
+      for (const point of sailPoints(collapsing, flutter)) {
+        expect(Number.isFinite(point.x), `${alpha}°`).toBe(true);
+        expect(Number.isFinite(point.y), `${alpha}°`).toBe(true);
+      }
+      expect(sailPathData(collapsing, flutter), `${alpha}°`).not.toMatch(/NaN|Infinity/);
+
+      // With the ripple silenced, what is left is the attenuation — and it must
+      // flatten the end that is breaking while the other end keeps its camber.
+      // Compared as a *retained fraction* of the undeformed offset, so the
+      // camber profile's own asymmetry does not decide the answer.
+      const flatten = (s: number, offset: number): number =>
+        offset * (1 - collapseAt(collapsing, s));
+      const retained = (s: number): number =>
+        magnitude(subtract(sailPoint(collapsing, s, flatten), chordPoint(collapsing, s))) /
+        magnitude(bulge(collapsing, s));
+
+      const forward = retained(0.1);
+      const aft = retained(0.9);
+      expect(forward, `${alpha}° forward`).toBeGreaterThanOrEqual(0);
+      expect(aft, `${alpha}° aft`).toBeGreaterThanOrEqual(0);
+      if (collapsing.collapseFrom === "luff") {
+        expect(forward, `${alpha}°`).toBeLessThan(aft);
+      } else {
+        expect(aft, `${alpha}°`).toBeLessThan(forward);
+      }
     }
-    expect(sailPathData(shape, flutter)).not.toMatch(/NaN|Infinity/);
   });
 });
 

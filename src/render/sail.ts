@@ -50,20 +50,23 @@
  * contemplates that case explicitly and reports `Cl = 0, Cd = Cd0`). The belly
  * changes sides at both, and `sin α` took the depth to zero so each flip
  * happened through a flat sail. Since pos-aa2 folded §3.3 about 90°,
- * `(1 − collapsedFraction)` is *already* exactly 0 at both — and gets there with
- * vanishing slope, a measured 6·10⁻⁵ of full draft per degree at the 2° and 178°
- * junctions, because `smoothstep` is flat at its ends. Reduce `sin α` to
- * `sign(sin α)` and both flips are still invisible.
+ * `(1 − collapsedFraction)` is *already* 0 at both — not approaching 0 but
+ * identically 0 across the whole plateau `|α| ≤ 2°` and `|α| ≥ 178°`, because
+ * `smoothstep` clamps. Each flip therefore happens in the middle of a 2°-wide
+ * band of exactly flat sail. Reduce `sin α` to `sign(sin α)` and both flips are
+ * still invisible. (Resist quoting a slope at those junctions: `smoothstep`'s
+ * derivative is exactly zero there, so any finite difference reports its own
+ * step size rather than a property of the curve.)
  *
  * **What it does still buy is depth against incidence**, which turns out to be
  * worth more than the knife edges were. Measured on the main, whose full draft
- * is `foot · MAX_DRAFT_FRACTION` = 0.473 m, at saturated pressure — the pressure
- * factor is common to both columns and cancels: with `sin α` the drawn camber is
- * 0.058 m at α = 7°, 0.122 m at 15° and 0.473 m at 90°; with only the sign it is
- * 0.473 m at all three — full camber on a sail 7° off luffing, and a close-hauled
- * sail indistinguishable from one on a beam reach. A close-hauled sail reading distinctly flatter than
- * a reaching one is §4.1's deliberate visible consequence and is true on the
- * water, so `sin α` stays whole.
+ * is `foot · MAX_DRAFT_FRACTION` = 0.473 m, at saturated pressure — the
+ * pressure factor is common to both columns and cancels: with `sin α` the drawn
+ * camber is 0.058 m at α = 7°, 0.122 m at 15° and 0.473 m at 90°; with only the
+ * sign it is 0.473 m at all three — full camber on a sail 7° off luffing, and a
+ * close-hauled sail indistinguishable from one on a beam reach. A close-hauled
+ * sail reading distinctly flatter than a reaching one is §4.1's deliberate
+ * visible consequence and is true on the water, so `sin α` stays whole.
  *
  * ## The camber really is a Bézier arc
  *
@@ -475,6 +478,16 @@ export function rigDrawing(state: SimState): RigDrawing {
  * boundary regardless of how wide the collapsed region currently is. Multiply by
  * `shape.collapsedFraction` for the distance in chord fractions if that is what
  * is wanted.
+ *
+ * **One caveat before it is used as an amplitude on its own.** This measures
+ * distance from the *boundary*, so as the region grows to the whole chord the
+ * peak stays at the edge the collapse started from and the far end falls to 0:
+ * head to wind it is 1 at the luff and 0 at the clew, though a wholly flogging
+ * sail is loosest at its free end. That is right for §4.1's case — "a small
+ * ripple at the luff only", where the boundary is the thing moving — and it
+ * inverts exactly where the sail shakes hardest. A flutter that wants to cover
+ * the fully collapsed state too should scale by `collapsedFraction` as well
+ * rather than read this alone.
  */
 export function collapseAt(shape: SailShape, chordFraction: number): number {
   // Guards the divide, and says the honest thing besides: with nothing
