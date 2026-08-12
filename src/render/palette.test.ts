@@ -21,7 +21,7 @@ import { formatNumber } from "./svg.ts";
  * `smoothstep` flattens the lightness rise to almost nothing, one step down in
  * chroma can just outweigh the gain. At 200 samples that never lands on a
  * reversal; at 400 tritanopia dips by 4e-5, and at 5000 all three do. The ideal
- * unquantised ramp is strictly monotonic at any resolution, so this is a
+ * unquantised ramp is strictly monotonic out to 100 000 samples, so this is a
  * rounding artifact of emitting a finite decimal rather than a fault in the
  * ramp — DESIGN.md §4.4 states the caveat in the same terms. Raising this
  * constant is fine if the strict assertions below gain a tolerance of about
@@ -208,9 +208,10 @@ describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
    * so Machado is what these assertions actually run on.
    *
    * **Blue is deliberately not asserted**, and it would fail if it were. The
-   * quality-¼ anchor sits on the sRGB boundary with a blue channel of 0 while
-   * the red anchor has 23, and every dichromat model preserves the S-cone
-   * signal, so no honest simulation can make that amber bluer than that red:
+   * quality-¼ anchor is authored a little *outside* sRGB — linear blue −5.7e-4,
+   * the figure the gamut block above pins — so it shows as 0 once clamped and
+   * displayed, while the red anchor has 23. Every dichromat model preserves the
+   * S-cone signal, so no honest simulation makes that amber bluer than that red:
    *
    *   deuteranopia  10 →   0 →  59 →  86 → 147
    *   protanopia    18 →   0 →  43 →  65 → 134

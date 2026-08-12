@@ -1450,15 +1450,16 @@ hue-based one would be, because it covers all three deficiency types rather than
 only the two red-green ones.
 
 **One caveat on "no reversal", since this section is now in the business of
-claiming only what it can show.** It holds of the ideal ramp at any resolution,
-and of the emitted ramp at the 200 samples the test measures. It does not hold
-of the emitted ramp sampled arbitrarily finely: `clampToGamut` floors chroma to
-the 1e-4 step the module prints at, and near an anchor — where `smoothstep`
-flattens the lightness rise to almost nothing — a single quantization step down
-in chroma can just outweigh the gain. Sample 25× finer and tritanopia dips by
-6e-5, about one part in ten thousand of the ramp's range. That is a rounding
-artifact of emitting a finite decimal rather than anything an eye could find,
-but the honest claim is "monotonic to within the emitted precision".
+claiming only what it can show.** It holds of the ideal unquantized ramp at
+every resolution measured, out to 100 000 samples, and of the emitted ramp at
+the 200 samples the test measures. It does not hold of the emitted ramp sampled
+arbitrarily finely: `clampToGamut` floors chroma to the 1e-4 step the module
+prints at, and near an anchor — where `smoothstep` flattens the lightness rise
+to almost nothing — a single quantization step down in chroma can just outweigh
+the gain. Sample 25× finer and tritanopia dips by 6e-5, about one part in ten
+thousand of the ramp's range. That is a rounding artifact of emitting a finite
+decimal rather than anything an eye could find, but the honest claim is
+"monotonic to within the emitted precision".
 
 **What the ramp does *not* rest on is the blue–yellow axis.** That is worth
 stating, because it's the obvious argument for a red-to-green ramp —
