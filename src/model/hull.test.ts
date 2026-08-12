@@ -16,11 +16,17 @@ const V_HULL = HULL.hullSpeed;
 /**
  * §3.5's curve, written out from the design document rather than shared with the
  * implementation, so that a typo in `hull.ts` cannot agree with itself.
+ *
+ * The exponent is spelled out here rather than imported for that reason, so it
+ * has to be edited by hand when the design document's exponent moves — pos-lcz
+ * took it from 6 to 4. That is the cost of the independence and it is worth
+ * paying: an exponent read from `hull.ts` would make this test agree with any
+ * value that file happened to hold.
  */
 function designCurve(speed: MetersPerSecond): Newtons {
   return (
     RESISTANCE.quadratic * speed ** 2 +
-    RESISTANCE.hullSpeedWall * speed ** 2 * (speed / V_HULL) ** 6
+    RESISTANCE.hullSpeedWall * speed ** 2 * (speed / V_HULL) ** 4
   );
 }
 
@@ -59,14 +65,26 @@ describe("hull resistance (DESIGN.md §3.5)", () => {
 
 describe("the hull-speed wall (DESIGN.md §3.5)", () => {
   it("is barely there at half hull speed", () => {
+    // What has to hold is that the wall is a *hull-speed* phenomenon and not a
+    // general drag — a boat pottering at half hull speed should be paying the
+    // quadratic term and essentially nothing else.
+    //
+    // pos-lcz moved this from 2% to 5%, and the widening is the change rather
+    // than a slackening: at half hull speed the wall factor is 2^-n, so
+    // softening the exponent from 6 to 4 multiplies this share by four, from
+    // 1.1% to 4.7%. That is the definition of a softer wall — the same total
+    // resistance spread further down the speed range — and it is the cost §3.5
+    // records for holding the pointing angle together across 6–14 kt. The bound
+    // tracks the shape; what it still forbids is the wall leaking into ordinary
+    // sailing, which 5% does not.
     const half = V_HULL / 2;
     const wallShare = 1 - (RESISTANCE.quadratic * half ** 2) / hullResistance(half);
-    expect(wallShare).toBeLessThan(0.02);
+    expect(wallShare).toBeLessThan(0.05);
   });
 
   it("has doubled the resistance by hull speed", () => {
     // Which is what makes `hullSpeedWall` readable as "the extra resistance at
-    // hull speed": the sixth-power factor is exactly 1 there.
+    // hull speed": the wall factor is exactly 1 there, at any exponent.
     expect(hullResistance(V_HULL)).toBeCloseTo(
       (RESISTANCE.quadratic + RESISTANCE.hullSpeedWall) * V_HULL ** 2,
       9,
@@ -75,18 +93,24 @@ describe("the hull-speed wall (DESIGN.md §3.5)", () => {
 
   it("makes the last fraction of a knot cost far more than a quadratic hull would", () => {
     // 20% more speed. A purely quadratic hull would charge 1.2² = 1.44× for it;
-    // this one charges 2.7×, which is the wall the boat cannot sail through
+    // this one charges 2.12×, which is the wall the boat cannot sail through
     // however much sail area it carries.
     //
-    // The margin here was tighter before pos-fo1.4, which raised the quadratic
-    // term by a quarter and left the wall where it was — so the wall is now a
-    // smaller share of the whole and the ratio came down from 2.9 to 2.7. The
-    // bound tracks that rather than the other way round: what has to hold is
-    // that the last knot costs much more than a quadratic hull would charge,
-    // not that the two coefficients stay in any particular proportion.
+    // This bound has come down twice, and both times because the wall became a
+    // smaller share of the whole rather than because the test got tired.
+    // pos-fo1.4 raised the quadratic term by a quarter and left the wall alone,
+    // taking the ratio from 2.9 to 2.7; pos-lcz softened the exponent from 6 to
+    // 4, taking it to 2.12. What has to hold is that the last knot costs much
+    // more than a quadratic hull would charge — it still costs 47% more — not
+    // that the coefficients keep any particular proportion.
+    //
+    // It is worth knowing that this is the assertion which would notice the
+    // wall being softened *again*. §3.5 explains why it should not be: the
+    // exponent trades the high-wind speed against the pointing angle, and the
+    // pointing side of that trade is already at its bound in `calibration.test.ts`.
     const ratio = hullResistance(1.2 * V_HULL) / hullResistance(V_HULL);
-    expect(ratio).toBeGreaterThan(2.5);
-    expect(ratio / 1.44).toBeGreaterThan(1.8);
+    expect(ratio).toBeGreaterThan(2.0);
+    expect(ratio / 1.44).toBeGreaterThan(1.4);
   });
 });
 

@@ -21,12 +21,37 @@ import { ACCELERATION, RESISTANCE } from "./tuning.ts";
 import type { Kilograms, MetersPerSecond, Newtons } from "./units.ts";
 
 /**
- * The exponent on the hull-speed term. **Not a tuning knob** — it is the shape
- * itself. Six is steep enough that the wall reads as a wall rather than as a
- * gentle discouragement, and moving it would change what the curve *means*,
- * where `RESISTANCE.hullSpeedWall` only changes how hard it bites.
+ * The exponent on the hull-speed term: **how much of the model's behaviour is
+ * allowed to depend on the wind speed.** Not a knob to turn against the 10 kt
+ * polar — that is `RESISTANCE.hullSpeedWall`'s job — but not the untouchable
+ * shape it was once labelled either. pos-lcz moved it from 6 to 4, deliberately
+ * and at a stated cost; §3.5 records the decision.
+ *
+ * **Why this constant, alone in the model, has that power.** Every force here
+ * is homogeneous of degree two in speed: sail force is dynamic pressure times
+ * coefficients that depend only on angles, the keel's induced drag is `F²/v²`
+ * with `F` itself going as `v²`, and its stall ratio is capacity over load,
+ * which is invariant when both scale together. Scale the true wind and the boat
+ * speed by the same factor and every one of them scales by that factor squared,
+ * leaving the polar's *shape* untouched. This term is the exception: `v_hull` is
+ * an absolute speed, so `B·v⁸/v_hull⁶` scales by the eighth power instead. Set
+ * `RESISTANCE.hullSpeedWall` to zero and re-solve the quadratic to hold the
+ * 10 kt beam reach, and the polar becomes exactly scale-invariant — a 45° VMG
+ * peak, a run at 0.58 of a beam reach, and a beam reach of 0.555 kt per knot of
+ * wind, at every wind from 4 to 30 kt. So **the wall is the sole source of
+ * wind-dependence in the model**, and everything the polar does as the breeze
+ * fills in is this number's doing.
+ *
+ * **Which is why it cannot be raised to hold the speed down.** The wall bites
+ * hardest where the boat is fastest, so it clips a reach harder than it clips
+ * close hauled — and clipping the fast angles is what slides the upwind VMG
+ * optimum to a *smaller* angle. Raising the exponent therefore buys a slower
+ * beam reach in a breeze at the price of a boat that points ever higher in it,
+ * which is the opposite of what a keelboat does. Four is that trade taken the
+ * other way: it costs speed at the top of the wind range and buys back the
+ * pointing and the reach-to-run gap across the 6–14 kt the simulator opens in.
  */
-const WALL_EXPONENT = 6;
+const WALL_EXPONENT = 4;
 
 /**
  * The water's resistance at a given speed, **signed along the direction of
@@ -69,8 +94,10 @@ export function hullResistance(speed: MetersPerSecond): Newtons {
 export function hullResistanceSlope(speed: MetersPerSecond): number {
   const magnitude = Math.abs(speed);
 
-  // Differentiating `A·v² + B·v⁸/v_hull⁶` — the wall term written with the
-  // powers gathered, which is the same curve `hullResistance` computes.
+  // Differentiating `A·v² + B·v^(n+2)/v_hull^n` — the wall term written with the
+  // powers gathered, which is the same curve `hullResistance` computes. Written
+  // in terms of `WALL_EXPONENT` rather than its value so that it cannot drift
+  // away from the curve when that constant moves, as it did in pos-lcz.
   const slope =
     2 * RESISTANCE.quadratic * magnitude +
     (WALL_EXPONENT + 2) *
