@@ -264,9 +264,22 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     // only rotates, and this is that assumption spent rather than assumed —
     // the drawn points carried through `boatTransform`'s rotation by hand and
     // checked against the viewBox's actual sides.
+    //
+    // The samples are *derived*, deliberately. They were once the literals
+    // 5.646 and 8.915 — hull speed and the measured top speed — which is
+    // precisely what the comment at the top of this block says a test must not
+    // be pinned to. Written that way they would not have failed when the model
+    // changed; they would have gone on passing while quietly sampling speeds
+    // that no longer meant anything. Each of these is the speed at which the
+    // arrow reaches a *landmark of the drawing*, so they keep their meaning
+    // whatever the model does.
+    const speedAtLength = (length: Meters): number => (length * SPEED_FULL_SCALE) / SPEED_REACH;
+    const hullSpeed = SPEED_FULL_SCALE; // tip on contentRadius
+    const atRing = speedAtLength(SPEED_KNEE); // tip on the wind ring: the knee
+    const saturated = speedAtLength(SPEED_LIMIT) * 10; // far into the flat tail
     const extent = sceneExtent(768, 768);
-    for (const knots of [-60, -8.915, -5.646, 5.646, 8.915, 60]) {
-      const drawn = pathPoints(speedArrowPathData(kt(knots)));
+    for (const speed of [-saturated, -atRing, -hullSpeed, hullSpeed, atRing, saturated]) {
+      const drawn = pathPoints(speedArrowPathData(speed));
       for (let degrees = 0; degrees < 360; degrees += 5) {
         for (const point of drawn) {
           const world = rotateVector(subtract(point, STATIONS.pivot), degreesToRadians(degrees));

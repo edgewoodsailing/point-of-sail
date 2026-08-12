@@ -1099,10 +1099,17 @@ The law above governs every speed out to the wind ring, which the tip reaches at
 `shortRadius`:
 
 ```text
-overrun = linear length − SPEED_KNEE          (SPEED_KNEE reaches windRingRadius)
-length  = SPEED_KNEE + H · (1 − e^(−overrun/H))
+linear  = SPEED_REACH · |speed| / HULL.hullSpeed
+overrun = linear − SPEED_KNEE                 (SPEED_KNEE reaches windRingRadius)
+
+length  = linear                                        when linear ≤ SPEED_KNEE
+        = SPEED_KNEE + H · (1 − e^(−overrun/H))          when linear > SPEED_KNEE
           where H = SPEED_LIMIT − SPEED_KNEE, ≈ 0.25 m
 ```
+
+The guard is not decoration. Below the knee `overrun` is negative, the
+exponent turns positive, and the second line runs away — at 0 kt it evaluates
+to about −6000 m. The bend applies to the overrun and to nothing else.
 
 The reason is not taste, it is that the drawing is finite and the linear law was
 not. `sceneExtent` maps `shortRadius` onto the *shorter* side of any surface, so

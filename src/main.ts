@@ -222,8 +222,22 @@ if (controls !== null) {
    * measurement of the model is a readout the model can outgrow, so this one
    * measures nothing.
    *
-   * It only ever widens. A bar that also narrowed would rescale itself as the
-   * boat slowed down, and the mark would crawl back up while the speed fell.
+   * **Both directions of rescale are defects, and this avoids both.** Narrowing
+   * is the obvious one: the domain would shrink as the boat slowed and the mark
+   * would crawl back up while the speed fell. Widening is the same defect
+   * mirrored, and the first version of this fix had it — rounding the new reach
+   * *up* to a whole knot rescaled the domain past the reading, so at 8.00 kt
+   * the mark sat hard right and one frame later at 8.05 kt it jumped back to
+   * 94.7%, about 16 px on a 300 px bar, and did not recover until 9 kt. The
+   * boat accelerated and the mark went backwards.
+   *
+   * So: the reach never shrinks, and when it grows it grows to *exactly* the
+   * reading. The mark then arrives at the end of the track and stays there
+   * rather than being thrown back down it. And because `opening` is set well
+   * clear of anything the model can produce, widening is a backstop that
+   * should never fire in normal use rather than something the bar does while
+   * you watch — which keeps the mark moving proportionally across the whole
+   * range the boat can actually reach.
    */
   const readout = (label: string, opening: number, read: () => number): void => {
     const input = document.createElement("input");
@@ -234,7 +248,7 @@ if (controls !== null) {
 
     let reach = 0;
     const widenTo = (knots: number): void => {
-      reach = Math.ceil(knots);
+      reach = knots;
       input.min = String(-reach);
       input.max = String(reach);
     };
@@ -286,10 +300,12 @@ if (controls !== null) {
     (degrees) => apply({ motion: { ...state.motion, heading: degreesToRadians(degrees) } }),
   );
 
-  // ±8 kt is where the bar opens, not what it can show: it holds everything the
-  // sliders reach today without twitching, and anything faster widens it rather
-  // than pegging it. See {@link readout}.
-  readout("Boat kt", 8, () => metersPerSecondToKnots(state.motion.speed));
+  // ±10 kt is where the bar opens, not what it can show. It is deliberately
+  // clear of the 8.9 kt the sliders can reach — a bar that never has to rescale
+  // is a bar whose mark never jumps — while staying tight enough that the range
+  // the boat actually sails in still spans a third of the track. Anything faster
+  // widens it rather than pegging it. See {@link readout}.
+  readout("Boat kt", 10, () => metersPerSecondToKnots(state.motion.speed));
 
   slider(
     "Main",
