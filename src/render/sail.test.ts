@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { Sail } from "../model/boat.ts";
 import { JIB, MAIN, STATIONS, SWING_LIMIT, jibClewPosition, mainClewPosition } from "../model/boat.ts";
 import { foilCoefficients } from "../model/foil.ts";
 import {
@@ -524,13 +525,50 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     return inside / total;
   }
 
+  /**
+   * The most driving trim, by brute force at a tenth of a degree.
+   *
+   * Deliberately *not* `optimalTrim`. Asking the quality about the angle its
+   * own denominator came from is arithmetic, not a test — it would read 1 even
+   * if both halves were wrong together. This is the independent answer, and it
+   * is what "green at optimal trim" has to mean.
+   */
+  function mostDrivingTrim(sail: Sail, apparent: ApparentWind): Radians {
+    let bestAngle = deg(-90);
+    let bestDriving = -Infinity;
+    for (let d = -90; d <= 90; d += 0.1) {
+      const driving = sailForce(sail, deg(d), apparent).driving;
+      if (driving > bestDriving) {
+        bestAngle = deg(d);
+        bestDriving = driving;
+      }
+    }
+    return bestAngle;
+  }
+
   it("goes green at the optimal trim on every point of sail, on either tack", () => {
     for (const awa of [...POINTS_OF_SAIL, ...POINTS_OF_SAIL.map((a) => -a)]) {
       const apparent = wind(10, awa);
       for (const sail of bothSails) {
-        const best = optimalTrim(sail, apparent);
-        expect(trimQuality(sail, best.angle, apparent)).toBeCloseTo(1, 12);
-        expect(trimQualityColor(trimQuality(sail, best.angle, apparent))).toBe(GREEN);
+        const quality = trimQuality(sail, mostDrivingTrim(sail, apparent), apparent);
+        // Not exactly 1, and *slightly over* it here: the search that supplies
+        // the denominator refines to 0.3125° while this scan steps 0.1°, so a
+        // scanned trim can beat it by a hair — 7e-5 at worst across these
+        // angles. Which is the overshoot `palette.clampQuality` names as one of
+        // the two reasons it folds rather than throws.
+        expect(quality).toBeCloseTo(1, 3);
+        expect(trimQualityColor(quality)).toBe(GREEN);
+      }
+    }
+  });
+
+  it("reads highest at the most driving trim, and nowhere else", () => {
+    // The other half of "green at optimal": nothing else may read greener.
+    for (const awa of [30, 60, 90, 150, 180, -45, -120]) {
+      const apparent = wind(10, awa);
+      const peak = trimQuality(MAIN, mostDrivingTrim(MAIN, apparent), apparent);
+      for (const trim of trimSweep(1)) {
+        expect(trimQuality(MAIN, trim, apparent)).toBeLessThanOrEqual(peak + 1e-9);
       }
     }
   });
