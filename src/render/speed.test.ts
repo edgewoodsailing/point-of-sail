@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import sceneCss from "./scene.css?raw";
 import { HULL, STATIONS } from "../model/boat.ts";
 import type { Meters, Vec2 } from "../model/units.ts";
 import {
@@ -35,6 +36,45 @@ const ARROW_BARB = 0.4;
 const HULL_GAP = 0.2;
 
 const kt = knotsToMetersPerSecond;
+
+/**
+ * The three terms of `--pos-rule-speed`, read out of `scene.css`.
+ *
+ * The stroke is the one input to the arrow's edge margin that is not in metres
+ * and does not live in TypeScript, so restating it here — as this test used to
+ * — meant `scene.css` could raise it and nothing would notice (pos-7nt). The
+ * margin is generous enough that the invariant would have held anyway, but the
+ * figure in `speed.ts`'s `EDGE_KEEP_OUT` comment would have gone quietly wrong,
+ * which is the failure this repository keeps writing tests against.
+ *
+ * Parsed rather than evaluated because `clamp()` needs a viewport to resolve
+ * and the test supplies several. A shape this does not recognise throws with
+ * instructions, since silently falling back to a default would restore exactly
+ * the coupling it is here to remove.
+ */
+const SPEED_STROKE = parseStrokeClamp("--pos-rule-speed");
+
+function parseStrokeClamp(property: string): {
+  minPx: number;
+  vminPercent: number;
+  maxPx: number;
+} {
+  const declared = new RegExp(`${property}\\s*:\\s*([^;]+);`).exec(sceneCss)?.[1]?.trim();
+  if (declared === undefined) throw new Error(`${property} is not declared in scene.css.`);
+  const terms = /^clamp\(\s*([\d.]+)px\s*,\s*([\d.]+)vmin\s*,\s*([\d.]+)px\s*\)$/.exec(declared);
+  if (terms === null) {
+    throw new Error(
+      `${property} is \`${declared}\`, which this test cannot read. It understands ` +
+        `clamp(<min>px, <n>vmin, <max>px). Teach it the new shape, then re-check ` +
+        `EDGE_KEEP_OUT's comment in speed.ts against the overhang that falls out.`,
+    );
+  }
+  return {
+    minPx: Number(terms[1]),
+    vminPercent: Number(terms[2]),
+    maxPx: Number(terms[3]),
+  };
+}
 
 /** Every `x y` pair in some path data, in order. */
 function pathPoints(d: string): Vec2[] {
@@ -189,14 +229,30 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
    * strip comes off the short axis and the surface is shorter than the
    * viewport. Assuming the two were equal — as this test first did — understates
    * the overhang by up to a factor of two.
+   *
+   * The clamp's terms come from {@link SPEED_STROKE}, which reads them out of
+   * `scene.css`, so this stays a derivation of the stroke the browser will
+   * actually paint rather than a second copy of it.
    */
   const halfStrokeMeters = (viewport: [number, number], stripPx: number): Meters => {
     const [width, height] = viewport;
     const surfaceShort = Math.min(width, height - stripPx);
     const vmin = Math.min(width, height);
-    const strokePx = Math.min(4, Math.max(1.6, (0.45 * vmin) / 100));
+    const { minPx, vminPercent, maxPx } = SPEED_STROKE;
+    const strokePx = Math.min(maxPx, Math.max(minPx, (vminPercent * vmin) / 100));
     return (strokePx / 2) * (SHORT_SPAN / surfaceShort);
   };
+
+  it("reads the stroke width from the stylesheet that actually sets it", () => {
+    // The pin itself. `--pos-rule-speed` is the one input to the overhang that
+    // does not live in TypeScript, and until pos-7nt this test restated it as a
+    // literal — so raising it in `scene.css` left the suite green, `speed.ts`'s
+    // comment stale, and the round cap a little further through the viewport
+    // edge. Parsing it means the CSS cannot move on its own.
+    expect(SPEED_STROKE).toEqual({ minPx: 1.6, vminPercent: 0.45, maxPx: 4 });
+    // And the declaration this parsed is the one `.pos-speed-mark` paints with.
+    expect(sceneCss).toMatch(/stroke-width:\s*var\(--pos-rule-speed\)/);
+  });
 
   it("leaves room for the stroke, which overhangs the tip it is drawn on", () => {
     // The module keeps the tail radius private, so it is recovered the only way

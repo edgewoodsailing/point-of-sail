@@ -26,5 +26,18 @@ export default defineConfig({
     // what a worktree is for. Spread rather than replace: bare `exclude` drops
     // vitest's own defaults, `node_modules` and `dist` among them.
     exclude: [...configDefaults.exclude, "**/.claude/**"],
+
+    // Vitest replaces CSS imports with empty strings by default, and does so by
+    // extension — `?raw` does not opt out, so `import css from "./scene.css?raw"`
+    // silently yields "" rather than failing. `speed.test.ts` reads
+    // `--pos-rule-speed` out of the stylesheet so the speed arrow's edge margin
+    // cannot drift from the stroke width it is sized against (pos-7nt), and an
+    // empty string would have made that check vacuous rather than red.
+    //
+    // The only other CSS in the suite's path is `scene.ts`'s side-effect import
+    // of the same file, which now costs a transform it did not before. That is
+    // the whole blast radius; the `node` environment means nothing is injected
+    // into a document either way.
+    css: true,
   },
 });

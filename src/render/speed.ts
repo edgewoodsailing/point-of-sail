@@ -185,10 +185,12 @@ export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
  * 0.1 m covers even that with 40% to spare, and the surplus is not slack. A tip
  * hard against the edge reads as a clipped mark whether or not it is one, which
  * is exactly why `wind.ts` runs its graduations inward instead of outward.
- * `speed.test.ts` derives the figure from the clamp's own terms across a table
- * of viewports and strip heights rather than restating it, because the first
- * version of this comment quietly assumed the two short sides were the same and
- * was wrong by a factor of two.
+ * `speed.test.ts` derives the figure across a table of viewports and strip
+ * heights rather than restating it, because the first version of this comment
+ * quietly assumed the two short sides were the same and was wrong by a factor
+ * of two. It reads the clamp's three terms out of `scene.css` rather than
+ * copying them, so raising `--pos-rule-speed` fails a test here instead of
+ * leaving this paragraph stale (pos-7nt).
  */
 const EDGE_KEEP_OUT: Meters = 0.1;
 
