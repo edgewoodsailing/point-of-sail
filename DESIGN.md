@@ -350,13 +350,40 @@ to integrate rather than solve for equilibrium:
 
 The boat still doesn't *translate*; only the speed number evolves.
 
-**The lag is a tuning knob, not a derived constant.** `m_effective` is exposed
-in [`tuning.ts`](#6-architecture) alongside a documented mapping to what we
-actually care about — *time to reach ~63% of terminal speed from rest.* Starting
-value **10 s**, which is about right for a keelboat. If it reads as sluggish
-when comparing two trim settings back to back, we shorten it; the number is a
-feel decision to be made against the running thing, not something to argue about
-now.
+**One numerical wrinkle: the resistance is taken implicitly.** Written exactly as
+above, each step charges the resistance the boat felt at the *start* of the
+interval, and against a sixth power on top of a square that error compounds
+badly. Past roughly 40 kt of wind a tenth-of-a-second step rings between two
+speeds instead of settling, and past 80 kt it diverges to `NaN` — permanently,
+since every later step adds to it. Nobody sails a Rhodes 19 in 80 kt, but the
+wind slider ([§5](#5-direct-manipulation)) has no natural ceiling, and a model
+that quietly dies past one is a trap for whoever picks it. So the step
+linearizes the resistance about the current speed:
+
+```text
+v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
+```
+
+Same equation to first order — at 60 Hz the correction is about a percent, and
+the trajectory matches the naive form to four figures — but it cannot carry the
+boat past the speed where the forces balance, at any `dt`, in any wind. The
+fixed point is still exactly `F_drive = R(v)` and doesn't depend on `dt`, which
+is also what lets `settle()` iterate with a long step and land on the true
+steady speed in tens of iterations. Settling by taking real frames instead
+*creeps*: just outside the no-go zone the boat closes on its speed at 0.023 per
+second, so the per-frame change looks settled long before the speed is.
+
+**The lag is the tuning knob; the mass is derived from it.** What
+[`tuning.ts`](#6-architecture) exposes is the thing anyone can judge by watching
+— *time to reach ~63% of terminal speed from rest*, starting at **10 s**, about
+right for a keelboat. `hull.ts` inverts the closed form `v(t) = v_t·tanh(t·A·v_t/m)`
+to get `m_effective` from it, so a calibration pass can move the resistance
+coefficient freely without silently changing how long the boat takes to get
+going. It lands at ≈ 877 kg, against the ≈ 880 kg that boat + two crew + ~15%
+added mass reasons out independently — two routes to the same number. If the lag
+reads as sluggish when comparing two trim settings back to back, we shorten the
+time; it's a feel decision to be made against the running thing, not something
+to argue about now.
 
 ### 3.6 Calibration targets
 
