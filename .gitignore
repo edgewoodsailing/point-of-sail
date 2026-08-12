@@ -10,3 +10,10 @@ node_modules/
 dist/
 .beads/interactions.jsonl
 .beads/issues.jsonl
+
+# Agent worktrees: each is a full checkout of this repo on some other branch,
+# so committing them would commit a second copy of the project. Only this
+# directory, not all of `.claude/` — the rest of it is checked in on purpose.
+# `vite.config.ts` excludes the same path from the test glob, for the related
+# reason that vitest would otherwise run a second suite from another branch.
+.claude/worktrees/
