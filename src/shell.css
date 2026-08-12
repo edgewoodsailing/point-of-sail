@@ -59,9 +59,22 @@ body {
 }
 
 /*
- * SCAFFOLDING — remove with the slider in main.ts when pos-bwd.1 lands hull
- * dragging. Here only so the heading can be swept by hand.
+ * SCAFFOLDING — remove with the controls in main.ts when pos-bwd.1 lands hull
+ * and clew dragging. Here only so heading, both trims and the jib switch can be
+ * swept by hand.
  */
-.pos-sim .heading-scaffold {
-  width: 100%;
+.pos-sim .scaffold-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font: 0.8rem/1.6 system-ui, sans-serif;
+}
+
+.pos-sim .scaffold-row > span {
+  flex: 0 0 4rem;
+}
+
+.pos-sim .scaffold-row > input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
