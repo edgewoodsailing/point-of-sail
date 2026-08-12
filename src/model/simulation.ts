@@ -100,14 +100,21 @@ export function step(state: SimState, dt: Seconds): SimState {
  * **Why the denominator carries `R′(v)·dt`.** Written the obvious way —
  * `a = (F − R(v))/m`, `v += a·dt` — the step uses the resistance the boat feels
  * at the *start* of the interval, which overstates it for a decelerating boat
- * and understates it for an accelerating one. Because §3.5's curve is a sixth
+ * and understates it for an accelerating one. Because §3.5's curve is a fourth
  * power on top of a square, that error grows viciously with speed: trimmed for
  * the wind it is in, the boat's speed under a tenth-of-a-second step stops
- * settling at around 55 kt and alternates between two values forever, and by
- * 85 kt it diverges to `NaN` — which never recovers, since every later step
- * adds to it. Sailing in 85 kt of wind is nobody's lesson, but §5's wind slider
- * has no stated ceiling, and a model that quietly dies past one is a trap for
- * whoever sets that ceiling.
+ * settling at around 80 kt and alternates between two values forever, and by
+ * 120 kt it diverges to `NaN` — which never recovers, since every later step
+ * adds to it. Sailing in 120 kt of wind is nobody's lesson, but §5 does not say
+ * where its wind slider stops and the model is reachable from the console
+ * besides, and a model that quietly dies past some speed is a trap for whoever
+ * sets that ceiling.
+ *
+ * Those two figures were 55 kt and 85 kt before pos-lcz softened the wall
+ * exponent from 6 to 4; a gentler curve is a gentler thing to linearise, so the
+ * naive form survives further than it used to. They are re-measured rather than
+ * inherited, because a stale threshold in this docblock would misdescribe
+ * exactly the failure the implicit step exists to prevent.
  *
  * Linearising the resistance about the current speed — which is what the slope
  * is for — makes the step self-limiting: the faster the water would answer, the
@@ -148,7 +155,7 @@ export function step(state: SimState, dt: Seconds): SimState {
  * denominator through zero. Since half the polar would contribute one, the term
  * stays out of the denominator entirely rather than being included with a sign
  * test. That costs only the damping a positive stiffness would have added,
- * which is small: unlike the sixth-power wall, `keelInducedDrag` is bounded and
+ * which is small: unlike the hull-speed wall, `keelInducedDrag` is bounded and
  * gently sloped everywhere, and `|dD/dv|·dt / m` stays under a percent even at
  * the longest step {@link MAX_STEP} allows. `hull.test.ts` measures it.
  */

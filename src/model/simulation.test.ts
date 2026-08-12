@@ -293,12 +293,14 @@ describe("step size", () => {
   });
 
   it("holds together in a wind nobody would sail in", () => {
-    // §2.1 randomises 6–14 kt, but §5's wind slider has no stated ceiling, and
-    // the resistance curve is a sixth power on top of a square: taken at the
-    // speed the step starts from, it stops settling at around 55 kt of wind and
-    // diverges to NaN by 85 — permanently, since every later step adds to a NaN.
-    // `advance` takes the resistance implicitly precisely so that whoever sets
-    // that ceiling is choosing a lesson, not avoiding a trap.
+    // §2.1 randomises 6–14 kt, but §5 does not say where its wind slider stops,
+    // and the resistance curve is a fourth power on top of a square:
+    // taken at the speed the step starts from, it stops settling at around
+    // 80 kt of wind and diverges to NaN by 120 — permanently, since every later
+    // step adds to a NaN. `advance` takes the resistance implicitly precisely
+    // so that whoever raises that ceiling is choosing a lesson, not avoiding a
+    // trap. (Those thresholds were 55 and 85 before pos-lcz softened the wall
+    // exponent; the winds swept below still clear both comfortably.)
     for (const wind of [55, 60, 100, 200]) {
       const trimmed = wellTrimmed(deg(90));
       const gale: SimState = { ...trimmed, wind: { ...trimmed.wind, speed: kt(wind) } };

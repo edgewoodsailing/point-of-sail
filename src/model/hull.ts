@@ -21,12 +21,51 @@ import { ACCELERATION, RESISTANCE } from "./tuning.ts";
 import type { Kilograms, MetersPerSecond, Newtons } from "./units.ts";
 
 /**
- * The exponent on the hull-speed term. **Not a tuning knob** — it is the shape
- * itself. Six is steep enough that the wall reads as a wall rather than as a
- * gentle discouragement, and moving it would change what the curve *means*,
- * where `RESISTANCE.hullSpeedWall` only changes how hard it bites.
+ * The exponent on the hull-speed term: **how much of the model's behaviour is
+ * allowed to depend on the wind speed.** Not a knob to turn against the 10 kt
+ * polar — that is `RESISTANCE.hullSpeedWall`'s job — but not the untouchable
+ * shape it was once labelled either. pos-lcz moved it from 6 to 4, deliberately
+ * and at a stated cost; §3.5 records the decision.
+ *
+ * **Why this constant, alone in the model, has that power.** Every force here
+ * is homogeneous of degree two in speed. Scale the true wind and the boat speed
+ * together by λ and each one scales by λ²:
+ *
+ * - Sail force is dynamic pressure times coefficients that depend only on
+ *   angles. The apparent wind vector scales by λ and its *angle* does not move,
+ *   so the coefficients are untouched and the force goes as λ².
+ * - `A·v²` is quadratic by construction.
+ * - {@link keelInducedDrag} looks like the exception and is not, which is worth
+ *   spelling out because `k·F²/v²` reads like a term that breaks the scaling.
+ *   Take `F → λ²F` and `v → λv` in `D = k·F²·v²/(v⁴ + S²)`. The saturation
+ *   `S = k·F/(2·keelStall)` scales as λ², so the numerator picks up λ⁴ from `F²`
+ *   and λ² from `v²` — λ⁶ — while the denominator picks up λ⁴ from both `v⁴`
+ *   and `S²`. The ratio is **λ²**, like everything else. The `1/v²` is real but
+ *   it is cancelled by the load it is carrying.
+ *
+ * So the polar's *shape* is untouched by the wind. This term is the exception:
+ * `v_hull` is
+ * an absolute speed, so `B·v^(n+2)/v_hull^n` scales by the (n+2)th power
+ * instead — the sixth, at the fourth-power wall set below. Written in terms of
+ * `n` because the previous revision of this paragraph quoted the powers of a
+ * sixth-power wall and went stale the moment the constant moved. Set
+ * `RESISTANCE.hullSpeedWall` to zero and re-solve the quadratic to hold the
+ * 10 kt beam reach, and the polar becomes exactly scale-invariant — a 45° VMG
+ * peak, a run at 0.58 of a beam reach, and a beam reach of 0.555 kt per knot of
+ * wind, at every wind from 4 to 30 kt. So **the wall is the sole source of
+ * wind-dependence in the model**, and everything the polar does as the breeze
+ * fills in is this number's doing.
+ *
+ * **Which is why it cannot be raised to hold the speed down.** The wall bites
+ * hardest where the boat is fastest, so it clips a reach harder than it clips
+ * close hauled — and clipping the fast angles is what slides the upwind VMG
+ * optimum to a *smaller* angle. Raising the exponent therefore buys a slower
+ * beam reach in a breeze at the price of a boat that points ever higher in it,
+ * which is the opposite of what a keelboat does. Four is that trade taken the
+ * other way: it costs speed at the top of the wind range and buys back the
+ * pointing and the reach-to-run gap across the 6–14 kt the simulator opens in.
  */
-const WALL_EXPONENT = 6;
+const WALL_EXPONENT = 4;
 
 /**
  * The water's resistance at a given speed, **signed along the direction of
@@ -69,8 +108,10 @@ export function hullResistance(speed: MetersPerSecond): Newtons {
 export function hullResistanceSlope(speed: MetersPerSecond): number {
   const magnitude = Math.abs(speed);
 
-  // Differentiating `A·v² + B·v⁸/v_hull⁶` — the wall term written with the
-  // powers gathered, which is the same curve `hullResistance` computes.
+  // Differentiating `A·v² + B·v^(n+2)/v_hull^n` — the wall term written with the
+  // powers gathered, which is the same curve `hullResistance` computes. Written
+  // in terms of `WALL_EXPONENT` rather than its value so that it cannot drift
+  // away from the curve when that constant moves, as it did in pos-lcz.
   const slope =
     2 * RESISTANCE.quadratic * magnitude +
     (WALL_EXPONENT + 2) *
@@ -183,9 +224,18 @@ const TERMINAL_FRACTION = 1 - 1 / Math.E;
  * be, but the ten seconds is a calibration anchor rather than a promise.
  *
  * **The wall term is deliberately left out of the mapping.** Right at hull speed
- * the curve is an order of magnitude stiffer, and inverting *that* slope would
- * derive a six-tonne boat: the lag we care about is the ordinary one, gathering
+ * the curve is far stiffer than the quadratic alone — `R′(v_hull)` is 3.35× the
+ * `2A·v_hull` this derivation uses — and inverting *that* slope would derive a
+ * boat of about 3.7 tonnes: the lag we care about is the ordinary one, gathering
  * way on a reach, not the last tenth of a knot against the wall.
+ *
+ * Both figures are exponent-dependent and were re-measured for pos-lcz's fourth
+ * power; at the sixth they were 4.21× and ≈ 4.6 t. The previous wording said
+ * "an order of magnitude" and "a six-tonne boat", and neither reproduces at
+ * either exponent — 4.21× is not an order of magnitude and does not imply six
+ * tonnes — so this is a correction as well as an update. The point it was making
+ * survives both: the slope at the wall is several times the one the lag is
+ * anchored to, and anchoring to it would derive a boat several times too heavy.
  *
  * `HULL.hullSpeed` stands in for `v_terminal` as a *scale* — a typical speed for
  * this boat under sail — and not as a claim about where it settles, which

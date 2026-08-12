@@ -155,7 +155,7 @@ export const LUFF: {
  * What the water charges (§3.5): the hull's own resistance,
  *
  * ```text
- * R(v) = A·v² + B·v²·(v / v_hull)⁶
+ * R(v) = A·v² + B·v²·(v / v_hull)⁴
  * ```
  *
  * plus what it costs to be held on course against the rig's side force, which
@@ -190,26 +190,43 @@ export const RESISTANCE: {
 
   /**
    * `B` — the wall. Reads as *the extra resistance at exactly hull speed*,
-   * since the sixth-power factor is 1 there: at 22.5 against an `A` of 28, the
-   * resistance has not quite doubled at 5.65 kt and has more than tripled 20%
-   * past it.
+   * since the wall factor is 1 there whatever the exponent: at 21.9 against an
+   * `A` of 28, the resistance has not quite doubled at 5.65 kt and has roughly
+   * doubled again 20% past it.
    *
-   * Calibration left this where pos-fo1.3 set it, which is worth saying out
-   * loud rather than leaving to a diff: the polar wants a *sharper* wall than a
-   * sixth power can give — §3.6 puts a beam reach and a broad reach 0.2 kt
-   * apart while their driving forces differ by half, which needs `R ∝ v¹⁰` and
-   * the curve tops out at `v⁸` — so raising this cannot buy the shape, and
-   * lowering it lets a beam reach through hull speed. The broad reach lands 7%
-   * light as a result, which is the largest miss in the table and the one that
-   * is structural rather than a matter of turning something.
+   * **This and the exponent divide the work, and neither is free.** This
+   * coefficient sets *how hard* the wall bites at hull speed and is a knob in
+   * the ordinary sense — it is what a calibration pass turns to put the 10 kt
+   * beam reach where §3.6 wants it. `WALL_EXPONENT` in `hull.ts` sets how
+   * abruptly the bite arrives, and pos-lcz established that it is also the only
+   * thing in the model that makes the polar depend on the wind at all. That
+   * makes it a design decision rather than a knob, and it is documented as one
+   * there and in §3.5; do not treat the two as interchangeable just because
+   * both live on the same term.
    *
-   * The sixth power is a shape, not a theory. What it has to produce is the
-   * wall a displacement hull hits — no amount of sail area gets a Rhodes 19 to
-   * 9 knots — and it is the exponent, not this coefficient, that makes the
-   * curve turn up hard. Move this to set *where* the wall bites; the exponent
-   * in `hull.ts` is not a knob.
+   * pos-lcz moved this from 22.5 to 21.9, which is not a tuning pass in its own
+   * right — it is what holds the 10 kt beam reach at 5.55 kt while the exponent
+   * came down from 6 to 4.
+   *
+   * **The direction is the opposite of the intuition, so it is worth spelling
+   * out.** Below hull speed the wall factor is a number *less than one* raised
+   * to the exponent, and raising a fraction to a higher power makes it smaller.
+   * So a *softer* exponent gives a *larger* factor down here: at the 5.55 kt
+   * beam reach, `(5.55/5.646)⁴ = 0.934` against `⁶ = 0.902`. Dropping the
+   * exponent while holding `B` therefore *adds* resistance at the beam reach and
+   * pushes it below 5.55 kt, and `B` has to come down to put it back. A softer
+   * wall is only softer where it was supposed to bite — past hull speed — and it
+   * is slightly *firmer* everywhere below, which is the same fact `hull.test.ts`
+   * records as the wall's share at half hull speed going from 1.24% to 4.66%.
+   *
+   * The two move together and should be re-solved together.
+   *
+   * What has not changed is what the term is for: the wall a displacement hull
+   * hits, so that no amount of sail area gets a Rhodes 19 to 9 knots in the
+   * wind it is actually sailed in. What pos-lcz gave up is that promise in a
+   * gale — see §3.6 and `pos-d7u`.
    */
-  hullSpeedWall: 22.5,
+  hullSpeedWall: 21.9,
 
   /**
    * How much draggier the boat is going backwards. Multiplies the whole curve,
