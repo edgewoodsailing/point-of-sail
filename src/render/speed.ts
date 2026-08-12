@@ -68,8 +68,10 @@
  *   be added has fallen below one ulp of the sum. Past there this is a clamp
  *   outright rather than in all but name — which is why the limit is placed
  *   where a clamped arrow is still a legal one, 0.1 m inside the edge.
- * - **Strictly increasing** wherever it is still below the limit, so the arrow
- *   never stops answering the question while it can still be heard.
+ * - **Monotone** everywhere, and strictly increasing until it is within a
+ *   nanometre of the limit, so the arrow never stops answering the question
+ *   while the answer can still be heard. The last few ulps are flat for the
+ *   same rounding reason as above, well past where anything is drawable.
  * - **Smooth.** The exponential has slope 1 at the knee, so it leaves the linear
  *   law tangentially rather than at a visible corner.
  *
