@@ -115,7 +115,7 @@ export function acos(ratio: number): Radians {
  * Not a unit conversion, but it lives here for the same reason the trigonometry
  * does: it is shared vocabulary, and two copies could drift apart. Every soft
  * threshold in the model is one of these — the stall blend in `foil.ts`, the
- * luff fraction in `sail.ts`, the colour ramp later on.
+ * collapsed fraction in `sail.ts`, the colour ramp later on.
  *
  * Chosen over a linear ramp for the derivative, not the values. Its slope
  * vanishes at both ends, so a curve blended with it is C¹ at *both* junctions

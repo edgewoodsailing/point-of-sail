@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import { JIB, MAIN, SWING_LIMIT } from "./boat.ts";
 import {
   angleOfAttack,
+  collapseFrom,
+  collapsedFraction,
   dynamicPressure,
-  luffFraction,
   optimalTrim,
   rigForce,
   sailForce,
@@ -36,7 +37,7 @@ function driving(sailAngleDegrees: number, apparent: ApparentWind, sail = MAIN):
 // along it, then the along-heading component. Resolving that by hand collapses
 // to a scalar in the apparent wind angle,
 //
-//     driving = q · A · (1 − luff) · (Cl·sin(AWA) − Cd·cos(AWA))
+//     driving = q · A · (1 − collapsed) · (Cl·sin(AWA) − Cd·cos(AWA))
 //
 // which is a genuinely different route to the same number — no vectors, no
 // `perpendicular`, no sign convention borrowed from the code under test.
@@ -216,21 +217,21 @@ describe("acceptance: drive goes negative when a sail is backed (DESIGN.md §3.4
    */
   it("leaves a backed sail fully drawing", () => {
     for (const [awa, sailAngle] of backed) {
-      expect(sailForce(MAIN, deg(sailAngle), wind(awa)).luffFraction).toBe(0);
+      expect(sailForce(MAIN, deg(sailAngle), wind(awa)).collapsedFraction).toBe(0);
     }
   });
 });
 
-describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)", () => {
+describe("acceptance: the collapsed fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)", () => {
   const collapsed = radiansToDegrees(LUFF.collapsedBelow);
   const drawing = radiansToDegrees(LUFF.drawingAbove);
 
   it("is wholly collapsed at zero incidence and wholly full past the threshold", () => {
-    expect(luffFraction(0)).toBe(1);
-    expect(luffFraction(deg(collapsed))).toBe(1);
-    expect(luffFraction(deg(drawing))).toBe(0);
-    expect(luffFraction(deg(15))).toBe(0);
-    expect(luffFraction(deg(90))).toBe(0);
+    expect(collapsedFraction(0)).toBe(1);
+    expect(collapsedFraction(deg(collapsed))).toBe(1);
+    expect(collapsedFraction(deg(drawing))).toBe(0);
+    expect(collapsedFraction(deg(15))).toBe(0);
+    expect(collapsedFraction(deg(90))).toBe(0);
   });
 
   /**
@@ -246,32 +247,90 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
    * pinning the arithmetic rather than the model.
    */
   it("collapses again edge-on at the leech", () => {
-    expect(luffFraction(deg(180))).toBe(1);
-    expect(luffFraction(deg(-180))).toBe(1);
-    expect(luffFraction(deg(180 - collapsed))).toBeCloseTo(1, 12);
-    expect(luffFraction(deg(180 - drawing))).toBeCloseTo(0, 12);
-    expect(luffFraction(deg(165))).toBe(0);
-    expect(luffFraction(deg(-165))).toBe(0);
+    expect(collapsedFraction(deg(180))).toBe(1);
+    expect(collapsedFraction(deg(-180))).toBe(1);
+    expect(collapsedFraction(deg(180 - collapsed))).toBeCloseTo(1, 12);
+    expect(collapsedFraction(deg(180 - drawing))).toBeCloseTo(0, 12);
+    expect(collapsedFraction(deg(165))).toBe(0);
+    expect(collapsedFraction(deg(-165))).toBe(0);
+  });
+
+  /**
+   * Which end the cloth breaks at (pos-83f). The fraction says how much has let
+   * go and this says where it is; neither is much use without the other, and
+   * reporting only the fraction is what left the drawing shaking the forward
+   * third of a sail whose leech was the end letting go.
+   */
+  it("names the luff at one edge-on state and the leech at the other", () => {
+    expect(collapseFrom(0)).toBe("luff");
+    expect(collapseFrom(deg(collapsed))).toBe("luff");
+    expect(collapseFrom(deg(-collapsed))).toBe("luff");
+    expect(collapseFrom(deg(180))).toBe("leech");
+    expect(collapseFrom(deg(-180))).toBe("leech");
+    expect(collapseFrom(deg(180 - collapsed))).toBe("leech");
+    expect(collapseFrom(deg(-(180 - collapsed)))).toBe("leech");
+  });
+
+  /**
+   * The limbs meet at the fold's corner, where the tie is broken toward the
+   * luff. Nothing can see the choice: 90° is more than ten times
+   * `LUFF.drawingAbove`, so the fraction is a flat zero either side of it and
+   * the answer describes a collapse that is not happening.
+   */
+  it("switches limbs at 90°, where there is no collapse to misplace", () => {
+    expect(collapseFrom(deg(90))).toBe("luff");
+    expect(collapseFrom(deg(90.001))).toBe("leech");
+    expect(collapsedFraction(deg(90))).toBe(0);
+    expect(collapsedFraction(deg(90.001))).toBe(0);
+  });
+
+  /**
+   * The real invariant, and the one worth a sweep: wherever any cloth has let
+   * go, the edge named is the one the flow is actually within
+   * `LUFF.drawingAbove` of. Stated as a distance rather than as "|α| < 90°", so
+   * it is a claim about the physics rather than a restatement of the branch.
+   */
+  it("names an edge the flow could be arriving at, everywhere it collapses", () => {
+    const reach = radiansToDegrees(LUFF.drawingAbove);
+    for (let degrees = -180; degrees <= 180; degrees += 0.05) {
+      const alpha = deg(degrees);
+      if (collapsedFraction(alpha) === 0) continue;
+
+      const away = collapseFrom(alpha) === "luff" ? Math.abs(degrees) : 180 - Math.abs(degrees);
+      expect(away, `${degrees}°`).toBeLessThan(reach + 1e-9);
+    }
+  });
+
+  it("normalises its input, like the fraction beside it", () => {
+    expect(collapseFrom(deg(-10) + TAU)).toBe(collapseFrom(deg(-10)));
+    // 190° is really −170°: past the fold, so the leech.
+    expect(collapseFrom(deg(190))).toBe("leech");
+    expect(collapseFrom(deg(350))).toBe("luff");
+  });
+
+  it("is reported alongside the force", () => {
+    expect(sailForce(MAIN, 0, wind(180)).collapseFrom).toBe("leech");
+    expect(sailForce(MAIN, deg(-15), wind(30)).collapseFrom).toBe("luff");
   });
 
   it("passes through the middle of the transition halfway across", () => {
-    expect(luffFraction(deg((collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
-    expect(luffFraction(deg(180 - (collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
+    expect(collapsedFraction(deg((collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
+    expect(collapsedFraction(deg(180 - (collapsed + drawing) / 2))).toBeCloseTo(0.5, 12);
   });
 
   it("falls monotonically away from either edge-on state", () => {
     // Away from the luff-first state at α = 0...
-    let previous = luffFraction(0);
+    let previous = collapsedFraction(0);
     for (let degrees = 0; degrees <= 90; degrees += 0.05) {
-      const current = luffFraction(deg(degrees));
+      const current = collapsedFraction(deg(degrees));
       expect(current, `${degrees}°`).toBeLessThanOrEqual(previous + 1e-15);
       previous = current;
     }
 
     // ...and away from the leech-first state at α = 180°, swept inward.
-    previous = luffFraction(deg(180));
+    previous = collapsedFraction(deg(180));
     for (let degrees = 180; degrees >= 90; degrees -= 0.05) {
-      const current = luffFraction(deg(degrees));
+      const current = collapsedFraction(deg(degrees));
       expect(current, `${degrees}°`).toBeLessThanOrEqual(previous + 1e-15);
       previous = current;
     }
@@ -286,7 +345,7 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
    */
   it("has no crease at α = 90°, where the fold has its corner", () => {
     for (let degrees = 80; degrees <= 100; degrees += 0.05) {
-      expect(luffFraction(deg(degrees)), `${degrees}°`).toBe(0);
+      expect(collapsedFraction(deg(degrees)), `${degrees}°`).toBe(0);
     }
   });
 
@@ -296,9 +355,9 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
    * is really −10°, which draws.
    */
   it("normalises its input, so an unwrapped angle cannot read as collapsed", () => {
-    expect(luffFraction(deg(-10) + TAU)).toBe(luffFraction(deg(-10)));
-    expect(luffFraction(deg(350))).toBe(0);
-    expect(luffFraction(deg(190))).toBeCloseTo(luffFraction(deg(-170)), 15);
+    expect(collapsedFraction(deg(-10) + TAU)).toBe(collapsedFraction(deg(-10)));
+    expect(collapsedFraction(deg(350))).toBe(0);
+    expect(collapsedFraction(deg(190))).toBeCloseTo(collapsedFraction(deg(-170)), 15);
   });
 
   /**
@@ -308,10 +367,10 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
    * single step — two and a half orders of magnitude past this.
    */
   it("is continuous across the whole range", () => {
-    let previous = luffFraction(deg(-180));
+    let previous = collapsedFraction(deg(-180));
     let worst = 0;
     for (let degrees = -180; degrees <= 180; degrees += 0.01) {
-      const current = luffFraction(deg(degrees));
+      const current = collapsedFraction(deg(degrees));
       worst = Math.max(worst, Math.abs(current - previous));
       previous = current;
     }
@@ -334,12 +393,12 @@ describe("acceptance: luff fraction moves smoothly from 0 to 1 (DESIGN.md §3.3)
    * along the flow with the wind on its leech — α = exactly +180°, since
    * `sailChordBearing(0)` is π and the flow bears 0. The sail is flogging and
    * makes nothing, which `foil.ts` has always said (`Cl = 0`, `Cd = Cd0`); what
-   * it left behind was a small positive `Cd0·q·A` of drive and a luff fraction
+   * it left behind was a small positive `Cd0·q·A` of drive and a collapsed fraction
    * of zero calling the sail fully drawing. Both are now gone.
    */
   it("takes the force off a sail lying edge-on at its leech", () => {
     expect(Math.abs(angleOfAttack(0, wind(180)))).toBe(Math.PI);
-    expect(sailForce(MAIN, 0, wind(180)).luffFraction).toBe(1);
+    expect(sailForce(MAIN, 0, wind(180)).collapsedFraction).toBe(1);
     expect(driving(0, wind(180))).toBe(0);
   });
 });
@@ -359,7 +418,10 @@ describe("mirror symmetry (DESIGN.md §3.3)", () => {
         const port = sailForce(MAIN, deg(-sailAngle), wind(-awa));
 
         expect(port.driving).toBeCloseTo(starboard.driving, 9);
-        expect(port.luffFraction).toBeCloseTo(starboard.luffFraction, 12);
+        expect(port.collapsedFraction).toBeCloseTo(starboard.collapsedFraction, 12);
+        // Which *face* the flow strikes says nothing about which *end* it
+        // arrives at, so the edge mirrors as an identity rather than a sign.
+        expect(port.collapseFrom).toBe(starboard.collapseFrom);
         // Equal and opposite, compared across the seam: `normalizeSigned` folds
         // exactly −180° onto +180°, so a mirrored pair there sums to a turn
         // rather than to zero.

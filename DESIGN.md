@@ -413,8 +413,8 @@ which is even about 90° as well as about zero.
 Against it: [§3.2](#32-sail-forces) already handles α ≈ 180° correctly and
 without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the *boat*
 was ever wrong and the change buys nothing measurable in newtons — it zeroes a
-force that was already negligible. For it, and decisive: the luff fraction is
-the one number that drives the flutter as well as the force, so a fraction of
+force that was already negligible. For it, and decisive: the collapsed fraction
+is the one number that drives the flutter as well as the force, so a fraction of
 zero at α = 180° is the model asserting *fully drawing* about a sail that is
 flogging. The drawing would then show a sail collapsed and dead still at the
 same moment, which is exactly the undertrimmed-looks-like-overtrimmed confusion
@@ -443,23 +443,33 @@ sail head to wind sits at α = 90°, which folds to 90° either way. The corner
 `α_full`, so the smoothstep is saturated with zero slope on both sides of it and
 the fraction is flat at zero straight through.
 
-We compute a **luff fraction** ∈ [0,1] — how much of the sail, measured from
-the luff aft, has collapsed. That single number drives both the flutter
-animation and the force reduction, so what the student sees and what the boat
-does can never disagree. It scales the whole force, lift and drag alike: the
-collapsed portion is simply not working.
+We compute a **collapsed fraction** ∈ [0,1] — how much of the sail has let go —
+and, beside it, the **edge the collapse propagates from**: the luff or the
+leech. The fraction drives both the flutter animation and the force reduction,
+so what the student sees and what the boat does can never disagree. It scales
+the whole force, lift and drag alike: the collapsed portion is simply not
+working. *Which* portion it is does not enter the force at all — a third of the
+cloth carries a third of the load whichever third it is — so the edge is a
+number the drawing spends and the physics ignores.
 
-One simplification remains, deliberately, and it is worth stating without
-flattering it. The fraction is still measured **from the luff aft** in both
-bands, though in the leech-first band the cloth breaks at the *leech* and the
-collapse runs forward. The band is only 7° wide, but the fraction does not
-saturate across it: it is 0.35 at α = 175° and does not reach 1 until 178°. So
-through the first half of the band the drawing will shake the forward third of a
-sail whose *leech* is the end actually breaking. What the simplification buys is
-a single axis for [§4.1](#41-whats-drawn)'s deformation hook, and that — not any
-claim that the error is negligible — is why it stands for now. Doing it properly,
-including a name that admits the fraction is no longer about the luff, is its own
-piece of work.
+The edge falls straight out of the fold. The two limbs of `min(|α|, 180° − |α|)`
+*are* the two edge-on states: below 90° the flow is arriving at the luff and the
+collapse runs aft, above it the flow is arriving at the leech and the collapse
+runs forward. Reporting the fraction alone would not do, and the error it would
+leave is not a sliver — the fraction is 0.35 at α = 175° and does not reach 1
+until 178°, so through the first half of that band a drawing measured from the
+luff would shake the forward third of a sail whose *after* end is the one
+letting go. Keeping [§4.1](#41-whats-drawn)'s deformation hook honest is the
+whole reason the second field exists.
+
+The two are reported separately rather than folded into one signed fraction.
+A sign would have to flip at α = 90°, which is exactly where the fraction is
+zero and there is no collapse to attribute to an edge, and every consumer would
+then spend a line recovering a magnitude before it could use one. As it stands,
+between the bands the fraction is 0 and the edge merely names the one a collapse
+*would* arrive at; the tie at exactly |α| = 90° is broken toward the luff and is
+unobservable, because nothing reads the edge without also reading a fraction of
+zero.
 
 ### 3.4 Backing a sail
 
@@ -991,12 +1001,14 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
   negative. Length grows with speed; colored per [§4.3](#43-the-speed-arrow).
 - **Apparent wind overlay** — only when toggled on.
 
-Camber depth is a function of trim and apparent wind pressure. When the luff
+Camber depth is a function of trim and apparent wind pressure. When the collapsed
 fraction is non-zero, a traveling sine wave is superimposed on the collapsed
 portion — amplitude scaling with how deeply it's luffing, and the fluttering
-region extending aft as the collapse spreads. A sail that is *just* starting to
-break shows a small ripple at the luff only, which is exactly what a student
-should learn to spot.
+region spreading across the sail **from the edge the flow arrives at**
+([§3.3](#33-luffing)): aft from the luff in the ordinary case, forward from the
+leech when the wind is coming over the back of the sail. A sail that is *just*
+starting to break shows a small ripple at that edge only, which is exactly what a
+student should learn to spot.
 
 #### How the camber is drawn
 
@@ -1004,7 +1016,7 @@ The offset from the chord runs along `perpendicular(chordDirection)` — 90°
 clockwise of tack→clew — scaled by a signed depth:
 
 ```text
-depth = chord · MAX_DRAFT · (1 − luffFraction) · pressureFactor(q) · sin α
+depth = chord · MAX_DRAFT · (1 − collapsedFraction) · pressureFactor(q) · sin α
 ```
 
 **Signing it with `sin α` is what makes "bulges to leeward" a fact rather than a
@@ -1026,18 +1038,30 @@ The invariant is against the *flow*, not against lift. The two agree wherever th
 flow is attached, but the flat-plate limb of [§3.2](#32-sail-forces) makes
 `Cl = 2 sinα cosα`, which reverses at |α| = 90° where the belly does not.
 
-Using `sin α` whole rather than only for its sign also buys both knife edges:
+Using `sin α` whole rather than only for its sign is a *depth* decision rather
+than a knife-edge one. That is a correction to what this section used to say, and
+the thing that changed was [§3.3](#33-luffing) rather than the drawing: this
+passage was written when the fraction folded about zero alone, and pos-aa2 folded
+it about 90° as well. Both knife edges are now carried by the fraction:
 
-- **α → 0** — edge-on and luffing. Depth → 0, so the side flip at the luff
-  happens through a flat sail and is invisible.
+- **α → 0** — edge-on and luffing. `(1 − collapsedFraction)` is *identically* 0
+  across |α| ≤ 2°, so the side flip at the luff happens in the middle of a band
+  of exactly flat sail.
 - **α → ±180°** — the flow arrives at the leech instead, a flogging sail making
-  nothing. Depth → 0 again. This one is easy to miss, because **the luff fraction
-  is blind to it**: [§3.3](#33-luffing) folds the thresholds about zero, so an
-  edge-on-at-the-leech sail reports as fully drawing. `(1 − luffFraction)` alone
-  would draw full camber there, on an arbitrary side, and flip it as α crossed
-  180° — a maximum-amplitude pop in a state a student reaches by easing on a run.
+  nothing. §3.3 collapses the sail here too, so the term is identically 0 across
+  |α| ≥ 178° and this flip is equally invisible. It was not always: before
+  pos-aa2 the fraction was blind to this state and called such a sail fully
+  drawing, and `sin α` was the only thing standing between the drawing and a
+  maximum-amplitude pop in a state a student reaches by easing on a run.
 
-The visible consequence, chosen deliberately: a close-hauled sail reads
+So `sin α` is no longer load-bearing at either edge, and it stays for what it
+does *between* them — setting the depth by incidence. Measured on the main at
+saturated pressure, the drawn camber is 0.058 m at α = 7°, 0.122 m at 15° and
+0.473 m at 90°; with only the sign it would be 0.473 m at all three, which is
+full camber on a sail 7° off luffing and close hauled indistinguishable from a
+beam reach. `render/sail.ts`'s module docblock carries the measurement.
+
+That visible consequence is chosen deliberately: a close-hauled sail reads
 distinctly flatter than a reaching one, which is true on the water. The pressure
 term is a *floor near calm*, not a growth law — a real sail in 15 kt is flatter
 than the same sail in 5 kt, because you flatten it — so it saturates by 8 kt and
@@ -1054,15 +1078,34 @@ near it.
 is what [§4.2](#42-the-traffic-light)'s companion — the flutter animation — hangs
 on. Three properties of it are load-bearing and should not be traded away:
 
-- Its chord fraction is measured **from the luff aft**, the same axis the luff
-  fraction is defined on, so the fluttering region is literally
-  `s < luffFraction`.
+- Its chord fraction `s` runs 0 at the luff to 1 at the clew, and is a position
+  on the **drawn chord** rather than on the collapse's own axis — a travelling
+  wave's phase depends on that map staying monotone. **Do not read the
+  fluttering region as `s < collapsedFraction`.** [§3.3](#33-luffing)'s fraction
+  runs in from whichever edge the flow arrives at, so that form shakes the
+  forward end of a sail whose *leech* is the end letting go, every time the wind
+  is over the back of the sail. The region is `collapseAt(shape, s) > 0`, where
+  `render/sail.ts`'s `collapseAt` reports how deep into the collapse a chord
+  fraction lies: 0 outside it, 1 at the breaking edge, the same in either band.
 - It returns a **replacement, not an addend**, so the flutter can flatten the
-  collapsed portion *and* ripple it — `offset · collapse(s) + ripple(s)` — which
-  is what "the fluttering region extends aft as the collapse spreads" requires.
+  collapsed portion *and* ripple it —
+  `offset · (1 − collapseAt(shape, s)) + ripple(s)` — which is what "the
+  fluttering region spreads from the breaking edge" requires.
 - It is **never called at the endpoints**. The tack and clew are physical
   attachments, and the clew is a grab point ([§5](#5-direct-manipulation)), so no
   animation can walk a touch target off the drawn sail.
+
+**One thing the seam deliberately does not settle.** `collapseAt` is an
+*aerodynamic* ramp: it measures depth into the **detached** region, which is
+where a partly collapsed sail really does shake — the flow has left the cloth at
+the breaking edge and is still attached further along. At **full** collapse there
+is no pressure gradient left to measure, and the ramp goes on peaking at the edge
+the collapse arrived from, which for a luff-first collapse is the end pinned to
+the mast. A sail flogging head to wind moves most at its **unsupported** edge,
+the leech, because nothing is holding it. Both are real behaviour in different
+regimes, so a flutter that wants the second must blend toward the free edge as
+the collapsed fraction approaches 1. That is an animation decision, and this
+section leaves it to the animation.
 
 **Weight and colour.** The sailcloth is the heaviest line in the drawing —
 heavier than the hull, and heavier than the boom, which is only a spar. That is
@@ -1643,7 +1686,7 @@ src/
     units.ts          angle/speed helpers, conversions, sign conventions
     wind.ts           true → apparent wind
     foil.ts           Cl/Cd curves, stall blend
-    sail.ts           per-sail force, luff fraction, optimal-trim search
+    sail.ts           per-sail force, collapse fraction and edge, optimal trim
     hull.ts           resistance curve
     boat.ts           Rhodes 19 constants
     simulation.ts     state + step(dt), including the ghost boat
