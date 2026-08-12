@@ -1,16 +1,19 @@
 import "./shell.css";
 
 import { SWING_LIMIT } from "./model/boat.ts";
+import { rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
-import type { Meters, Radians, Vec2 } from "./model/units.ts";
+import type { Degrees, Meters, Newtons, Radians, Vec2 } from "./model/units.ts";
 import {
   add,
   degreesToRadians,
   knotsToMetersPerSecond,
+  metersPerSecondToKnots,
   radiansToDegrees,
   vectorFromAngle,
 } from "./model/units.ts";
-import { createSailLayer } from "./render/sail.ts";
+import { apparentWind, trueWindAngle } from "./model/wind.ts";
+import { createSailLayer, rigShapes } from "./render/sail.ts";
 import { SCENE, createScene } from "./render/scene.ts";
 import { formatNumber, svgElement } from "./render/svg.ts";
 
@@ -115,13 +118,25 @@ draw(state);
 
 // --- Scaffolding -----------------------------------------------------------
 //
-// Sliders for heading and both trims, plus a jib switch, so the things this
-// drawing has to get right can be swept by hand: that rotating the heading
-// rotates the drawing, that each sail bulges to leeward at every trim, that the
-// camber goes flat as a sail luffs, and that a struck jib is absent entirely.
+// Sliders for the wind, the boat's motion and both trims, plus a jib switch, so
+// the things this drawing has to get right can be swept by hand: that rotating
+// the heading rotates the drawing, that each sail bulges to leeward at every
+// trim, that the camber goes flat as a sail luffs, and that a struck jib is
+// absent entirely.
 //
 // DELETE ALL OF THIS when pos-bwd.1 lands dragging the hull and the clews; the
 // control strip belongs to the apparent-wind and jib toggles (§5).
+
+/** Controls that re-read the state, so a change from anywhere reaches them all. */
+const followers: (() => void)[] = [];
+
+/** The one way the scaffolding changes state: patch, redraw, resync the strip. */
+function apply(patch: Partial<SimState>): SimState {
+  state = { ...state, ...patch };
+  draw(state);
+  for (const follow of followers) follow();
+  return state;
+}
 
 const controls = document.querySelector<HTMLElement>(".pos-sim .controls");
 if (controls !== null) {
@@ -138,7 +153,7 @@ if (controls !== null) {
     label: string,
     min: number,
     max: number,
-    value: number,
+    read: (of: SimState) => number,
     onInput: (degrees: number) => void,
   ): void => {
     const input = document.createElement("input");
@@ -146,12 +161,17 @@ if (controls !== null) {
     input.min = String(min);
     input.max = String(max);
     input.step = "1";
-    input.value = String(Math.round(value));
+    input.value = String(Math.round(read(state)));
     // setAttribute, not the `ariaLabel` property: ARIA reflection starts at
     // Safari 16.4, above the floor vite.config.ts pins (§4.4). Below it the
     // property is a silent expando and the control has no accessible name.
     input.setAttribute("aria-label", label);
     input.addEventListener("input", () => onInput(Number(input.value)));
+    // So a state set from the console does not leave the strip lying, and the
+    // next drag therefore jump.
+    followers.push(() => {
+      input.value = String(Math.round(read(state)));
+    });
 
     const row = scaffold(label);
     row.append(input);
@@ -160,36 +180,150 @@ if (controls !== null) {
 
   const trimLimit = Math.round(radiansToDegrees(SWING_LIMIT));
 
-  slider("Wind from", 0, 360, radiansToDegrees(state.wind.from), (degrees) => {
-    state = { ...state, wind: { ...state.wind, from: degreesToRadians(degrees) } };
-    draw(state);
-  });
+  slider(
+    "Wind from",
+    0,
+    360,
+    (of) => radiansToDegrees(of.wind.from),
+    (degrees) => apply({ wind: { ...state.wind, from: degreesToRadians(degrees) } }),
+  );
 
-  slider("Heading", 0, 360, radiansToDegrees(state.motion.heading), (degrees) => {
-    state = { ...state, motion: { ...state.motion, heading: degreesToRadians(degrees) } };
-    draw(state);
-  });
+  slider(
+    "Wind kt",
+    0,
+    30,
+    (of) => metersPerSecondToKnots(of.wind.speed),
+    (knots) => apply({ wind: { ...state.wind, speed: knotsToMetersPerSecond(knots) } }),
+  );
 
-  slider("Main", -trimLimit, trimLimit, radiansToDegrees(state.trim.mainAngle), (degrees) => {
-    state = { ...state, trim: { ...state.trim, mainAngle: degreesToRadians(degrees) } };
-    draw(state);
-  });
+  slider(
+    "Heading",
+    0,
+    360,
+    (of) => radiansToDegrees(of.motion.heading),
+    (degrees) => apply({ motion: { ...state.motion, heading: degreesToRadians(degrees) } }),
+  );
 
-  slider("Jib", -trimLimit, trimLimit, radiansToDegrees(state.trim.jibAngle), (degrees) => {
-    state = { ...state, trim: { ...state.trim, jibAngle: degreesToRadians(degrees) } };
-    draw(state);
-  });
+  slider(
+    "Boat kt",
+    -2,
+    8,
+    (of) => metersPerSecondToKnots(of.motion.speed),
+    (knots) => apply({ motion: { ...state.motion, speed: knotsToMetersPerSecond(knots) } }),
+  );
+
+  slider(
+    "Main",
+    -trimLimit,
+    trimLimit,
+    (of) => radiansToDegrees(of.trim.mainAngle),
+    (degrees) => apply({ trim: { ...state.trim, mainAngle: degreesToRadians(degrees) } }),
+  );
+
+  slider(
+    "Jib",
+    -trimLimit,
+    trimLimit,
+    (of) => radiansToDegrees(of.trim.jibAngle),
+    (degrees) => apply({ trim: { ...state.trim, jibAngle: degreesToRadians(degrees) } }),
+  );
 
   const jibSet = document.createElement("input");
   jibSet.type = "checkbox";
   jibSet.checked = state.trim.jibSet;
   jibSet.setAttribute("aria-label", "Jib set");
   jibSet.addEventListener("input", () => {
-    state = { ...state, trim: { ...state.trim, jibSet: jibSet.checked } };
-    draw(state);
+    apply({ trim: { ...state.trim, jibSet: jibSet.checked } });
+  });
+  followers.push(() => {
+    jibSet.checked = state.trim.jibSet;
   });
 
   const jibRow = scaffold("Jib set");
   jibRow.append(jibSet);
   controls.append(jibRow);
 }
+
+// --- Scaffolding: a diagnostic handle ---------------------------------------
+//
+// `window.pos` — the state, the controls, and the derived numbers the drawing is
+// made of, reachable from a console. DELETE with the rest of the scaffolding.
+//
+// This exists because "the sail looks wrong here" is a claim about *numbers* —
+// which apparent wind, which angle of attack, which luff fraction — and reading
+// them off a picture is guesswork. `report()` prints all of them at once, in the
+// degrees a sailor would quote, so a suspect situation can be described exactly
+// rather than approximately.
+
+interface SailReport {
+  trim: Degrees;
+  angleOfAttack: Degrees;
+  luffFraction: number;
+  camber: Meters;
+  driving: Newtons;
+}
+
+const pos = {
+  /** The live state. */
+  get state(): SimState {
+    return state;
+  },
+
+  /**
+   * Patch the state and redraw. Angles are radians, like the model — use
+   * `pos.deg(45)` if you are typing degrees.
+   */
+  set: (patch: Partial<SimState>): SimState => apply(patch),
+
+  /** Patch just the trim, which is the field most worth poking at. */
+  trim: (patch: Partial<SimState["trim"]>): SimState =>
+    apply({ trim: { ...state.trim, ...patch } }),
+
+  deg: degreesToRadians,
+  kt: knotsToMetersPerSecond,
+
+  /** What the sails actually feel — not the true wind the arrow shows. */
+  apparent: () => {
+    const wind = apparentWind(state.wind, state.motion);
+    return { speed: metersPerSecondToKnots(wind.speed), angle: radiansToDegrees(wind.angle) };
+  },
+
+  /** The drawn geometry: chord endpoints and signed camber, in boat-frame metres. */
+  shapes: () => rigShapes(state),
+
+  /** Everything at once, in the units a sailor would quote. */
+  report: (): Record<string, unknown> => {
+    const wind = apparentWind(state.wind, state.motion);
+    const shapes = rigShapes(state);
+    const forces = rigForce(state.trim, wind);
+
+    const sail = (
+      angle: Radians,
+      shape: { depth: Meters } | null,
+      force: { angleOfAttack: Radians; luffFraction: number; driving: Newtons } | null,
+    ): SailReport | null =>
+      shape === null || force === null
+        ? null
+        : {
+            trim: Number(radiansToDegrees(angle).toFixed(1)),
+            angleOfAttack: Number(radiansToDegrees(force.angleOfAttack).toFixed(1)),
+            luffFraction: Number(force.luffFraction.toFixed(3)),
+            camber: Number(shape.depth.toFixed(3)),
+            driving: Number(force.driving.toFixed(1)),
+          };
+
+    return {
+      trueWindFrom: Number(radiansToDegrees(state.wind.from).toFixed(1)),
+      trueWindKt: Number(metersPerSecondToKnots(state.wind.speed).toFixed(2)),
+      heading: Number(radiansToDegrees(state.motion.heading).toFixed(1)),
+      boatKt: Number(metersPerSecondToKnots(state.motion.speed).toFixed(2)),
+      trueWindAngle: Number(radiansToDegrees(trueWindAngle(state.wind, state.motion)).toFixed(1)),
+      apparentWindAngle: Number(radiansToDegrees(wind.angle).toFixed(1)),
+      apparentKt: Number(metersPerSecondToKnots(wind.speed).toFixed(2)),
+      main: sail(state.trim.mainAngle, shapes.main, forces.main),
+      jib: sail(state.trim.jibAngle, shapes.jib, forces.jib),
+    };
+  },
+};
+
+(globalThis as unknown as { pos: typeof pos }).pos = pos;
