@@ -11,13 +11,14 @@
  *
  * The file grows a section at a time, added by whichever bead first needs the
  * knob: foil coefficients here, then luff thresholds, hull resistance and the
- * acceleration lag, the upwind jib bonus (§3.7), and the colour ramp anchors
- * (§4.4). Nothing in here is imported by `boat.ts` — the dependency runs one
- * way, so that a tuning pass can never quietly restate a measurement.
+ * acceleration lag, the rig's depowering (§3.2), the upwind jib bonus (§3.7),
+ * and the colour ramp anchors (§4.4). Nothing in here is imported by `boat.ts`
+ * — the dependency runs one way, so that a tuning pass can never quietly
+ * restate a measurement.
  */
 
-import type { Radians, Seconds } from "./units.ts";
-import { degreesToRadians } from "./units.ts";
+import type { MetersPerSecond, Radians, Seconds } from "./units.ts";
+import { degreesToRadians, knotsToMetersPerSecond } from "./units.ts";
 
 /**
  * Foil coefficients (§3.2). All four are shared by both sails: the main and the
@@ -222,9 +223,13 @@ export const RESISTANCE: {
    * The two move together and should be re-solved together.
    *
    * What has not changed is what the term is for: the wall a displacement hull
-   * hits, so that no amount of sail area gets a Rhodes 19 to 9 knots in the
-   * wind it is actually sailed in. What pos-lcz gave up is that promise in a
-   * gale — see §3.6 and `pos-d7u`.
+   * hits, the one that makes the last half knot cost far more than the one
+   * before it. What it no longer has to carry alone is keeping a Rhodes 19 off
+   * nine knots in a gale — pos-lcz gave that promise up in exchange for the
+   * pointing angle, and {@link DEPOWERING} now keeps it from the other side, by
+   * capping the drive instead of clipping the speed. So this coefficient is
+   * free to go on being what it always should have been: the knob that puts the
+   * 10 kt beam reach where §3.6 wants it.
    */
   hullSpeedWall: 21.9,
 
@@ -289,6 +294,115 @@ export const RESISTANCE: {
    * the charge fades as the boat bears away.
    */
   keelStall: 0.22,
+};
+
+/**
+ * How much of the rig the crew are actually carrying (§3.2).
+ *
+ * ```text
+ * k(W) = (1 + r^knee)^(−1/knee)      r = (W / fullPowerWind)²
+ * ```
+ *
+ * — which is `min(1, q_full/q)` with the corner rounded off. Below
+ * {@link DEPOWERING.fullPowerWind} it is 1 and the rig is untouched; above it,
+ * `k` falls as `1/q`, so the force the rig makes stops growing with the wind
+ * and holds at whatever it reached at that wind. `sail.ts` computes it and
+ * `simulation.ts` applies it to the drive and the side force alike.
+ *
+ * **What it stands for.** A real Rhodes 19 in a breeze stops collecting force:
+ * it heels, so the rig leans out of the horizontal and the sail plan presents
+ * less of itself square to the wind; the sail twists off at the head; and the
+ * crew ease, feather and flatten. §7 declines to model heel, so this is heel's
+ * *effect* standing in for heel, in the same spirit as
+ * {@link RESISTANCE.sideForce} being four times a bare keel's induced drag
+ * because it stands in for heel, leeway and rudder angle together.
+ *
+ * **Why the model needed a term of this shape and could not tune its way
+ * there.** Every force in the model is homogeneous of degree two in speed, so
+ * the wall in {@link RESISTANCE.hullSpeedWall} was the only thing carrying an
+ * absolute speed and therefore the only source of wind-dependence in the polar
+ * — and it is the wrong shape for the job, because it bites hardest where the
+ * boat is fastest and so clips a reach harder than it clips close hauled. pos-
+ * lcz measured that whole one-parameter family and found no member of it that
+ * caps a beam reach in a gale without sending the pointing angle through the
+ * floor. A factor on the *drive* has no such problem: it slows every point of
+ * sail together, which is exactly what leaves the polar's shape alone.
+ *
+ * **It is keyed to the true wind, and that is a real decision.** §3.1's rule is
+ * that sail forces are computed from the apparent wind and never from the true
+ * wind, and this does not break it: `k` is not an aerodynamic coefficient but
+ * how much sail is being carried, which is a crew decision made for the wind of
+ * the day rather than for the flow over the cloth at this instant.
+ *
+ * The alternative was measured and is worse. Keyed to the apparent wind, a run
+ * — which has the lowest apparent wind of any point of sail — gets depowered
+ * *least*, so the run/beam ratio at 14 kt goes from 0.742 to between 0.75 and
+ * 0.79 and breaks §3.6's "a run is notably slower than a reach" at exactly the
+ * wind §2.1 opens in, while the fastest point of sail slides from TWA 95° to
+ * 110–115°. Keyed to the true wind, `k` is constant across the whole polar at a
+ * given wind, so it cannot bend it at all: run/beam at 30 kt comes out 0.84
+ * against an undepowered 0.85.
+ *
+ * The mechanism this is standing in for was measured too, and is also worse.
+ * Driving `k` from the side force — the honest reading of "it heels", since
+ * heeling moment is what runs a crew out of righting moment — puts run/beam at
+ * 30 kt between 0.97 and 1.09, a run as fast as a beam reach, and barely
+ * touches the top speed at all: 8.82–8.86 kt against 8.91 undepowered, because
+ * the fastest angles, TWA 105–110°, make little side force and escape the cap.
+ * Heel is the right cause; its effect has to be spread evenly to be any use.
+ */
+export const DEPOWERING: {
+  readonly fullPowerWind: MetersPerSecond;
+  readonly knee: number;
+} = {
+  /**
+   * The true wind the boat is fully powered up in. Below it nothing is given
+   * away; above it the rig holds the force it had here.
+   *
+   * **13 kt, and the choice is visible in one number: a beam reach settles at
+   * 6.36 kt in anything from 13 kt of wind to 45.** Against a 5.65 kt hull
+   * speed that is 13% over, where before this term it was 34% over at 20 kt and
+   * 57% over at 30. Measured across the family, holding everything else:
+   *
+   * ```text
+   * fullPowerWind   beam@20  beam@30  VMG peak@30  beam@14 (was 6.53)
+   * none             7.59     8.88       33°        6.53
+   * 12 kt            6.11     6.12       43°        6.09  (−6.7%)
+   * 13 kt            6.34     6.36       42°        6.31  (−3.4%)
+   * 14 kt            6.55     6.57       41°        6.47  (−1.0%)
+   * ```
+   *
+   * Lower caps the boat harder and costs more of the top of §2.1's opening
+   * range, since the cap has to bite before it can cap. Thirteen is where the
+   * whole 4–12 kt range comes out unchanged to the hundredth of a knot, 14 kt
+   * gives up 3% of a beam reach, and the pointing angle holds inside §3.6's
+   * 40–50° at *every* wind from 4 to 45 kt rather than falling to 33°. It also
+   * hands back a degree of margin where §3.6 says there is none: the 14 kt VMG
+   * peak moves from 40° — sitting exactly on its bound — to 41°.
+   *
+   * **The honest cost is that the wind slider stops making the boat faster
+   * above this speed**, which is what a capped rig means and is right for a
+   * displacement hull, but it is a visible change and not a side effect.
+   */
+  fullPowerWind: knotsToMetersPerSecond(13),
+
+  /**
+   * How abruptly the crew run out of righting moment: the exponent that rounds
+   * the corner of `min(1, q_full/q)`. Larger is sharper.
+   *
+   * **Sixteen is sharp, and §3.6's broad reach is why.** The 10 kt broad reach
+   * sits at 4.73 kt against a floor of 4.68 — about a tenth of the 10%
+   * tolerance §3.6 quotes — so a knee soft enough to reach back into 10 kt
+   * breaks the calibration table outright. Measured at a 12 kt cap, an exponent
+   * of 4 puts the broad reach at 4.65 and fails; at 16 the entire 4–12 kt range
+   * is unchanged to the hundredth of a knot and only 14 kt onwards moves.
+   *
+   * So the sharpness is not a taste about how crews sail — it is what buys the
+   * separation between the range §3.6 calibrates and the range this term is
+   * for. There is nothing to gain by sharpening it further: at this exponent
+   * the residual effect at 12 kt is already under half a percent.
+   */
+  knee: 16,
 };
 
 /**

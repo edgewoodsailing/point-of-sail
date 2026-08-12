@@ -5,7 +5,10 @@
  * an angle of attack; this module is the piece between them. It turns each
  * sail's trim into an angle of attack, assembles lift and drag into a force,
  * takes the along-heading component as drive, and finds the trim that maximises
- * it.
+ * it. It also says how much of that rig the crew are still carrying once it
+ * breezes up — {@link depoweringFactor}, the one thing in this file that reads
+ * the true wind rather than the apparent, and the one thing `simulation.ts`
+ * rather than this module applies.
  *
  * **Everything here stays in the boat frame.** §3.2 says to "rotate into the
  * boat frame", but `apparent.angle` already arrives as an angle off the bow, so
@@ -32,7 +35,7 @@
 import type { Sail } from "./boat.ts";
 import { clampTrim, JIB, MAIN, sailChordBearing, SWING_LIMIT } from "./boat.ts";
 import { foilCoefficients, liftCurveSlope } from "./foil.ts";
-import { FOIL, LUFF } from "./tuning.ts";
+import { DEPOWERING, FOIL, LUFF } from "./tuning.ts";
 import type { ApparentWind } from "./wind.ts";
 import type { MetersPerSecond, Newtons, Radians } from "./units.ts";
 import {
@@ -219,6 +222,55 @@ export function rigForce(trim: RigTrim, apparent: ApparentWind): RigForce {
     driving: main.driving + (jib?.driving ?? 0),
     lateral: main.lateral + (jib?.lateral ?? 0),
   };
+}
+
+// --- Depowering (§3.2) -----------------------------------------------------
+
+/**
+ * How much of the rig the crew are carrying, 0..1, from the true wind speed.
+ *
+ * Multiplies both the drive and the side force — {@link DEPOWERING} has the
+ * shape, the constants, and the measurements behind them. In one line: full
+ * sail up to `fullPowerWind`, and above it the rig makes the force it made
+ * there and no more, because that is where the crew run out of righting moment
+ * and start easing, feathering and spilling.
+ *
+ * **The one function in this file that reads the true wind**, which is worth
+ * flagging in a module whose whole point is that sail forces come from the
+ * apparent wind (§3.1). It does not break that rule: this is not an
+ * aerodynamic coefficient, it is how much sail is being carried, and the crew
+ * choose that for the wind of the day rather than for the flow over the cloth
+ * at this instant. {@link DEPOWERING} records what keying it to the apparent
+ * wind measured instead, which is a worse boat.
+ *
+ * **`simulation.ts` applies it, and this file deliberately does not.** Nothing
+ * in {@link sailForce} or {@link optimalTrim} is scaled by it, so what they
+ * report is the rig at full power. The reason is §4.2: the trim-quality colour
+ * divides this trim's drive by the best trim's drive, and a factor common to
+ * both cancels — except against the *floored* denominator
+ * `max(best, 0.05·q·A)`, which carries no such factor. Scaling the forces here
+ * would leave that floor binding further and further out as the breeze filled
+ * in: measured, the apparent wind angle below which it binds would run from
+ * 8.2° at 10 kt to 11.5° at 20, 17.3° at 30 and 30.3° at 45, creeping the
+ * near-no-go fade across a third of the upwind quarter in a gale. Applying the
+ * factor at the seam where the true wind meets the rig leaves §4.2 exactly as
+ * pos-dmg.1 designed it, at every wind.
+ *
+ * The price of that seam is that {@link rigForce} reports a force which is not
+ * the force accelerating the boat, and the names here carry the whole warning.
+ * `main.ts`'s debug `report()` reads `rigForce` directly and so prints the
+ * undepowered figure; pos-jhl covers giving it the carried one.
+ *
+ * Saturates rather than breaking at absurd winds: an infinite wind gives
+ * exactly 0, not `NaN`.
+ */
+export function depoweringFactor(trueWindSpeed: MetersPerSecond): number {
+  // `r` is the dynamic-pressure ratio, so that the factor below is the wind's
+  // own square — the same square the sail force is built on, which is what
+  // makes `k·q` flat above the knee instead of merely flatter.
+  const pressureRatio = (trueWindSpeed / DEPOWERING.fullPowerWind) ** 2;
+
+  return (1 + pressureRatio ** DEPOWERING.knee) ** (-1 / DEPOWERING.knee);
 }
 
 // --- Optimal trim ----------------------------------------------------------

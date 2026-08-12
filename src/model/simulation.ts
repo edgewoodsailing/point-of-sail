@@ -14,7 +14,7 @@ import {
   keelInducedDrag,
 } from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
-import { rigForce } from "./sail.ts";
+import { depoweringFactor, rigForce } from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
 import type { BoatMotion, TrueWind } from "./wind.ts";
 import { apparentWind } from "./wind.ts";
@@ -163,10 +163,18 @@ function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);
   const { driving, lateral } = rigForce(state.trim, apparent);
 
+  // §3.2's depowering, applied here rather than inside `rigForce` so that
+  // §4.2's trim-quality ratio never sees it — `depoweringFactor` has the
+  // reasoning, and it is a design decision rather than a convenience. Both
+  // components are scaled, which is what makes the factor a clean multiple of
+  // the whole rig force: the keel is charged for the side force the boat is
+  // actually holding, not for the one it would hold at full power.
+  const carried = depoweringFactor(state.wind.speed);
+
   const net =
-    driving -
+    driving * carried -
     hullResistance(state.motion.speed) -
-    keelInducedDrag(state.motion.speed, lateral);
+    keelInducedDrag(state.motion.speed, lateral * carried);
   const change = (net * dt) / (EFFECTIVE_MASS + hullResistanceSlope(state.motion.speed) * dt);
 
   return {
