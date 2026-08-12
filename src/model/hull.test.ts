@@ -112,12 +112,19 @@ describe("effective mass (DESIGN.md §3.5)", () => {
   it("lands near the boat, crew and added mass the design document reasons out", () => {
     // §3.5 arrives at ≈ 880 kg by adding up a 601 kg boat, two crew and ~15%
     // added mass; this module gets there from the acceleration lag instead. The
-    // two agreeing is a check on both. The bounds are wide because the mass
-    // moves with the resistance coefficient under calibration — what they catch
-    // is a tuning pass that has produced a barge or a dinghy.
+    // two agreeing is a check on both.
+    //
+    // The mass is proportional to the resistance coefficient, so a pinned value
+    // here would be a pinned `RESISTANCE.quadratic` in disguise — and pos-fo1.4
+    // exists to move that. Hence a band wide enough to calibrate inside, which
+    // still catches a tuning pass that has produced a barge or a dinghy, over a
+    // closed form written out independently of `hull.ts`.
     expect(EFFECTIVE_MASS).toBeGreaterThan(600);
     expect(EFFECTIVE_MASS).toBeLessThan(1200);
-    expect(EFFECTIVE_MASS).toBeCloseTo(877, 0);
+    expect(EFFECTIVE_MASS).toBeCloseTo(
+      (ACCELERATION.timeToTerminal * RESISTANCE.quadratic * V_HULL) / Math.atanh(1 - 1 / Math.E),
+      9,
+    );
   });
 
   it("delivers the acceleration lag it was derived from", () => {

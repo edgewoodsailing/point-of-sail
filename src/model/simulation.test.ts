@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, SWING_LIMIT } from "./boat.ts";
-import { optimalTrim } from "./sail.ts";
+import { hullResistance } from "./hull.ts";
+import { optimalTrim, rigForce } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle, step } from "./simulation.ts";
 import type { MetersPerSecond, Radians, Seconds } from "./units.ts";
@@ -195,6 +196,12 @@ describe("backing a sail (DESIGN.md §3.4)", () => {
    * Head to wind with the main held out square: the flow strikes the back of the
    * sail, and the only force it can make is astern. This is the mooring
    * departure of §3.4, without the gesture that pos-bql.1 will put on top of it.
+   *
+   * The `mainHeld` flag the cases below set is **inert in the model today** —
+   * nothing in `step` or `rigForce` reads it, and settling with it true and
+   * false gives bit-identical speeds. It is set because it describes the
+   * situation honestly: a hand is holding that boom out. pos-bql.1 gives it its
+   * job, and these tests should keep passing when it does.
    */
   const backed = boat(0, { mainAngle: deg(90), jibSet: false });
 
@@ -263,11 +270,11 @@ describe("step size", () => {
   it("holds together in a wind nobody would sail in", () => {
     // §2.1 randomises 6–14 kt, but §5's wind slider has no stated ceiling, and
     // the resistance curve is a sixth power on top of a square: taken at the
-    // speed the step starts from, it rings between two speeds by about 40 kt of
-    // wind and diverges to NaN by 80 — permanently, since every later step adds
-    // to a NaN. `advance` takes the resistance implicitly precisely so that
-    // whoever sets that ceiling is choosing a lesson, not avoiding a trap.
-    for (const wind of [40, 60, 100, 200]) {
+    // speed the step starts from, it stops settling at around 55 kt of wind and
+    // diverges to NaN by 85 — permanently, since every later step adds to a NaN.
+    // `advance` takes the resistance implicitly precisely so that whoever sets
+    // that ceiling is choosing a lesson, not avoiding a trap.
+    for (const wind of [55, 60, 100, 200]) {
       const trimmed = wellTrimmed(deg(90));
       const gale: SimState = { ...trimmed, wind: { ...trimmed.wind, speed: kt(wind) } };
       const settled = settle(gale).motion.speed;
@@ -280,11 +287,14 @@ describe("step size", () => {
       // settled speed. Ringing is what this rules out, and ringing is what the
       // old integrator did here — two speeds, alternating, forever.
       //
-      // Not asserted as monotone, unlike the temperate cases: above about 100 kt
-      // the first step or two can overshoot, because it is the *drive* that
-      // collapses with speed there and only the resistance is taken implicitly.
-      // Overshooting once and converging is a different animal from ringing,
-      // and this is not a wind anyone will sail the boat in anyway.
+      // Not asserted as monotone, unlike the temperate cases. The step follows
+      // a tangent to a convex curve, so its target lies a little past the true
+      // balance point, and in a gale "a little" is not little: the first step
+      // from rest at 200 kt lands at 12.03 m/s against a balance of 6.34. What
+      // matters is that the overshoot decays — resistance climbing faster than
+      // linearly sees to that — which is exactly what the tail assertion below
+      // measures. Overshooting once and converging is a different animal from
+      // ringing.
       let current = gale;
       const speeds: MetersPerSecond[] = [];
       for (let elapsed = 0; elapsed < 300; elapsed += 0.1) {
@@ -343,10 +353,10 @@ describe("state handling", () => {
   });
 
   it("settles on the speed the boat really reaches, even where it creeps up on it", () => {
-    // Just outside the no-go zone the boat closes on its speed at about 0.023
-    // per second, so the *change* per step goes small long before the *distance*
-    // to the balance point does. A settle that stopped on a small change would
-    // report a couple of percent low here — and this is exactly the corner where
+    // Just outside the no-go zone the boat closes on its speed with a time
+    // constant of 68 seconds, so the *change* per step goes small long before
+    // the *distance* to the balance point does. A settle that stopped on a small
+    // change would report a couple of percent low here — this is exactly where
     // pos-fo1.4 has to find the closest useful angle, which is the boundary
     // where the speed goes to nothing.
     //
@@ -362,6 +372,50 @@ describe("state handling", () => {
     expect(
       metersPerSecondToKnots(Math.abs(settle(crawling).motion.speed - sailed.motion.speed)),
     ).toBeLessThan(1e-4);
+  });
+
+  it("settles on a speed where the forces actually balance", () => {
+    // The definition of the thing, asserted directly against the forces rather
+    // than against another integration — and the property that a five-second
+    // settle step quietly broke. Stepping that far is not a step toward
+    // anything once the drive falls with speed faster than the resistance
+    // rises, and the iteration would drop into a two-point cycle and return one
+    // end of it: 46 N out of balance in the first case below, 118 in the second,
+    // 1147 in the third. All three look perfectly plausible as speeds, which is
+    // what makes checking the balance rather than the number worth doing.
+    const inWind = (state: SimState, wind: number): SimState => ({
+      ...state,
+      wind: { ...state.wind, speed: kt(wind) },
+    });
+
+    const cases: [string, SimState][] = [
+      [
+        "sloop, 10 kt, TWA 105, sails eased to 80°",
+        boat(deg(105), { mainAngle: deg(-80), jibAngle: deg(-80) }),
+      ],
+      [
+        "sloop, 14 kt, TWA 75, sails square",
+        inWind(boat(deg(75), { mainAngle: deg(-90), jibAngle: deg(-90) }), 14),
+      ],
+      [
+        "main alone, 80 kt, TWA 95, eased to 85°",
+        inWind(boat(deg(95), { mainAngle: deg(85), jibSet: false }), 80),
+      ],
+      ["beam reach, well trimmed", wellTrimmed(deg(90))],
+      ["five degrees off the wind", wellTrimmed(deg(5))],
+      ["dead run", wellTrimmed(deg(180))],
+    ];
+
+    for (const [name, state] of cases) {
+      const settled = settle(state);
+      const apparent = apparentWind(settled.wind, settled.motion);
+      const unbalanced =
+        rigForce(settled.trim, apparent).driving - hullResistance(settled.motion.speed);
+
+      // A tenth of a newton is a hundredth of what the boat feels drifting in a
+      // calm, and four orders below the failures above.
+      expect(Math.abs(unbalanced), name).toBeLessThan(0.1);
+    }
   });
 
   it("settles to a speed that settling again does not move", () => {

@@ -93,9 +93,18 @@ const TERMINAL_FRACTION = 1 - 1 / Math.E;
  *
  * so the time to reach a given fraction of terminal speed is
  * `m · atanh(fraction) / (A · v_terminal)`, and inverting it for the mass gives
- * the line below. The payoff is that a calibration pass (pos-fo1.4) can change
- * `A` freely and the boat still takes ten seconds to get going — the mass moves
- * to keep the felt lag fixed, which is the property §3.5 actually pins.
+ * the line below. The payoff is that the felt lag is anchored to a number
+ * someone can judge by watching, instead of drifting wherever a calibration
+ * pass (pos-fo1.4) happens to leave it.
+ *
+ * **Anchored, not invariant.** Substituting the derived mass back in, the lag
+ * comes out as `timeToTerminal · v_ref / v_terminal`: exactly the quoted ten
+ * seconds for a boat that settles at the reference speed, and scaled by how far
+ * from it the boat actually settles. Halve `A` and, at a given drive, the boat
+ * settles faster and gets there in 6.9 s; double it and it takes 13.8 s. That
+ * is the right direction — a boat that ends up quicker should feel quicker off
+ * the mark — and it is a far tighter leash than leaving the mass alone would
+ * be, but the ten seconds is a calibration anchor rather than a promise.
  *
  * **The wall term is deliberately left out of the mapping.** Right at hull speed
  * the curve is an order of magnitude stiffer, and inverting *that* slope would

@@ -95,25 +95,36 @@ export function step(state: SimState, dt: Seconds): SimState {
  * `a = (F − R(v))/m`, `v += a·dt` — the step uses the resistance the boat feels
  * at the *start* of the interval, which overstates it for a decelerating boat
  * and understates it for an accelerating one. Because §3.5's curve is a sixth
- * power on top of a square, that error grows viciously with speed: past about
- * 40 kt of wind a tenth-of-a-second step rings between two speeds forever, and
- * past 80 kt it diverges to `NaN` — and a `NaN` speed never recovers, since
- * every later step adds to it. Sailing in 80 kt of wind is nobody's lesson, but
- * §5's wind slider has no stated ceiling, and a model that quietly dies past one
- * is a trap for whoever sets that ceiling.
+ * power on top of a square, that error grows viciously with speed: trimmed for
+ * the wind it is in, the boat's speed under a tenth-of-a-second step stops
+ * settling at around 55 kt and alternates between two values forever, and by
+ * 85 kt it diverges to `NaN` — which never recovers, since every later step
+ * adds to it. Sailing in 85 kt of wind is nobody's lesson, but §5's wind slider
+ * has no stated ceiling, and a model that quietly dies past one is a trap for
+ * whoever sets that ceiling.
  *
- * Taking the resistance implicitly instead — linearised about the current
- * speed, which is what the slope is for — removes the failure rather than
- * bounding it. The step can never carry the boat past the speed where the
- * forces balance, at any `dt`, in any wind, so there is nothing to ring about.
- * For a frame-length `dt` the correction is around a percent (`R′·dt/m` ≈ 0.012
- * at hull speed and 60 Hz) and the trajectory is the same one to four figures;
- * what changes is only what happens at the extremes.
+ * Linearising the resistance about the current speed — which is what the slope
+ * is for — makes the step self-limiting: the faster the water would answer, the
+ * smaller the step it takes, so the speed no longer runs away from a curve that
+ * is climbing faster than the step can see. For a frame-length `dt` the
+ * correction is around a percent (`R′·dt/m` ≈ 0.012 at hull speed and 60 Hz)
+ * and the trajectory is the naive one to three figures — 2.1084 against 2.1057
+ * ten seconds into a beam reach. What changes is only the extremes.
  *
- * Two properties worth stating plainly, because {@link settle} leans on both:
- * the update moves the speed toward the balance point and never past it, and
- * its fixed point is exactly `F_drive = R(v)` — independent of `dt`, since the
- * increment vanishes only where the numerator does.
+ * **What it does not do is forbid overshoot.** The step is a damped Newton
+ * step, and because the curve is convex the tangent it follows lies under the
+ * curve, so its target sits a little beyond the true balance point: settling a
+ * 10 kt beam reach from rest passes the mark by half a percent on the fourth
+ * iteration before coming back. What makes that harmless — and what
+ * {@link settle} actually leans on — is that resistance grows faster than
+ * linearly, so a speed past the balance point meets a restoring step larger
+ * than the one that took it there. Overshoots decay instead of feeding
+ * themselves. No wind up to 200 kt produces a lasting oscillation, which is
+ * what `simulation.test.ts` pins.
+ *
+ * The other property {@link settle} leans on is exact: the fixed point is
+ * `F_drive = R(v)`, independent of `dt`, since the increment vanishes only
+ * where the numerator does.
  */
 function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);
@@ -143,37 +154,68 @@ function clampStep(dt: Seconds): Seconds {
 }
 
 /**
- * The step {@link settle} takes — fifty times the longest a frame may be, and
- * deliberately so.
+ * The step {@link settle} takes: a frame, the same as everything else.
  *
- * A long step is exactly what {@link advance} is good at: it cannot overshoot
- * the balance point, and where the resistance dominates the step becomes a
- * Newton step toward it, so the speed converges in tens of iterations instead
- * of thousands. What a long step gives up is the *trajectory* — nothing between
- * the endpoints means anything — and settling has no use for the trajectory.
+ * **It is worth saying why this is not larger.** A long step looks like free
+ * money here — where the resistance dominates the denominator, {@link advance}
+ * becomes a Newton step toward the balance point and lands on it in ten
+ * iterations rather than three hundred. What that reasoning leaves out is the
+ * drive, which is *not* in the linearised denominator and which can fall with
+ * speed far more steeply than the resistance rises: an overeased sail with the
+ * apparent wind collapsing behind it. Then a long step is no longer a step
+ * toward anything, and the iteration can settle into a two-point cycle instead
+ * of a speed.
  *
- * Stepping at frame length instead would be slower and, worse, wrong: the
- * approach is asymptotic, so a per-step change small enough to look settled can
- * still be a long way from the balance point. At five degrees off the wind the
- * boat closes on its speed at 0.023 per second, and a tenth-second step is
- * under a millionth of a metre per second while the speed is still 2% short.
+ * It is not a hypothetical. At a five-second step, a sloop in 10 kt at TWA 105
+ * with the sails eased to 80° alternates between 1.666879 and 1.833610 m/s
+ * forever, 46 N out of balance, and `settle` returned one end of that cycle as
+ * if it were an answer. Cases up to 1146 N out were easy to find. Every step of
+ * two seconds or less converged on every case tried — but "converged on every
+ * case tried" is exactly the reasoning that produced the bug, and a calibration
+ * pass or a steeper sail curve moves the threshold.
+ *
+ * At frame length there is an argument rather than a survey. The step is small
+ * enough to track the underlying equation closely, and that equation is a
+ * one-dimensional flow: speed moves toward the nearest balance point and stops
+ * there, because there is nowhere else for it to go. It cannot cycle, and
+ * neither can a faithful discretisation of it. The cost is iterations, which
+ * are cheap, and the return is that `settle` reports what the running simulator
+ * reaches *because it is the running simulator* — same step, same arithmetic,
+ * no second implementation to disagree with the first.
+ *
+ * Which is also why {@link settle} goes through {@link step} rather than
+ * {@link advance}: raising this constant cannot lengthen the settling step past
+ * a frame, because the clamp that guards the frame loop guards this too.
  */
-const SETTLE_STEP: Seconds = 5;
+const SETTLE_STEP: Seconds = MAX_STEP;
 
 /**
- * Below this much change in a single settle step, the speed has arrived. Tight
- * enough to be machine precision in practice, which a {@link SETTLE_STEP}-sized
- * step reaches because it is not fighting the asymptote.
+ * Below this much change in a single settle step, the speed has arrived.
+ *
+ * The number that matters is not this one but the distance to the balance point
+ * it implies, and the two are related by how fast the boat is closing: distance
+ * ≈ tolerance / (rate · step). At the slowest approach in the model — five
+ * degrees off the wind, where the time constant is 68 seconds — a hundred-
+ * millionth of a metre per second per frame puts the speed within 7e-6 m/s of
+ * the balance point, or a hundred-thousandth of a knot. Everywhere else the
+ * boat closes faster and lands closer still.
+ *
+ * Tightening it costs iterations logarithmically and buys accuracy the same
+ * way, so there is no cliff either side; this is simply well below anything the
+ * simulator can show, with pos-fo1.4's polar targets quoted to a tenth of a knot.
  */
-const SETTLE_TOLERANCE: MetersPerSecond = 1e-9;
+const SETTLE_TOLERANCE: MetersPerSecond = 1e-8;
 
 /**
- * How many steps {@link settle} will take before giving up. Generous: the slow
- * corners — barely out of the no-go zone, or creeping astern under a backed
- * sail — take a couple of hundred, and everything a student will actually look
- * at takes fewer than fifty.
+ * How many frames {@link settle} will run before giving up — half an hour of
+ * simulated sailing.
+ *
+ * Generous against what the regimes actually cost: a couple of hundred frames
+ * for a beam reach or a boat gathering sternway, three hundred at TWA 105, and
+ * some five thousand at five degrees off the wind, which is the slowest corner
+ * that converges at all. See {@link settle} for the ones that do not.
  */
-const SETTLE_LIMIT = 500;
+const SETTLE_LIMIT = 18_000;
 
 /**
  * The same state, with the boat at the speed it would eventually reach on this
@@ -185,10 +227,10 @@ const SETTLE_LIMIT = 500;
  * guaranteed to agree with what the running simulator converges on, since it is
  * the same arithmetic.
  *
- * It runs at {@link SETTLE_STEP} rather than at frame length, which is not a
- * shortcut but the point: the update's fixed point does not depend on the step,
- * so a long step reaches the same speed sooner. Only the endpoint is meaningful
- * — the states in between are iterates, not a trajectory a boat sails through.
+ * It runs {@link step} itself, at frame length, so what it returns is by
+ * construction the speed the running simulator converges on rather than a
+ * second opinion about it. {@link SETTLE_STEP} says why nothing cleverer is
+ * used.
  *
  * Two callers want this. §2.1 opens the boat at the steady speed for its
  * deliberately bad trim — starting from zero would leave the student unable to
@@ -198,12 +240,23 @@ const SETTLE_LIMIT = 500;
  * Returns its best effort if the speed is still moving at {@link SETTLE_LIMIT}
  * rather than throwing or looping forever: a simulator that opens on a slightly
  * wrong speed is a far better failure than one that does not open.
+ *
+ * **Two regimes run out the budget**, and both are the same fact about drag
+ * that goes as `v²`: with no wind to balance against, a moving boat's
+ * deceleration falls off as fast as its speed does, so it approaches rest like
+ * `1/t` and there is no finite time at which it has arrived. A boat coasting in
+ * a flat calm comes back at about 0.03 kt whatever speed it started from — that
+ * figure is the budget running out, not physics — and below roughly a tenth of
+ * a knot of wind the settled speed reads a few percent low for the same reason.
+ * Neither is visible at the scale anything is drawn at, and §2.1's opening state
+ * never asks for either, but a caller reading a speed back out of a calm should
+ * know it is reading a floor rather than an answer.
  */
 export function settle(state: SimState): SimState {
   let settled = state;
 
   for (let iteration = 0; iteration < SETTLE_LIMIT; iteration += 1) {
-    const next = advance(settled, SETTLE_STEP);
+    const next = step(settled, SETTLE_STEP);
     const change = Math.abs(next.motion.speed - settled.motion.speed);
     settled = next;
     if (change < SETTLE_TOLERANCE) break;

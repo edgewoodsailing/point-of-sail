@@ -158,9 +158,11 @@ export const RESISTANCE: {
  * **Expressed as a time, not as a mass.** §3.5 quotes `m_effective` ≈ 880 kg —
  * boat, two crew, and ~15% added mass — but the mass is not what anyone can
  * judge by watching the simulator. The lag is: trim in properly and the speed
- * arrow takes its time. So the knob is the observable, `hull.ts` derives the
- * mass from it, and a calibration pass that changes {@link RESISTANCE.quadratic}
- * keeps the same felt lag instead of silently changing it.
+ * arrow takes its time. So the knob is the observable and `hull.ts` derives the
+ * mass from it, which keeps a calibration pass on {@link RESISTANCE.quadratic}
+ * from moving the lag out from under us. It ties the two together rather than
+ * freezing the lag outright — see `EFFECTIVE_MASS` for how far the anchor
+ * holds.
  */
 export const ACCELERATION: {
   readonly timeToTerminal: Seconds;
