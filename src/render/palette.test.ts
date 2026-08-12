@@ -181,37 +181,31 @@ describe("quality at and past its ends", () => {
 
 describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
   /*
-   * What this block establishes, and what it deliberately does not.
+   * What this block establishes, and why it asserts lightness rather than hue.
    *
-   * §4.4 argues the ramp survives red-green deficiency on the blue-yellow axis
-   * and quotes simulated blue channels of 34 → 58 → 102 → 177 → 215 under both
-   * deuteranopia and protanopia. **Those numbers do not reproduce.** Measured
-   * here with Machado 2009 at severity 1.0 — and Viénot 1999 agrees on the
-   * shape — the anchors give:
+   * §4.4's accessibility claim is that the ramp stays *ordered* for a student
+   * who cannot name its colours. The property that delivers that is simulated
+   * relative luminance: it rises across the whole sweep without a reversal for
+   * all three deficiency types, which is a stronger guarantee than a
+   * blue-yellow one, since that would cover protanopia and deuteranopia only
+   * and this covers tritanopia too. Machado 2009 at severity 1.0 below; Viénot
+   * 1999 agrees on everything asserted here.
+   *
+   * **Blue is deliberately not asserted**, and it would fail if it were. The
+   * quality-¼ anchor sits on the sRGB boundary with a blue channel of 0 while
+   * the red anchor has 23, and every dichromat model preserves the S-cone
+   * signal, so no honest simulation can make that amber bluer than that red:
    *
    *   deuteranopia  10 →   0 →  59 →  86 → 147
    *   protanopia    18 →   0 →  43 →  65 → 134
    *   tritanopia    36 →  85 → 132 → 172 → 213
    *
-   * Neither red-green case is monotonic, and the reason is structural rather
-   * than a matter of which simulation one picks: the quality-¼ anchor sits on
-   * the sRGB boundary with a blue channel of exactly 0, while the red anchor
-   * has 23. Every dichromat model preserves the S-cone signal, so no honest
-   * simulation can make that amber bluer than that red. (Only tritanopia's blue
-   * is monotonic, which is the case §4.4's blue-yellow argument does *not*
-   * cover.)
-   *
-   * What does hold, and what is asserted below, is the property §4.4 explicitly
-   * disclaims: **simulated lightness**. Its own anchors run L 52 → 62 → 72 → 80
-   * → 86, and the simulated relative luminance of the ramp rises without a
-   * single reversal for all three deficiency types across the whole sweep. That
-   * is what a student who cannot name these colours actually reads, so it is
-   * what the ramp has to guarantee, and it is a stronger claim than the one
-   * asked for because it covers tritanopia too.
-   *
-   * Reconciling §4.4's prose with these numbers — or retuning the amber anchor
-   * until the blue claim becomes true — is pos-kxg. Do not "fix" the ramp here
-   * to make a test pass.
+   * An earlier §4.4 claimed a monotonic blue channel across the red-green cases
+   * on figures that do not reproduce. pos-kxg corrected the section, and §4.4
+   * now carries these measurements along with why retuning the amber cannot
+   * rescue the blue claim. Read it before adding a blue assertion here — the
+   * prose was what was wrong, not the ramp, and the ramp is not to be "fixed"
+   * here to make a test pass.
    */
 
   const DEFICIENCIES = ["protanopia", "deuteranopia", "tritanopia"] as const;

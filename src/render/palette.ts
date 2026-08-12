@@ -133,9 +133,11 @@ export function oklchToLinearSrgb(color: Oklch): LinearSrgb {
 /**
  * How far outside `[0, 1]` a channel may stray before the colour counts as out
  * of gamut. Nothing legitimate misses by more than rounding; the anchor that
- * really is outside misses by 5.7e-4, five orders of magnitude clear of this.
- * `palette.test.ts` pins that figure, because it is the margin this tolerance
- * is chosen against and a comment is a poor place to keep a measurement.
+ * really is outside misses by 5.7e-4, nearly six orders of magnitude clear of
+ * this. `palette.test.ts` pins that figure, because it is the margin this
+ * tolerance is chosen against and a comment is a poor place to keep a
+ * measurement — this one had drifted in both directions at once, overstating
+ * the miss as 7e-3 while understating the headroom it leaves.
  */
 const CHANNEL_TOLERANCE = 1e-9;
 
