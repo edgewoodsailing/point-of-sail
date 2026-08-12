@@ -1171,8 +1171,32 @@ one. Several are worth revisiting *after* v1 works.
 **Out for now, plausible later (as toggles):**
 
 - Leeway — the crab angle between heading and track
-- Telltales
+- **Sail telltales** — yarn at the luff, showing whether the flow is attached.
+  Weaker than it first looks: [§4.2](#42-the-traffic-light) already reports trim
+  quality, and it reports it from the *driving force* rather than from a proxy
+  for the driving force. A luff telltale would restate the traffic light, less
+  accurately, in a second visual language. Revisit only if the colour ramp turns
+  out to want corroborating.
 - Heel, which top-down can only hint at symbolically
+
+**Telltales in the rigging are a different instrument, and are planned rather
+than declined** (pos-32n). An earlier draft of this section listed "telltales"
+flat, which collapsed two things that have almost nothing to do with each other.
+Yarn on the port and starboard uppers and on the backstay — which is what the
+school's own boats carry — shows the apparent wind's *direction*, and nothing
+in the drawing shows that today: the wind ring shows the **true** wind, and a
+student reading only that will misjudge every sail on the boat
+([§3.1](#31-apparent-wind)).
+
+It is also the rare addition that costs no scaffolding. There is no label and no
+toggle — it is a physical object on the boat that happens to be an instrument,
+and a student who learns to read it here reads the real one without translation.
+Only the telltale furthest into the wind is drawn, the others hidden, because
+that is the one with clean air and therefore the one to use; showing all three
+would both clutter the drawing and bury the rule. See pos-32n, which is gated on
+pos-aax for the chainplate stations — and which gives that decision an argument
+it did not have, since the uppers and the backstay would then be earning their
+place as anchors rather than as spans.
 
 **Out, by design:**
 
