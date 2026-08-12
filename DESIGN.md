@@ -535,9 +535,9 @@ interval, and against a fourth power on top of a square that error compounds
 badly. Trimmed for the wind it's in, the boat stops settling at around 80 kt — a
 tenth-of-a-second step alternates between two speeds forever — and by 120 kt it
 diverges to `NaN`, permanently, since every later step adds to it. Nobody sails a
-Rhodes 19 in 120 kt, but the wind slider ([§5](#5-direct-manipulation)) is
-scaffolding rather than a limit, and a model that quietly dies past some speed is
-a trap for whoever raises it. (Those thresholds were 55 kt and 85 kt while the
+Rhodes 19 in 120 kt, but the wind slider ([§5](#5-direct-manipulation)) still has
+no stated ceiling, and a model that quietly dies past one is a trap for whoever
+picks it. (Those thresholds were 55 kt and 85 kt while the
 wall was a sixth power; a gentler curve is a gentler thing to linearize.) So the
 step linearizes the resistance about the current speed:
 
@@ -642,10 +642,11 @@ the sloop numbers too and so has to recalibrate against this table.
 
 **This table is one wind speed, and the model knows it.**
 [§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
-[§5](#5-direct-manipulation)'s slider runs to 30, so the three qualitative
-lessons have to survive a range the table says nothing about. They still weaken
-as the breeze fills in, but `pos-lcz` narrowed it to where the same bounds hold
-across the whole opening range:
+[§5](#5-direct-manipulation) gives the wind a slider without saying where it
+stops — today's scaffolding offers 0–30 kt — so the three qualitative lessons
+have to survive a range the table says nothing about. They still weaken as the
+breeze fills in, but `pos-lcz` narrowed it to where the same bounds hold across
+the whole opening range:
 
 ```text
 wind      4     6     8    10    12    14    16    20    30

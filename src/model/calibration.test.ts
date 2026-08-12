@@ -321,9 +321,11 @@ describe("the no-go zone (DESIGN.md §3.6)", () => {
 
 /**
  * Everything above is 10 kt, because that is the only wind §3.6 quotes. §2.1
- * opens the simulator anywhere in **6–14 kt**, though, and §5's slider runs to
- * 30 — so the lessons the table exists to protect have to survive a range the
- * table says nothing about, and it is worth knowing how well.
+ * opens the simulator anywhere in **6–14 kt**, though, and §5 gives the wind a
+ * slider without saying where it stops — the scaffolding in `main.ts` currently
+ * offers 0–30 kt, and that is a placeholder rather than a decision. So the
+ * lessons the table exists to protect have to survive a range the table says
+ * nothing about, and it is worth knowing how well.
  *
  * **These bounds are tight because pos-lcz tightened them, and they cost
  * something.** What they used to say was that the lessons weakened with the
@@ -428,11 +430,11 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
   });
 
   it("stays a boat rather than a machine in a wind nobody would sail in", () => {
-    // Not a calibration claim — §5's slider tops out at 30 kt and the model is
-    // asked for more than that only from the console, so this is the floor
-    // under what happens past the range anyone tuned. The speeds stay finite
-    // and bounded, and the boat never sails dead upwind however hard it blows,
-    // which is the one lesson that must not break at any wind.
+    // Not a calibration claim — §5 does not say where the wind slider stops,
+    // and today's scaffolding offers 30 kt, so this is the floor under what
+    // happens past the range anyone tuned. The speeds stay finite and bounded,
+    // and the boat never sails dead upwind however hard it blows, which is the
+    // one lesson that must not break at any wind.
     //
     // The headroom here shrank with pos-lcz's softer wall: a beam reach in
     // 45 kt now settles at 10.31 kt where it used to reach 8.88. Still a

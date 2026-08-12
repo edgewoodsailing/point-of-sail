@@ -105,10 +105,10 @@ export function step(state: SimState, dt: Seconds): SimState {
  * the wind it is in, the boat's speed under a tenth-of-a-second step stops
  * settling at around 80 kt and alternates between two values forever, and by
  * 120 kt it diverges to `NaN` — which never recovers, since every later step
- * adds to it. Sailing in 120 kt of wind is nobody's lesson, but §5's wind
- * slider is scaffolding rather than a limit and the model is reachable from the
- * console besides, and a model that quietly dies past some speed is a trap for
- * whoever raises the ceiling.
+ * adds to it. Sailing in 120 kt of wind is nobody's lesson, but §5 does not say
+ * where its wind slider stops and the model is reachable from the console
+ * besides, and a model that quietly dies past some speed is a trap for whoever
+ * sets that ceiling.
  *
  * Those two figures were 55 kt and 85 kt before pos-lcz softened the wall
  * exponent from 6 to 4; a gentler curve is a gentler thing to linearise, so the

@@ -293,8 +293,8 @@ describe("step size", () => {
   });
 
   it("holds together in a wind nobody would sail in", () => {
-    // §2.1 randomises 6–14 kt, but §5's wind slider is scaffolding rather than
-    // a limit, and the resistance curve is a fourth power on top of a square:
+    // §2.1 randomises 6–14 kt, but §5 does not say where its wind slider stops,
+    // and the resistance curve is a fourth power on top of a square:
     // taken at the speed the step starts from, it stops settling at around
     // 80 kt of wind and diverges to NaN by 120 — permanently, since every later
     // step adds to a NaN. `advance` takes the resistance implicitly precisely
