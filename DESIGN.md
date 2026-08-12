@@ -1106,11 +1106,12 @@ length  = SPEED_KNEE + H · (1 − e^(−overrun/H))
 
 The reason is not taste, it is that the drawing is finite and the linear law was
 not. `sceneExtent` maps `shortRadius` onto the *shorter* side of any surface, so
-a tip past 6 m is off the screen — not overrunning a reservation, which §4.1
-allows, but leaving the viewBox, which nothing here ever contemplated. The
-linear law crossed 6 m at 7.82 kt, and [§3.5](#35-hull-resistance-and-integration)'s
-softened wall raised what the model can reach to 8.9 kt, putting 0.4 m of arrow
-outside the box on any square-or-portrait viewport.
+a tip past 6 m is off the screen — not overrunning a reservation, which
+[§4.1](#41-whats-drawn) allows, but leaving the viewBox, which nothing here ever
+contemplated. The linear law crossed 6 m at 7.82 kt, and
+[§3.5](#35-hull-resistance-and-integration)'s softened wall raised what the
+model can reach to 8.9 kt, putting 0.4 m of arrow outside the box on any
+square-or-portrait viewport.
 
 Three choices were on the table — clamp, compress, or accept the clip — and the
 bend is placed **at the ring rather than at hull speed** deliberately, which is
@@ -1128,9 +1129,9 @@ is **bounded** at every speed there is, including ones no boat reaches, so no
 future top speed can be a surprise — the wind slider's 30 kt ceiling is
 throwaway scaffolding rather than anything this document commits to, so "nobody
 can get there" is not something to build on. It is **monotone**, so the arrow
-never stops answering
-the question. And it leaves the linear law **tangentially**, at slope 1, so
-there is no corner where it crosses the ring. The honest cost is that above
+never stops answering the question. And it leaves the linear law
+**tangentially**, at slope 1, so there is no corner where it crosses the ring.
+The honest cost is that above
 about 10 kt successive speeds differ by fractions of a pixel: up there it is a
 clamp in all but name, which is the right place to give up, since no law can
 keep resolving speed inside a finite box forever.
