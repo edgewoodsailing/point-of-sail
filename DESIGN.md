@@ -1693,7 +1693,22 @@ TypeScript + Vite, building to static files.
 **This repo is the development and testing harness.** When the simulator reaches
 a deployable state, its build output is added to the `registrar` app
 (`/Volumes/Campfire/Sites/registrar`, Swift 6 / Hummingbird 2) as static assets
-with a small router entry. Nothing else serves it.
+with a small router entry. Nothing else serves it **in production**.
+
+There is one development-time exception, and it is deliberately not a second
+production target: a **GitHub Pages preview** of `main`
+(`.github/workflows/pages.yml`, pos-770), so instructors can try the simulator
+and give feedback while it is being built. It is temporary and should be retired
+when the registrar deploy lands. It does not weaken anything below — the
+registrar remains the only thing that serves this to students.
+
+Worth noting because it is the same trap twice with different answers: a Pages
+project site is served from `https://<org>.github.io/point-of-sail/`, so it needs
+`base: '/point-of-sail/'`, which is neither the default nor what the registrar
+wants. The preview therefore passes `--base` on Vite's command line
+(`npm run build:pages`) rather than setting it in `vite.config.ts`. The config
+keeps its default, and the base-vs-route decision below stays open for whoever
+takes pos-740.5.
 
 Although the ESS site is mid-migration from Drupal 6, that never becomes this
 project's problem: both live behind the same domain, with Nginx ingress routing

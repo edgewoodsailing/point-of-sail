@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --base=/point-of-sail/",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "stylelint \"src/**/*.css\" && tsc --noEmit"
