@@ -239,7 +239,10 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     const surfaceShort = Math.min(width, height - stripPx);
     const vmin = Math.min(width, height);
     const { minPx, vminPercent, maxPx } = SPEED_STROKE;
-    const strokePx = Math.min(maxPx, Math.max(minPx, (vminPercent * vmin) / 100));
+    // `clamp(MIN, VAL, MAX)` is `max(MIN, min(VAL, MAX))` — MIN wins outright if
+    // someone ever writes one above MAX. Nesting it the other way round would
+    // agree on every sane declaration and quietly disagree on that one.
+    const strokePx = Math.max(minPx, Math.min((vminPercent * vmin) / 100, maxPx));
     return (strokePx / 2) * (SHORT_SPAN / surfaceShort);
   };
 
