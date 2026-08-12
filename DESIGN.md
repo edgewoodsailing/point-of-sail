@@ -834,6 +834,19 @@ the boat stops accelerating. The closest useful angle stays inside 40–50° at
 every wind from 4 kt to 45 — the same band the 10 kt test pins — where before
 `pos-lcz` it ran to 39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
 
+**Why the angle row went flat is worth spelling out, because "the boat is
+slower so the wall bites less" is the obvious explanation and it is not the
+one.** [§3.5](#35-hull-resistance-and-integration) says the keel's stall ceiling
+is what sets where the no-go zone ends, and that ceiling is a *ratio* — the
+largest fraction of the side force the keel can charge as drag. A ratio is
+invariant under scaling the side force, so depowering cannot move it: measured,
+the keel runs at 0.214–0.220 of its ceiling close hauled at every wind from
+10 kt to 30, where before it only did so at the wind it was calibrated in. Hold
+the boat's speed still and scale the force, and the upwind end of the polar
+stops moving because the constant that governs it has nothing left to respond
+to. That is the mechanism behind the 41–42° row above, and it is the reason
+depowering fixed the *pointing angle* rather than merely capping the speed.
+
 **The run/beam row still drifts, and it is worth being clear that depowering was
 never going to stop it.** A uniform factor scales a run and a beam reach by the
 same number, so it cannot move their ratio at any one wind; what moves the ratio
