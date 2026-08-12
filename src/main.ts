@@ -1,6 +1,6 @@
 import "./shell.css";
 
-import { SWING_LIMIT } from "./model/boat.ts";
+import { SWING_LIMIT, clampTrim } from "./model/boat.ts";
 import { rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle } from "./model/simulation.ts";
@@ -10,6 +10,7 @@ import {
   degreesToRadians,
   knotsToMetersPerSecond,
   metersPerSecondToKnots,
+  normalizeUnsigned,
   radiansToDegrees,
   vectorFromAngle,
 } from "./model/units.ts";
@@ -158,7 +159,21 @@ function commit(next: SimState): SimState {
  * no animation loop, which this bead is explicitly not about.
  */
 function apply(patch: Partial<SimState>): SimState {
-  return commit(settle({ ...state, ...patch }));
+  const next = { ...state, ...patch };
+  // §5: *every* site that sets a sail angle routes through the clamp. The
+  // console is such a site — `pos.trim({ mainAngle: pos.deg(150) })` would
+  // otherwise draw a boom through the shrouds and hand `settle` a rig the boat
+  // cannot hold. `pos.force` stays the way past this, which is its whole job.
+  return commit(
+    settle({
+      ...next,
+      trim: {
+        ...next.trim,
+        mainAngle: clampTrim(next.trim.mainAngle),
+        jibAngle: clampTrim(next.trim.jibAngle),
+      },
+    }),
+  );
 }
 
 /**
@@ -261,11 +276,16 @@ if (controls !== null) {
 
   const trimLimit = Math.round(radiansToDegrees(SWING_LIMIT));
 
+  // Bearings are read back through `normalizeUnsigned` so they land inside the
+  // slider's own 0–360 domain. Without it a bearing of −45° (which the state is
+  // perfectly happy to hold, and `pos.set` will hand it) clamps to 0 in the
+  // input while the state says 315°, and the next drag jumps — the exact thing
+  // the follower above exists to prevent.
   slider(
     "Wind from",
     0,
     360,
-    (of) => radiansToDegrees(of.wind.from),
+    (of) => radiansToDegrees(normalizeUnsigned(of.wind.from)),
     (degrees) => apply({ wind: { ...state.wind, from: degreesToRadians(degrees) } }),
   );
 
@@ -281,11 +301,15 @@ if (controls !== null) {
     "Heading",
     0,
     360,
-    (of) => radiansToDegrees(of.motion.heading),
+    (of) => radiansToDegrees(normalizeUnsigned(of.motion.heading)),
     (degrees) => apply({ motion: { ...state.motion, heading: degreesToRadians(degrees) } }),
   );
 
-  readout("Boat kt", -3, 7, () => metersPerSecondToKnots(state.motion.speed));
+  // Wide enough for what the strip can actually reach: swept over the sliders'
+  // own domains, `settle` returns up to ~8 kt in 30 kt of wind and down to
+  // ~−7 kt running astern. A narrower bar pegs and silently stops tracking,
+  // which is worse than no bar.
+  readout("Boat kt", -8, 9, () => metersPerSecondToKnots(state.motion.speed));
 
   slider(
     "Main",

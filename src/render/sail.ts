@@ -155,10 +155,20 @@ export const SAIL_SAMPLES = 32;
  * both. Solved rather than typed in, so moving a draft position moves the shape
  * instead of quietly moving the depth as well.
  */
-function handleWeights(position: number): { luff: number; leech: number } {
+interface HandleWeights {
+  readonly luff: number;
+  readonly leech: number;
+}
+
+function handleWeights(position: number): HandleWeights {
   const k = (2 * position - 1) / (position * (2 - 3 * position));
   const peak = 3 * position * (1 - position) * (1 + k * position);
   return { luff: 1 / peak, leech: (1 + k) / peak };
+}
+
+/** The profile once its weights are already solved. */
+function profileAt(weights: HandleWeights, s: number): number {
+  return 3 * s * (1 - s) * ((1 - s) * weights.luff + s * weights.leech);
 }
 
 /** The straight line a sail's camber is measured from, and how deep it bulges. */
@@ -187,9 +197,7 @@ export interface SailShape {
  * 0 at the clew, and strictly positive between.
  */
 export function camberProfile(chordFraction: number, draftPosition: number): number {
-  const { luff, leech } = handleWeights(draftPosition);
-  const s = chordFraction;
-  return 3 * s * (1 - s) * ((1 - s) * luff + s * leech);
+  return profileAt(handleWeights(draftPosition), chordFraction);
 }
 
 /**
@@ -354,12 +362,32 @@ export function sailBezier(shape: SailShape): CubicSegment {
   };
 }
 
+/**
+ * One point, from a frame and weights the caller already has.
+ *
+ * Both are pure functions of the `SailShape`, and neither changes across a
+ * sweep of `s` — so the loop in {@link sailPoints} solves them once rather than
+ * paying for a `hypot`, a divide and the handle quadratic at every sample. That
+ * costs nothing today, because an undeformed sail emits the bare Bézier and
+ * never samples at all; it is worth doing now because the moment pos-dmg.2
+ * passes a deformation this becomes 31 redundant solves a frame, per sail, and
+ * the seam it would be paid on is the one this bead exists to leave clean.
+ */
+function pointAt(
+  shape: SailShape,
+  chord: { along: Vec2; normal: Vec2 },
+  weights: HandleWeights,
+  s: number,
+  deform?: SailDeformation,
+): Vec2 {
+  const camber = shape.depth * profileAt(weights, s);
+  const offset = deform === undefined ? camber : deform(s, camber);
+  return add(add(shape.tack, scale(chord.along, s)), scale(chord.normal, offset));
+}
+
 /** The drawn point at a chord fraction, with any deformation applied. */
 export function sailPoint(shape: SailShape, s: number, deform?: SailDeformation): Vec2 {
-  const { along, normal } = frame(shape);
-  const camber = shape.depth * camberProfile(s, shape.draftPosition);
-  const offset = deform === undefined ? camber : deform(s, camber);
-  return add(add(shape.tack, scale(along, s)), scale(normal, offset));
+  return pointAt(shape, frame(shape), handleWeights(shape.draftPosition), s, deform);
 }
 
 /**
@@ -367,9 +395,12 @@ export function sailPoint(shape: SailShape, s: number, deform?: SailDeformation)
  * stations.
  */
 export function sailPoints(shape: SailShape, deform?: SailDeformation): Vec2[] {
+  const chord = frame(shape);
+  const weights = handleWeights(shape.draftPosition);
+
   const points: Vec2[] = [shape.tack];
   for (let i = 1; i < SAIL_SAMPLES; i += 1) {
-    points.push(sailPoint(shape, i / SAIL_SAMPLES, deform));
+    points.push(pointAt(shape, chord, weights, i / SAIL_SAMPLES, deform));
   }
   points.push(shape.clew);
   return points;
