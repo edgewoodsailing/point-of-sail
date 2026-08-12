@@ -74,12 +74,12 @@ export const SCENE = {
    * LOA, exactly the same astern — so sternway is no longer the cramped case it
    * was when the boat turned about the mast.
    *
-   * A reservation, not a clamp. The speed indicator is not directly
-   * manipulable, so pos-qmk.3 may legitimately draw past this and let it pass
-   * behind the ring; overlapping the ring costs nothing as long as it cannot
-   * intercept a drag meant for it. That also leaves room for the indicator to
-   * become a wake at the stern rather than an arrow off the bow (§4.3), which
-   * the symmetric budget now supports either way.
+   * A reservation, not a clamp, and `render/speed.ts` took it up on exactly
+   * that: the arrow's tip lands on this radius at hull speed, and above hull
+   * speed it keeps growing and crosses the ring rather than pretending 5.6 kt
+   * and 8 kt are the same length. Overlapping the ring costs nothing as long as
+   * the arrow cannot intercept a drag meant for it — which is what
+   * `pointer-events: none` on `.pos-speed` guarantees, not the paint order.
    */
   contentRadius: 5.2,
 
@@ -206,9 +206,24 @@ export interface Layer {
  * hull paints over the boom on sternway.
  */
 export interface SceneLayers {
-  /** World frame. The perimeter wind ring (pos-qmk.3). */
+  /**
+   * World frame, and **above** the boat group. The perimeter wind ring.
+   *
+   * Painting it last costs nothing — the ring sits at 5.65 m and the boat sweeps
+   * 3.59 m, so the two cannot overlap — and it buys the one case that does
+   * overlap: above hull speed the speed arrow runs past `contentRadius` and
+   * crosses the ring, and it should pass behind rather than through it.
+   *
+   * That is the aesthetic half. The structural half is `pointer-events: none` on
+   * `.pos-speed` in `scene.css`, which is what actually stops the overrunning
+   * arrow intercepting a drag pos-bwd.2 means for the ring. Do not mistake the
+   * ordering for the guard.
+   */
   readonly wind: SVGGElement;
-  /** Boat frame, **below** the hull, so a stern arrow never paints over the boom. */
+  /**
+   * Boat frame, **below** the hull, so a stern arrow never paints over the boom
+   * and the arrow emerges from the stem rather than lying across the deck.
+   */
   readonly speed: SVGGElement;
   /** Boat frame, **above** the hull, so the boom reads as lying on the deck. */
   readonly sails: SVGGElement;
@@ -251,8 +266,10 @@ export interface Scene {
  * onto.
  *
  * Group order is document order is paint order, and it is deliberate: the speed
- * arrow sits below the hull so a stern arrow can never paint over the boom, and
- * the sails sit above it so the boom reads as lying on the deck.
+ * arrow sits below the hull so a stern arrow can never paint over the boom, the
+ * sails sit above it so the boom reads as lying on the deck, and the wind ring
+ * sits above the whole boat so the speed arrow passes behind it when it overruns
+ * `contentRadius`. See {@link SceneLayers}.
  */
 export function createScene(host: HTMLElement): Scene {
   const element = svgElement("svg", { class: "pos-scene" });
@@ -269,7 +286,7 @@ export function createScene(host: HTMLElement): Scene {
   };
 
   boat.append(layers.speed, createHullLayer(), layers.sails);
-  world.append(layers.wind, boat, layers.apparent);
+  world.append(boat, layers.wind, layers.apparent);
   element.append(title, world);
   host.append(element);
 

@@ -4,25 +4,23 @@ import { SWING_LIMIT, clampTrim } from "./model/boat.ts";
 import { rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle } from "./model/simulation.ts";
-import type { Degrees, Meters, Newtons, Radians, Vec2 } from "./model/units.ts";
+import type { Degrees, Meters, Newtons, Radians } from "./model/units.ts";
 import {
-  add,
   degreesToRadians,
   knotsToMetersPerSecond,
   metersPerSecondToKnots,
   normalizeUnsigned,
   radiansToDegrees,
-  vectorFromAngle,
 } from "./model/units.ts";
 import { apparentWind, trueWindAngle } from "./model/wind.ts";
 import { createSailLayer, rigShapes } from "./render/sail.ts";
-import { SCENE, createScene } from "./render/scene.ts";
-import { formatNumber, svgElement } from "./render/svg.ts";
+import { createScene } from "./render/scene.ts";
+import { createSpeedLayer } from "./render/speed.ts";
+import { createWindLayer } from "./render/wind.ts";
 
-// Shell bootstrap. Later beads mount the remaining layers through the scene:
-//   render/wind.ts onto scene.layers.wind, render/speed.ts onto
-//   scene.layers.speed, input/pointer.ts onto `surface`, and the settings
-//   controls onto .controls. (DESIGN.md §6)
+// Shell bootstrap. Every drawn layer mounts through the scene, onto the named
+// group it belongs to; what is still to come is input/pointer.ts onto `surface`
+// and the settings controls onto .controls. (DESIGN.md §6)
 const surface = document.querySelector<HTMLElement>(".pos-sim .surface");
 if (surface === null) {
   throw new Error("Page shell is missing the drawing surface (.pos-sim .surface)");
@@ -63,60 +61,22 @@ let state: SimState = settle({
 });
 
 const scene = createScene(surface);
+
+const wind = createWindLayer();
+scene.layers.wind.append(wind.element);
+
+const speed = createSpeedLayer();
+scene.layers.speed.append(speed.element);
+
 const sails = createSailLayer();
 scene.layers.sails.append(sails.element);
-
-// --- Scaffolding: the wind arrow -------------------------------------------
-//
-// A bare arrow at the perimeter, flying with the true wind, so the drawing can
-// be read against a known wind instead of an inferred one. DELETE THIS when
-// pos-qmk.3 lands the real wind ring (§4.1), which owns both this space and the
-// gesture that will set the wind.
-//
-// It lives in the **world** frame — `scene.layers.wind`, which carries no
-// transform — because a wind bearing is absolute. That is the whole point of
-// having it here: swinging the heading moves the boat under a wind that stays
-// put, which is the relationship the sails are supposed to be answering.
-//
-// The head is drawn as path geometry in metres rather than as a `marker`.
-// Markers are sized in stroke widths by default, and these strokes are
-// `non-scaling-stroke` (§4.5), so a marker would size itself off a length that
-// has been taken out of user space — which draws an arrowhead the size of the
-// boat.
-
-/** Where the tail sits: on the wind ring's centreline, so the arrow points in. */
-const ARROW_TAIL: Meters = SCENE.windRingRadius;
-const ARROW_LENGTH: Meters = 1.4;
-const ARROW_BARB: Meters = 0.4;
-const ARROW_SPREAD: Radians = degreesToRadians(28);
-
-const windArrow = svgElement("path", {
-  class: "wind-scaffold",
-  "vector-effect": "non-scaling-stroke",
-});
-scene.layers.wind.append(windArrow);
-
-function windArrowPath(from: Radians): string {
-  const point = (v: Vec2): string => `${formatNumber(v.x)} ${formatNumber(v.y)}`;
-  // `wind.from` is the direction it blows *from*, so the tail goes there and the
-  // arrow flies inward along `from + 180°` — the way the wind is actually going.
-  const tail = vectorFromAngle(from, ARROW_TAIL);
-  const tip = vectorFromAngle(from, ARROW_TAIL - ARROW_LENGTH);
-  // Barbs splay back upwind from the tip, which is bearing `from` again.
-  const barb = (sign: number): Vec2 =>
-    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, ARROW_BARB));
-
-  return [
-    `M ${point(tail)} L ${point(tip)}`,
-    `M ${point(barb(-1))} L ${point(tip)} L ${point(barb(1))}`,
-  ].join(" ");
-}
 
 /** Everything that reads state, in one place, so no control can forget a layer. */
 function draw(next: SimState): void {
   scene.render(next);
+  wind.update?.(next);
+  speed.update?.(next);
   sails.update?.(next);
-  windArrow.setAttribute("d", windArrowPath(next.wind.from));
 }
 
 draw(state);

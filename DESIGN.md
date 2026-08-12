@@ -679,9 +679,12 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Jib** — no boom, so just a curve from its tack to the clew. Absent entirely
   when `jibSet` is false.
 - **Standing rigging** — **not drawn.** See below.
-- **Wind arrow** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)).
-- **Speed arrow** — off the bow, or off the stern when speed is negative. Length
-  grows with speed; colored per [§4.3](#43-the-speed-arrow).
+- **Wind ring** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)):
+  a thin full circle marking the whole draggable track, an arrow at the wind
+  bearing with its tail on the ring and its head flying inward the way the wind
+  blows, and seven short graduations every 45°.
+- **Speed arrow** — a little clear of the bow, or of the stern when speed is
+  negative. Length grows with speed; colored per [§4.3](#43-the-speed-arrow).
 - **Apparent wind overlay** — only when toggled on.
 
 Camber depth is a function of trim and apparent wind pressure. When the luff
@@ -868,12 +871,20 @@ bands nest strictly, and a test says so.
 midpoint of LOA, exactly the same astern — so sternway is no longer the cramped
 case it was when the boat turned about the mast.
 
-It is a **reservation, not a clamp.** The speed indicator is not directly
-manipulable, so it may legitimately be drawn past this and allowed to pass
-behind the wind ring; overlapping the ring costs nothing so long as it cannot
-intercept a drag meant for the ring. That also keeps the door open to the
-indicator becoming a wake at the stern rather than an arrow off the bow
-([§4.3](#43-the-speed-arrow)) — which the symmetric budget supports either way.
+It is a **reservation, not a clamp**, and the speed arrow takes it up on exactly
+that. The arrow is calibrated so that its tip lands on `contentRadius` at hull
+speed, and above hull speed it keeps growing and crosses the ring rather than
+pretending 5.6 kt and 8 kt are the same length
+([§4.3](#43-the-speed-arrow)).
+
+Two consequences follow, and they are different in kind. The wind ring is
+painted **above** the boat group so the overrunning arrow passes behind it
+rather than through it — that is the visible half, and it costs nothing, since a
+ring at 5.65 m cannot overlap a boat that sweeps 3.59 m. The load-bearing half
+is that `.pos-speed` carries `pointer-events: none`: the speed indicator is a
+readout and never a control, so making it transparent to the pointer is what
+actually guarantees the overlap can never intercept a drag meant for the ring
+([§5](#5-direct-manipulation)). Paint order is not a substitute for that.
 
 ### 4.2 The traffic light
 
@@ -905,6 +916,34 @@ undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
 Length encodes absolute speed. Color compares current speed against what this
 boat would be doing, on this heading in this wind, if both sails were trimmed
 perfectly.
+
+The length law is linear and unclamped:
+
+```text
+length = SPEED_REACH · |speed| / HULL.hullSpeed
+```
+
+`SPEED_REACH` is derived rather than declared — it is what is left of
+`contentRadius` once the bow and the gap below are accounted for, ≈ 2.08 m, and
+the same figure astern because the pivot is amidships. So a full-length arrow
+means *hull speed*, which is a thing worth recognising, rather than merely
+meaning "the biggest arrow". Above hull speed the arrow overruns and crosses the
+wind ring; see [§4.1](#41-whats-drawn) for why that is allowed and what makes it
+safe.
+
+The arrow starts **0.2 m clear of the bow**, not at it. Anchored to the stem it
+reads as a bowsprit — part of the boat rather than a thing said about it — and
+at the stern, where the layer paints below the hull, it would appear to slide
+out from under the transom. That clear water comes out of the *arrow's* budget
+rather than being added on top of the band: the gap is a drawing decision and
+`contentRadius` is a reservation, so taking it from the reach is what keeps the
+tip landing exactly on the band at hull speed.
+
+The head is a constant size in metres down to about 2.2 kt, below which it
+shrinks with the shaft, so **length** stays the thing that encodes speed rather
+than the whole shape scaling together. Below about 0.14 kt there is no arrow at
+all: the boat is not under way, and a round-capped stub off the stem that never
+went away would stop reading as motion.
 
 That reference comes from a **ghost simulation** — a second, invisible
 integrator running the same model with optimal trim, in parallel. It's cheap and
@@ -1050,7 +1089,7 @@ state exists**, touch targets must be large, and targets will overlap.
 | Element | Gesture | Notes |
 | --- | --- | --- |
 | Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
-| Wind direction | Drag the perimeter arrow | Large target, never overlaps the boat |
+| Wind direction | Drag anywhere on the perimeter ring | Large target, never overlaps the boat |
 | Wind speed | Slider | Separate control; easier than dragging arrow length on a phone |
 | Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
 | Jib | Drag the clew | Same; absent when the jib is struck |
@@ -1070,7 +1109,23 @@ Putting the **wind arrow on the perimeter** — a ring around the whole scene
 rather than a vector near the boat — solves the worst of the overlap problem by
 construction. It gives the wind an enormous, always-reachable target that can
 never collide with the sails, and it reinforces the idea that the wind belongs
-to the world while trim belongs to the boat.
+to the world while trim belongs to the boat. The circle is drawn in full rather
+than only under the arrow, because the whole circle is what you may drag: a
+track you can see is the difference between an affordance and a secret.
+
+The ring is **graduated with the points of sail**. Seven short marks every 45°,
+anchored to the wind's own bearing rather than to the compass, so they turn with
+the wind instead of with the boat: the arrow's bearing is head to wind, ±45° is
+close-hauled, ±90° a beam reach, ±135° a broad reach, and 180° a run. Read where
+the bow falls against them and you have named the point of sail — which is a
+thing a student has to learn to do anyway, and this is the cheapest place to
+practise it. The eighth mark is not drawn, because the arrow already stands on
+it.
+
+That the graduations move with the wind and not with the boat is the whole
+lesson §1 is after, drawn rather than said: turn the boat and the marks hold
+still while the bow sweeps across them; shift the wind and the marks sweep while
+the bow holds still. Same number changing, two different events.
 
 ### Grab points: the clews
 
