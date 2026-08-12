@@ -201,9 +201,31 @@ with `V_boat` along the heading (no leeway — see [§7](#7-deliberately-out-of-
 From this we get apparent wind speed and **apparent wind angle (AWA)**, measured
 off the bow: 0 = head to wind, ±180 = dead downwind, sign giving the tack.
 
-All sail forces are computed from apparent wind, never true wind. This is what
-makes the model teach the right thing: it's why close-hauled trim is tighter
-than students expect, and why the apparent wind moves forward as you speed up.
+All **aerodynamic** sail forces are computed from apparent wind, never true
+wind. This is what makes the model teach the right thing: it's why close-hauled
+trim is tighter than students expect, and why the apparent wind moves forward as
+you speed up.
+
+**One true-wind quantity sits in the force path, and it is named here rather
+than left to be discovered.** It is
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering
+factor, and it is not a coefficient — it is a statement of how much sail is up.
+Every *coefficient* in the model still comes from the apparent wind: the angle
+of attack each sail sees, the lift and drag it makes at that angle, and the
+direction those act in. What the true wind decides is only how much of the rig
+the crew are still carrying, which is a decision made for the wind of the day
+and not for the flow over the cloth at this instant. So the rule above is intact
+in the part that teaches: a student who bears away and feels the sails need
+easing is being taught by the apparent wind, at every wind speed, exactly as
+before.
+
+The exception is stated in the rule rather than left implicit in the code. It
+would have been possible to leave this sentence untouched — `simulation.ts`
+applies the factor outside the force assembly, so "sail forces" narrowly
+construed never touch the true wind — but an exception that survives only
+because of *where* a factor happens to be applied is the kind of thing that
+quietly stops being true. §3.2 records why that seam was chosen; this paragraph
+records that the seam is not what makes the claim honest.
 
 When the toggle is on we draw both vectors from a common origin with the
 connecting boat-speed vector, so the triangle itself is visible — that triangle
@@ -286,11 +308,14 @@ k(W) = (1 + r^16)^(−1/16)        r = (W_true / 13 kt)²
 
 which is `min(1, q_full/q)` with the corner rounded off: full sail up to 13 kt,
 and above it `k` falls as `1/q`, so **the force stops growing and holds at what
-it reached there**. [§7](#7-deliberately-out-of-scope) declines to model heel,
-so this is heel's *effect* standing in for heel, exactly as
-[§3.5](#35-hull-resistance-and-integration)'s `sideForce` is four times a bare
-keel's induced drag because it stands in for heel, leeway and rudder angle
-together.
+it reached there**. [§7](#7-deliberately-out-of-scope) excludes heel from the
+*drawing* — top-down can only hint at it — and says in the same breath that it
+is paid for without being shown. This is one of the two ways it is paid for: the
+force heel costs the rig, charged without an angle ever being computed, exactly
+as [§3.5](#35-hull-resistance-and-integration)'s `sideForce` is four times a
+bare keel's induced drag because it carries the *drag* heel produces, along with
+leeway and rudder angle. Nothing here forbids computing a heel angle; what the
+subsection below establishes is that doing so would make a worse boat.
 
 **Why a term of this shape was the only one that could work.** Every force in
 the model is homogeneous of degree two in speed, so
@@ -615,6 +640,17 @@ no longer what the model delivers: at exponent 4 the boat now reaches 6.34 kt
 and 6.36 kt in 20 and 30 kt of wind, not 7.59 and 8.88. The comparison the table
 exists to make — that sharpening the wall buys a slower reach at the price of
 the pointing angle — is unaffected, since every row moves together.
+
+**Depowering does not make room to take the exponent back up, and that was
+tried.** The obvious hope is that once the cap holds the top of the wind range,
+the wall is free to be sharpened again to buy back the broad reach
+[§3.6](#36-calibration-targets) calls 9% light. It is not. Measured at a sixth
+power with `B` re-solved to 22.5, and with depowering on at every cap from 12 to
+16 kt, the run/beam ratio at 14 kt lands at 0.765–0.780 against a bound of 0.75
+and the VMG peak falls to 39°. The reason is structural: those two failures live
+at **14 kt**, which is where the cap is only just beginning to bite, so no
+setting of it can reach back far enough to help without breaking the 10 kt table
+on the way. Four stays.
 
 **Speed is integrated, not solved.** Each frame:
 
@@ -1702,15 +1738,17 @@ one. Several are worth revisiting *after* v1 works.
   accurately, in a second visual language. Revisit only if the colour ramp turns
   out to want corroborating.
 - Heel, which top-down can only hint at symbolically — and which, like leeway,
-  is paid for without being shown. It is paid for *twice*, and the second one is
-  worth knowing about: `RESISTANCE.sideForce` charges the drag heel produces,
-  and [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
-  depowering is the force heel *costs the rig*, which is a much larger effect
-  and the one that decides how fast the boat goes in a breeze. Neither models
-  heel; both are its consequences, applied without an angle ever being computed.
-  Note that the second is deliberately **not** driven by the heeling force,
-  which would be the obvious way to do it — §3.2 has the measurement showing
-  why that version makes a worse boat
+  is paid for without being shown. **What is out is drawing it, not modelling
+  it**, and the distinction is worth spelling out because this bullet has
+  already been read the stronger way once. Heel is paid for *twice*:
+  `RESISTANCE.sideForce` carries the drag it produces, and
+  [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering is
+  the force it costs the rig, which is much the larger effect and the one that
+  decides how fast the boat goes in a breeze. Both are its consequences, charged
+  without an angle ever being computed — which is an outcome of measurement
+  rather than of this section: §3.2 records that driving the depowering from an
+  actual heeling moment was tried and makes a worse boat, and had it been the
+  better boat nothing here would have forbidden it
 
 **Telltales in the rigging are a different instrument, and are planned rather
 than declined** (pos-32n). An earlier draft of this section listed "telltales"

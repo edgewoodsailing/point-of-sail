@@ -271,6 +271,33 @@ export const RESISTANCE: {
    * course, which is drag with a keel's shape and none of its span. Charging
    * them on the same number is the fudge. Pretending the keel alone accounted
    * for the polar would be the dishonest version.
+   *
+   * **{@link DEPOWERING} does not double-charge heel against this, and it was
+   * worth checking, because this constant absorbs heel and that one is about
+   * heel too.** They are two different consequences of the same cause: this one
+   * carries the *drag* heel produces, and depowering carries the *force* heel
+   * costs the rig. Charging both is counting two effects, not one effect twice.
+   *
+   * The self-consistency check is that `simulation.ts` charges the keel on the
+   * **depowered** side force, so a rig that has been eased and feathered is
+   * charged for the heel it actually has rather than the heel it would have had
+   * at full power. Measured close hauled: at 30 kt the keel is charged 168 N on
+   * a 768 N side force, where the undepowered rig would have pulled 4091 N.
+   * Charging the full-power figure would have been the real double count.
+   *
+   * **And it needs no re-solving**, which is not luck but the knee's doing: this
+   * constant is calibrated against the 10 kt polar, and depowering is 1.000 at
+   * 10 kt to five decimal places, so the calibration it was solved against is
+   * untouched. `calibration.test.ts` asserts that directly.
+   *
+   * One thing did improve, and it explains why depowering fixed the pointing
+   * angle rather than merely capping the speed. {@link RESISTANCE.keelStall} is
+   * a *ratio*, so it is invariant under scaling the side force: the keel still
+   * runs at 0.214–0.220 of its ceiling close hauled at every wind from 10 kt to
+   * 30, exactly as it did at 10 kt alone before. Since that ceiling is what sets
+   * where the no-go zone ends, holding the boat's speed while scaling the force
+   * holds the upwind end of the polar still — which is why the closest useful
+   * angle now stays at 41–42° instead of collapsing to 33°.
    */
   sideForce: 0.0036,
 
@@ -312,10 +339,17 @@ export const RESISTANCE: {
  * **What it stands for.** A real Rhodes 19 in a breeze stops collecting force:
  * it heels, so the rig leans out of the horizontal and the sail plan presents
  * less of itself square to the wind; the sail twists off at the head; and the
- * crew ease, feather and flatten. §7 declines to model heel, so this is heel's
- * *effect* standing in for heel, in the same spirit as
- * {@link RESISTANCE.sideForce} being four times a bare keel's induced drag
- * because it stands in for heel, leeway and rudder angle together.
+ * crew ease, feather and flatten. §7 excludes heel from the *drawing* — top-down
+ * can only hint at it — and says in the same breath that it is paid for without
+ * being shown. This is one of the two ways it is paid for, the force heel costs
+ * the rig, in the same spirit as {@link RESISTANCE.sideForce} being four times
+ * a bare keel's induced drag because it carries the *drag* heel produces, along
+ * with leeway and rudder angle.
+ *
+ * **Nothing forbids computing an actual heel angle** — §7's exclusion is about
+ * what is drawn, not what is modelled, and reading it the other way is an easy
+ * mistake to make. What rules it out here is a measurement rather than a
+ * policy: see the third paragraph below.
  *
  * **Why the model needed a term of this shape and could not tune its way
  * there.** Every force in the model is homogeneous of degree two in speed, so
