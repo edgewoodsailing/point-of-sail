@@ -14,7 +14,7 @@ import {
   keelInducedDrag,
 } from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
-import { rigForce } from "./sail.ts";
+import { depoweringFactor, rigForce } from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
 import type { BoatMotion, TrueWind } from "./wind.ts";
 import { apparentWind } from "./wind.ts";
@@ -102,19 +102,36 @@ export function step(state: SimState, dt: Seconds): SimState {
  * at the *start* of the interval, which overstates it for a decelerating boat
  * and understates it for an accelerating one. Because §3.5's curve is a fourth
  * power on top of a square, that error grows viciously with speed: trimmed for
- * the wind it is in, the boat's speed under a tenth-of-a-second step stops
- * settling at around 80 kt and alternates between two values forever, and by
- * 120 kt it diverges to `NaN` — which never recovers, since every later step
- * adds to it. Sailing in 120 kt of wind is nobody's lesson, but §5 does not say
- * where its wind slider stops and the model is reachable from the console
- * besides, and a model that quietly dies past some speed is a trap for whoever
- * sets that ceiling.
+ * the wind it was in, the boat's speed under a tenth-of-a-second step stopped
+ * settling at around 80 kt and alternated between two values forever, and by
+ * 120 kt it diverged to `NaN` — which never recovers, since every later step
+ * adds to it. Those two figures were 55 kt and 85 kt before pos-lcz softened
+ * the wall exponent from 6 to 4; a gentler curve is a gentler thing to
+ * linearise.
  *
- * Those two figures were 55 kt and 85 kt before pos-lcz softened the wall
- * exponent from 6 to 4; a gentler curve is a gentler thing to linearise, so the
- * naive form survives further than it used to. They are re-measured rather than
- * inherited, because a stale threshold in this docblock would misdescribe
- * exactly the failure the implicit step exists to prevent.
+ * **Every one of those numbers is now historical, and saying so is the point of
+ * re-measuring them.** §3.2's depowering caps the drive at its 13 kt value, so
+ * the boat stops accelerating with the wind, and there is no wind at which the
+ * naive form misbehaves any more: measured at 55, 60, 80, 100, 120, 200, 500
+ * and 1000 kt, the naive step and this one converge to the same speed with the
+ * tails identical to six decimals and no overshoot between them.
+ *
+ * Two settled speeds get quoted for this and they are different boats, so they
+ * are labelled here rather than left to be conflated. **Re-trimmed for the gale
+ * it is in**, the boat settles 3.2810–3.2929 m/s (6.38–6.40 kt) across 55 kt to
+ * 1000, and from rest in 200 kt the first step is 0.0635 m/s. **Carrying a trim
+ * found in 10 kt**, which is what `simulation.test.ts` actually builds, it
+ * settles 2.2612–2.3141 m/s (4.40–4.50 kt) and the first step is 0.0223 m/s.
+ * The undepowered boat took 12.03 m/s at a stride.
+ *
+ * **The step stays implicit, and not out of inertia.** What makes the failure
+ * unreachable is no longer a property of the physics but the value of
+ * `DEPOWERING.fullPowerWind`: raise it far enough, or take the cap out to try
+ * something else, and the fourth power is waiting exactly where it always was.
+ * The guard costs one extra term per frame and the trap is one line of
+ * `tuning.ts` away, which is the wrong margin to run without one. What has
+ * genuinely changed is that this is now belt-and-braces rather than the only
+ * thing standing between the model and a `NaN`.
  *
  * Linearising the resistance about the current speed — which is what the slope
  * is for — makes the step self-limiting: the faster the water would answer, the
@@ -128,12 +145,14 @@ export function step(state: SimState, dt: Seconds): SimState {
  * step, and because the curve is convex the tangent it follows lies under the
  * curve, so its target sits a little beyond the true balance point: settling a
  * 10 kt beam reach from rest passes the mark by half a percent on the fourth
- * iteration before coming back. What makes that harmless — and what
- * {@link settle} actually leans on — is that resistance grows faster than
- * linearly, so a speed past the balance point meets a restoring step larger
- * than the one that took it there. Overshoots decay instead of feeding
- * themselves. No wind up to 200 kt produces a lasting oscillation, which is
- * what `simulation.test.ts` pins.
+ * iteration before coming back. That figure is unchanged by §3.2, which is
+ * still 1.000 at 10 kt. What makes it harmless — and what {@link settle}
+ * actually leans on — is that resistance grows faster than linearly, so a speed
+ * past the balance point meets a restoring step larger than the one that took
+ * it there. Overshoots decay instead of feeding themselves. No wind up to
+ * 200 kt produces a lasting oscillation, which is what `simulation.test.ts`
+ * pins; in a gale it now produces no overshoot at all, the boat approaching its
+ * capped speed from below.
  *
  * The other property {@link settle} leans on is exact: the fixed point is
  * `F_drive = R(v) + D_keel(v)`, independent of `dt`, since the increment
@@ -163,10 +182,18 @@ function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);
   const { driving, lateral } = rigForce(state.trim, apparent);
 
+  // §3.2's depowering, applied here rather than inside `rigForce` so that
+  // §4.2's trim-quality ratio never sees it — `depoweringFactor` has the
+  // reasoning, and it is a design decision rather than a convenience. Both
+  // components are scaled, which is what makes the factor a clean multiple of
+  // the whole rig force: the keel is charged for the side force the boat is
+  // actually holding, not for the one it would hold at full power.
+  const carried = depoweringFactor(state.wind.speed);
+
   const net =
-    driving -
+    driving * carried -
     hullResistance(state.motion.speed) -
-    keelInducedDrag(state.motion.speed, lateral);
+    keelInducedDrag(state.motion.speed, lateral * carried);
   const change = (net * dt) / (EFFECTIVE_MASS + hullResistanceSlope(state.motion.speed) * dt);
 
   return {

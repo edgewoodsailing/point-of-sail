@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HULL, JIB, MAIN } from "./boat.ts";
-import { optimalTrim } from "./sail.ts";
+import { depoweringFactor, optimalTrim } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle } from "./simulation.ts";
 import type { Knots, Radians } from "./units.ts";
@@ -45,11 +45,20 @@ import { apparentWind } from "./wind.ts";
  * in. Softening it to hold the pointing, which is what pos-lcz did, spends this
  * figure instead — from 7% to 9% light, against a 10% tolerance.
  *
- * So what is wanted is not a different resistance curve but a different *kind*
- * of term: one acting on the drive rather than on the speed, which is the only
- * thing that can move a broad reach relative to a beam reach without moving the
- * whole polar with the wind. `pos-d7u` is that bead. Until it lands, this is
- * the tightest the broad reach gets, and it has about a point of margin left.
+ * **`pos-d7u` has now landed, and it did not buy this figure back — which is
+ * worth recording, because the paragraph above used to say it would.** The
+ * hope was that a term acting on the drive rather than on the speed could move
+ * a broad reach relative to a beam reach. §3.2's depowering is exactly such a
+ * term and it cannot, for the reason that makes it useful everywhere else: it
+ * is a single factor multiplying the whole rig, so at any one wind it scales a
+ * broad reach and a beam reach by precisely the same amount and their ratio
+ * does not move at all. It also sits at 1.000 in 10 kt by construction, so it
+ * is not even present in this table.
+ *
+ * So the 9% stands, and it stands for good unless something changes the *shape*
+ * of the force curve rather than its scale — the sails' own coefficients, or a
+ * resistance curve steeper than §3.5 can afford. This is the tightest the broad
+ * reach gets, and it has about a point of margin left.
  */
 
 const deg = degreesToRadians;
@@ -327,63 +336,60 @@ describe("the no-go zone (DESIGN.md §3.6)", () => {
  * lessons the table exists to protect have to survive a range the table says
  * nothing about, and it is worth knowing how well.
  *
- * **These bounds are tight because pos-lcz tightened them, and they cost
- * something.** What they used to say was that the lessons weakened with the
- * wind and by how much: the closest useful angle ran from 49° at 6 kt to 39° at
- * 14 kt, so the bound had to be 35–55°. It is now 40–50° across the whole
- * opening range, which is the same bound the 10 kt test uses. Measured, well
+ * **These bounds are tight because pos-lcz tightened them, and pos-d7u is what
+ * finally made them comfortable.** What they used to say was that the lessons
+ * weakened with the wind and by how much: the closest useful angle ran from 49°
+ * at 6 kt to 39° at 14 kt, so the bound had to be 35–55°. pos-lcz brought it to
+ * 40–50° across the opening range by softening the wall, at the price of a boat
+ * that ran away above it. §3.2's depowering pays that price off. Measured, well
  * trimmed:
  *
  * ```text
- * wind      4     6     8    10    12    14    16    20    30
- * angle    51°   49°   47°   44°   41°   40°   38°   36°   33°
- * run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.77  0.80  0.85
- * beam kt  2.91  4.05  4.90  5.55  6.08  6.53  6.92  7.59  8.88
+ * wind      4     6     8    10    12    14    16    20    30    45
+ * angle    51°   49°   47°   44°   41°   41°   41°   41°   42°   42°
+ * run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.76  0.79  0.84  0.87
+ * beam kt  2.91  4.05  4.90  5.55  6.07  6.31  6.33  6.34  6.36  6.37
+ * k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
  * ```
  *
- * **There is no margin at 14 kt and that is deliberate.** The peak lands on 40°
- * exactly, against a bound of 40°. Buying a degree of headroom was available —
- * a hair more `RESISTANCE.keelStall` slides the whole band up — and was
- * considered and declined, because it would move the boat to make a test
- * comfortable while the underlying drift stayed where it was. So if a later
- * pass drops this to **39°**, this file *should* go red: that is the assertion
- * doing its job at the bound that actually matters, not a flaky number. (41°
- * would pass — the bound is 40–50 — and only the low side is at risk here.)
+ * The bottom row is {@link depoweringFactor}, and the shape of the table is its
+ * doing: through 10 kt it is 0.99999 — 1 to four decimal places — and every figure is
+ * pos-lcz's unchanged, at 12 kt it has taken a tenth of a percent (a beam reach
+ * of 6.072 kt against an undepowered 6.079), and from 14 kt the rig stops
+ * collecting force and the boat stops accelerating. The closest useful angle
+ * then stops drifting altogether — 41° or 42° at every wind from 12 kt to
+ * 45 kt, where it used to run down to 30°.
  *
- * **And it is knife-edge rather than merely tight, which a whole degree hides.**
- * The peak is a discrete argmax over a very flat maximum. At 14 kt,
- * VMG(40°) = 3.789249 kt against VMG(39°) = 3.787679 — a gap of **0.04%**. The
- * whole opening range is like this: the winning degree beats its runner-up by
- * 0.09% at 6 kt, 0.02% at 8, 0.06% at 10 and 0.01% at 12. So any sub-percent
- * numerical difference — a platform's `Math.pow`, a `Math.cos` a few ulp out —
- * can move the reported peak a degree.
+ * **The 14 kt knife edge is gone, and that is the clearest thing depowering
+ * bought.** This block used to carry a warning: the peak is a discrete argmax
+ * over a very flat maximum, the winning degree beats its runner-up by a few
+ * hundredths of a percent, and at 14 kt the peak sat on 40° with the runner-up
+ * at 39° — *outside* the bound. So any sub-percent numerical difference, a
+ * platform's `Math.pow` or a `Math.cos` a few ulp out, could turn this file red
+ * with nothing having changed.
  *
- * That only threatens the suite at 14 kt, and that is the point worth carrying:
- * everywhere else the runner-up degree is *also* inside 40–50, so a flip is
- * invisible. At 14 kt the runner-up is 39°, outside it. If this ever fails on a
- * machine where nothing changed, read that as the flatness of the maximum and
- * not as the physics having moved — check VMG(39) against VMG(40) before
- * touching a constant.
+ * The flatness is unchanged and always will be — re-measured here, the winner
+ * beats the runner-up by 0.09% at 6 kt, 0.02% at 8, 0.06% at 10, 0.01% at 12
+ * and 0.04% at 14. What changed is where the pair sits. At 14 kt it is now 41°
+ * winning from 40°, so **both** are inside 40–50°, as they already were at every
+ * other wind in the range. A flip is now invisible everywhere rather than
+ * everywhere but one. If this block ever does go red, that is the physics
+ * having moved and not the arithmetic.
  *
- * **Why it cannot simply be tightened further.** Every force in the model is
- * homogeneous of degree two in speed, so scaling the wind and the boat speed
- * together leaves the polar's shape alone; the single exception is §3.5's wall,
- * whose `v_hull` is an absolute speed. Zero the wall and re-solve the quadratic
- * to hold the 10 kt beam reach and the polar is *exactly* scale-invariant — a
- * 45° peak and a 0.58 run/beam ratio at every wind from 4 to 30 kt. So the wall
- * is the sole source of wind-dependence here, and once the 10 kt beam reach is
- * pinned it is a one-parameter family: there is one knob, and these numbers and
- * the beam-reach figures below are opposite ends of it. Softening the wall
- * holds the angle and the run/beam ratio together and lets the boat run away in
- * a breeze; sharpening it caps the breeze and sends the pointing through the
- * floor, because the wall clips a reach harder than it clips close hauled and
- * clipping the fast angles is what slides the VMG peak lower. pos-lcz measured
- * both directions and §3.5 records the choice.
- *
- * The one thing that stays out of bounds is the beam reach in a lot of wind:
- * 7.59 kt at 20 and 8.88 kt at 30, against a 5.65 kt hull speed. That is the
- * accepted cost, it is stated in §3.6, and no exponent fixes it — see `pos-d7u`
- * for the kind of term that could.
+ * **Why the wall could not do this.** Every force in the model is homogeneous
+ * of degree two in speed, so scaling the wind and the boat speed together leaves
+ * the polar's shape alone; the single exception was §3.5's wall, whose `v_hull`
+ * is an absolute speed. Zero the wall and re-solve the quadratic to hold the
+ * 10 kt beam reach and the polar is *exactly* scale-invariant — a 45° peak and a
+ * 0.58 run/beam ratio at every wind from 4 to 30 kt. So the wall was the sole
+ * source of wind-dependence here, and once the 10 kt beam reach was pinned it
+ * was a one-parameter family: softening it held the angle and the run/beam ratio
+ * together and let the boat run away in a breeze, and sharpening it capped the
+ * breeze and sent the pointing through the floor, because the wall clips a reach
+ * harder than it clips close hauled and clipping the fast angles is what slides
+ * the VMG peak lower. There was no setting that did both. pos-lcz measured both
+ * directions and §3.5 records the choice; pos-d7u added the second term that
+ * makes it a choice no longer.
  */
 describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
   /** The wind speeds §2.1 opens on. */
@@ -431,10 +437,11 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
   });
 
   it("keeps the closest useful angle in the range a keelboat sails", () => {
-    // 49° in 6 kt down to 40° in 14 kt — the same 40–50° the 10 kt test pins,
+    // 49° in 6 kt down to 41° in 14 kt — the same 40–50° the 10 kt test pins,
     // now held across the whole opening range rather than the 35–55° this used
-    // to need. **The 14 kt end sits on the bound exactly**; see this block's
-    // docblock for why that margin was not bought back.
+    // to need. The 14 kt end used to sit on the bound exactly, at 40°, with its
+    // runner-up degree outside; §3.2's depowering moved the pair to 41°/40° and
+    // this block's docblock has the measurement.
     for (const wind of OPENING_RANGE) {
       expect(vmgPeak(wind), `${wind} kt`).toBeGreaterThanOrEqual(40);
       expect(vmgPeak(wind), `${wind} kt`).toBeLessThanOrEqual(50);
@@ -452,10 +459,13 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
     // and the boat never sails dead upwind however hard it blows, which is the
     // one lesson that must not break at any wind.
     //
-    // The headroom here shrank with pos-lcz's softer wall: a beam reach in
-    // 45 kt now settles at 10.31 kt where it used to reach 8.88. Still a
-    // boat, and still under this bound, but the bound is doing more work than
-    // it was and it is worth knowing that before softening the wall again.
+    // This bound has stopped doing much work, and the history is worth keeping
+    // because it ran both ways. pos-lcz's softer wall took a beam reach in
+    // 45 kt from 8.88 kt to 10.31 and left this bound close enough to matter;
+    // §3.2's depowering brought it to 6.37, which is a boat by any reading. The
+    // bound stays where it is precisely because it is not a calibration claim —
+    // it is the floor under a wind nobody tuned for, and it should keep holding
+    // whatever the next pass does above the range that is tuned.
     for (const wind of [20, 30, 45]) {
       expect(speedAt(0, true, 0, kt(wind)), `${wind} kt`).toBe(0);
       expect(speedAt(90, true, 0, kt(wind)), `${wind} kt`).toBeLessThan(12);
@@ -463,31 +473,84 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
     }
   });
 
-  it("sails a beam reach over hull speed in a breeze, which is the accepted cost", () => {
-    // Pinned as a *cost*, not as a target. §3.5's wall is the model's only
-    // wind-scale, so it cannot both hold the pointing angle across 6–14 kt and
-    // keep a beam reach down in 20-plus; pos-lcz chose the pointing and this is
-    // the other side of that choice, written down so it cannot drift quietly in
-    // either direction.
+  it("keeps a beam reach near hull speed at the top of the wind range", () => {
+    // The promise §3.5's wall was originally there to keep — "no amount of sail
+    // area gets a Rhodes 19 to 9 knots in the wind it is actually sailed in" —
+    // and could not, being a function of speed when the problem was a function
+    // of the wind. §3.2's depowering keeps it instead.
     //
-    // Bounded above because the boat must stay a boat, and below because a pass
-    // that quietly recovered this would have had to sharpen the wall, which
-    // costs the pointing bound above — and that trade is a design decision for
-    // `pos-d7u`, not something to discover from a green suite.
+    // This test replaces one that pinned the *cost* of not keeping it: 7.59 kt
+    // at 20 and 8.88 kt at 30, which is 34% and 57% over hull speed and a boat
+    // a Rhodes 19 is not. Those are the figures to compare the ones below with.
     const HULL_SPEED_KT = metersPerSecondToKnots(HULL.hullSpeed);
     expect(HULL_SPEED_KT).toBeCloseTo(5.65, 2);
 
     const beamAt20 = speedAt(90, true, 0, kt(20));
     const beamAt30 = speedAt(90, true, 0, kt(30));
 
-    expect(beamAt20).toBeGreaterThan(7.3);
-    expect(beamAt20).toBeLessThan(7.9);
-    expect(beamAt30).toBeGreaterThan(8.6);
-    expect(beamAt30).toBeLessThan(9.2);
+    // Bounded above because that is the point, and below because a beam reach
+    // that came out *under* hull speed in 20 kt would be a different failure —
+    // a boat that had been capped so hard it no longer sails — and a pass that
+    // produced one should have to say so rather than find the suite still green.
+    expect(beamAt20).toBeGreaterThan(6.0);
+    expect(beamAt20).toBeLessThan(6.7);
+    expect(beamAt30).toBeGreaterThan(6.0);
+    expect(beamAt30).toBeLessThan(6.7);
 
-    // Which is to say: 34% and 57% over hull speed. A Rhodes 19 does neither.
-    expect(beamAt20 / HULL_SPEED_KT).toBeGreaterThan(1.3);
-    expect(beamAt30 / HULL_SPEED_KT).toBeGreaterThan(1.5);
+    // 12% and 13% over hull speed, against 34% and 57% before. Not *at* hull
+    // speed: a beam reach in a breeze is the one point of sail a displacement
+    // boat can hold a little past it, and §3.6's own 10 kt figure is already
+    // 5.55 kt against a 5.65 kt hull speed, so there was never room for the
+    // cap to buy much more than this without taking the 10 kt table with it.
+    expect(beamAt20 / HULL_SPEED_KT).toBeLessThan(1.2);
+    expect(beamAt30 / HULL_SPEED_KT).toBeLessThan(1.2);
+
+    // And the wind slider's whole top end is one speed, which is what a capped
+    // rig means: ten more knots of wind is worth two hundredths of a knot.
+    expect(Math.abs(beamAt30 - beamAt20)).toBeLessThan(0.1);
+  });
+
+  it("stops accelerating above the wind it is fully powered up in", () => {
+    // The mechanism, separated from the polar figures above so that a failure
+    // says which of the two moved. Below `DEPOWERING.fullPowerWind` the rig is
+    // untouched and the boat behaves exactly as it did before pos-d7u; above
+    // it the rig holds its force and the boat holds its speed.
+    //
+    // Never *exactly* 1 below the knee, and deliberately not asserted as such:
+    // the factor is smooth, so it approaches full power without arriving, and
+    // at 10 kt it is 0.99999. A test demanding equality would be pinning the
+    // shape of the corner rather than the behaviour, and the table quotes these
+    // as 1.000 because that is what they are to every digit anyone reads.
+    expect(depoweringFactor(kt(4))).toBeGreaterThan(0.9999);
+    expect(depoweringFactor(kt(10))).toBeGreaterThan(0.9999);
+    expect(depoweringFactor(kt(12))).toBeGreaterThan(0.99);
+
+    // Which is what leaves §3.6's table alone. Measured against the same model
+    // with the factor disabled, 6 kt and 8 kt are identical to six decimal
+    // places, and 10 kt differs in the fifth — 4.179710 kt close hauled against
+    // 4.179732. The table is not approximately preserved, it is preserved.
+    expect(speedAt(90, true, 0, kt(10))).toBeCloseTo(5.5486, 3);
+    expect(speedAt(135, true, 0, kt(10))).toBeCloseTo(4.7273, 3);
+
+    // Past the knee the force is capped rather than merely slowed, so `k·q` —
+    // the pressure the rig is allowed to convert — is flat. Checked as a ratio
+    // so it pins the shape and not the constant.
+    const carriedPressure = (windKt: number) =>
+      depoweringFactor(kt(windKt)) * kt(windKt) ** 2;
+    expect(carriedPressure(45) / carriedPressure(20)).toBeCloseTo(1, 2);
+
+    // Monotone, so more wind is never more power.
+    for (let wind = 1; wind < 60; wind += 1) {
+      expect(depoweringFactor(kt(wind + 1)), `${wind} kt`).toBeLessThanOrEqual(
+        depoweringFactor(kt(wind)),
+      );
+    }
+
+    // Saturating rather than breaking: the wind slider has no stated ceiling
+    // (§5), and a factor that returned `NaN` at some wind would poison the
+    // speed permanently, which is the failure `clampStep` exists to prevent.
+    expect(depoweringFactor(Infinity)).toBe(0);
+    expect(depoweringFactor(0)).toBe(1);
   });
 });
 
