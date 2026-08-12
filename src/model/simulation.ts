@@ -7,7 +7,7 @@
  * and arrives with pos-dmg.3. Nothing about it needs a different `step`.
  */
 
-import { EFFECTIVE_MASS, hullResistance } from "./hull.ts";
+import { EFFECTIVE_MASS, hullResistance, hullResistanceSlope } from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
 import { rigForce } from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
@@ -54,43 +54,77 @@ export interface SimState {
 /**
  * The longest slice of time one step will advance, in seconds.
  *
- * A numerical bound rather than a feel decision, which is why it is here and not
- * in `tuning.ts`. Explicit Euler on this resistance curve is stable while
- * `dt < 2m/R′(v)`: about 2.7 s at hull speed, and still 0.34 s at 4 m/s, a speed
- * no amount of sail area can reach. A tenth of a second keeps a factor of three
- * in hand everywhere the boat can actually get to, and is well under a frame
- * even on a slow tablet.
+ * Not a stability bound — {@link advance} is stable at any step length — but a
+ * statement about what a frame is allowed to mean. A tab restored after ten
+ * minutes delivers a `dt` of six hundred seconds, and fast-forwarding ten
+ * minutes of sailing on the frame after the student looks back at the screen is
+ * not something anyone asked for. The boat advances a tenth of a second and
+ * carries on from where it was, which costs nothing: the wind and the trim did
+ * not change while they were away.
  *
- * It is also what makes the backgrounded-tab case safe by construction. A tab
- * restored after ten minutes delivers a `dt` of six hundred seconds; the boat
- * advances a tenth of a second and carries on from where it was. Nothing is
- * lost by that — the wind and the trim did not change while the student was
- * away, so the state they left is the state they return to.
+ * A tenth of a second is also comfortably longer than any frame a browser
+ * delivers while it is actually drawing, so in normal running the clamp never
+ * binds and the simulation keeps real time.
  */
 const MAX_STEP: Seconds = 0.1;
 
 /**
  * Advances the boat by `dt` seconds, returning a new state.
  *
- * ```text
- * a = (F_drive − R(v)) / m_effective
- * v += a · dt
- * ```
- *
- * The whole of §3.5, composed from pieces that already exist: `apparentWind`
+ * §3.5's force balance, composed from pieces that already exist: `apparentWind`
  * for what the sails feel, `rigForce` for what they do about it, and
  * `hullResistance` for what the water does about that. Because resistance is
- * signed along the direction of motion, the subtraction here is the design
- * document's formula unmodified — no branch for going astern.
+ * signed along the direction of motion, the numerator is the design document's
+ * `F_drive − R(v)` unmodified — no branch for going astern.
+ *
+ * Frames longer than {@link MAX_STEP} are taken as {@link MAX_STEP}; anything
+ * that is not a length of time at all advances nothing.
  */
 export function step(state: SimState, dt: Seconds): SimState {
+  return advance(state, clampStep(dt));
+}
+
+/**
+ * One integration step of `dt` seconds, with no clamp on `dt`.
+ *
+ * ```text
+ * v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
+ * ```
+ *
+ * **Why the denominator carries `R′(v)·dt`.** Written the obvious way —
+ * `a = (F − R(v))/m`, `v += a·dt` — the step uses the resistance the boat feels
+ * at the *start* of the interval, which overstates it for a decelerating boat
+ * and understates it for an accelerating one. Because §3.5's curve is a sixth
+ * power on top of a square, that error grows viciously with speed: past about
+ * 40 kt of wind a tenth-of-a-second step rings between two speeds forever, and
+ * past 80 kt it diverges to `NaN` — and a `NaN` speed never recovers, since
+ * every later step adds to it. Sailing in 80 kt of wind is nobody's lesson, but
+ * §5's wind slider has no stated ceiling, and a model that quietly dies past one
+ * is a trap for whoever sets that ceiling.
+ *
+ * Taking the resistance implicitly instead — linearised about the current
+ * speed, which is what the slope is for — removes the failure rather than
+ * bounding it. The step can never carry the boat past the speed where the
+ * forces balance, at any `dt`, in any wind, so there is nothing to ring about.
+ * For a frame-length `dt` the correction is around a percent (`R′·dt/m` ≈ 0.012
+ * at hull speed and 60 Hz) and the trajectory is the same one to four figures;
+ * what changes is only what happens at the extremes.
+ *
+ * Two properties worth stating plainly, because {@link settle} leans on both:
+ * the update moves the speed toward the balance point and never past it, and
+ * its fixed point is exactly `F_drive = R(v)` — independent of `dt`, since the
+ * increment vanishes only where the numerator does.
+ */
+function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);
   const { driving } = rigForce(state.trim, apparent);
-  const acceleration = (driving - hullResistance(state.motion.speed)) / EFFECTIVE_MASS;
+
+  const net = driving - hullResistance(state.motion.speed);
+  const change = (net * dt) / (EFFECTIVE_MASS + hullResistanceSlope(state.motion.speed) * dt);
 
   return {
     ...state,
-    motion: { ...state.motion, speed: state.motion.speed + acceleration * clampStep(dt) },
+    motion: { ...state.motion, speed: state.motion.speed + change },
   };
 }
 
@@ -109,45 +143,67 @@ function clampStep(dt: Seconds): Seconds {
 }
 
 /**
- * A step small enough that {@link settle} converges on the same speed the
- * running simulator would, rather than on the integrator's own artefacts.
+ * The step {@link settle} takes — fifty times the longest a frame may be, and
+ * deliberately so.
+ *
+ * A long step is exactly what {@link advance} is good at: it cannot overshoot
+ * the balance point, and where the resistance dominates the step becomes a
+ * Newton step toward it, so the speed converges in tens of iterations instead
+ * of thousands. What a long step gives up is the *trajectory* — nothing between
+ * the endpoints means anything — and settling has no use for the trajectory.
+ *
+ * Stepping at frame length instead would be slower and, worse, wrong: the
+ * approach is asymptotic, so a per-step change small enough to look settled can
+ * still be a long way from the balance point. At five degrees off the wind the
+ * boat closes on its speed at 0.023 per second, and a tenth-second step is
+ * under a millionth of a metre per second while the speed is still 2% short.
  */
-const SETTLE_STEP: Seconds = MAX_STEP;
-
-/** Below this much change in a single settle step, the speed has stopped moving. */
-const SETTLE_TOLERANCE: MetersPerSecond = 1e-6;
+const SETTLE_STEP: Seconds = 5;
 
 /**
- * How much simulated time {@link settle} will spend before giving up. Ample: a
- * boat under way converges inside twenty seconds, and even the slow corner —
- * in irons, creeping astern under a couple of newtons of sail drag — is settled
- * well inside this.
+ * Below this much change in a single settle step, the speed has arrived. Tight
+ * enough to be machine precision in practice, which a {@link SETTLE_STEP}-sized
+ * step reaches because it is not fighting the asymptote.
  */
-const SETTLE_LIMIT: Seconds = 300;
+const SETTLE_TOLERANCE: MetersPerSecond = 1e-9;
+
+/**
+ * How many steps {@link settle} will take before giving up. Generous: the slow
+ * corners — barely out of the no-go zone, or creeping astern under a backed
+ * sail — take a couple of hundred, and everything a student will actually look
+ * at takes fewer than fifty.
+ */
+const SETTLE_LIMIT = 500;
 
 /**
  * The same state, with the boat at the speed it would eventually reach on this
  * heading, in this wind, at this trim.
  *
- * Integrating to equilibrium rather than solving for it, for the reason §3.5
- * gives: the speed and the apparent wind determine each other, and stepping the
- * real model is both simpler and guaranteed to agree with what the running
- * simulator does.
+ * Iterating the same integrator rather than solving for the balance point, for
+ * the reason §3.5 gives: the speed and the apparent wind determine each other.
+ * Stepping the real model is both simpler than a fixed-point solve and
+ * guaranteed to agree with what the running simulator converges on, since it is
+ * the same arithmetic.
+ *
+ * It runs at {@link SETTLE_STEP} rather than at frame length, which is not a
+ * shortcut but the point: the update's fixed point does not depend on the step,
+ * so a long step reaches the same speed sooner. Only the endpoint is meaningful
+ * — the states in between are iterates, not a trajectory a boat sails through.
  *
  * Two callers want this. §2.1 opens the boat at the steady speed for its
  * deliberately bad trim — starting from zero would leave the student unable to
  * tell a short speed arrow from one that has not got going yet — and the
  * calibration tests of §3.6 need a settled speed to compare against the polar.
  *
- * Returns its best effort if the speed is still drifting at {@link SETTLE_LIMIT}
+ * Returns its best effort if the speed is still moving at {@link SETTLE_LIMIT}
  * rather than throwing or looping forever: a simulator that opens on a slightly
  * wrong speed is a far better failure than one that does not open.
  */
 export function settle(state: SimState): SimState {
   let settled = state;
 
-  for (let elapsed = 0; elapsed < SETTLE_LIMIT; elapsed += SETTLE_STEP) {
-    const next = step(settled, SETTLE_STEP);
+  for (let iteration = 0; iteration < SETTLE_LIMIT; iteration += 1) {
+    const next = advance(settled, SETTLE_STEP);
     const change = Math.abs(next.motion.speed - settled.motion.speed);
     settled = next;
     if (change < SETTLE_TOLERANCE) break;

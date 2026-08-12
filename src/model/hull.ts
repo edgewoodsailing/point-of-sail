@@ -49,6 +49,32 @@ export function hullResistance(speed: MetersPerSecond): Newtons {
 }
 
 /**
+ * How fast the resistance grows with speed, `dR/dv`, in newtons per m/s.
+ *
+ * Never negative: the curve is even in `v` and signed to oppose the motion, so
+ * both limbs slope the same way and a boat that speeds up always meets more
+ * water, whichever way it is going.
+ *
+ * This exists for the integrator. Knowing the slope is what lets `simulation.ts`
+ * take the resistance implicitly — solving for the force at the *end* of the
+ * step rather than the start — which is what keeps a long frame or a wild wind
+ * from ringing or blowing up. The arithmetic is in `advance` there.
+ */
+export function hullResistanceSlope(speed: MetersPerSecond): number {
+  const magnitude = Math.abs(speed);
+
+  // Differentiating `A·v² + B·v⁸/v_hull⁶` — the wall term written with the
+  // powers gathered, which is the same curve `hullResistance` computes.
+  const slope =
+    2 * RESISTANCE.quadratic * magnitude +
+    (WALL_EXPONENT + 2) *
+      RESISTANCE.hullSpeedWall *
+      (magnitude ** (WALL_EXPONENT + 1) / HULL.hullSpeed ** WALL_EXPONENT);
+
+  return slope * (speed < 0 ? RESISTANCE.asternFactor : 1);
+}
+
+/**
  * The fraction of terminal speed that {@link ACCELERATION.timeToTerminal} is
  * quoted against: the standard `1 − 1/e` ≈ 63% of a first-order response.
  */

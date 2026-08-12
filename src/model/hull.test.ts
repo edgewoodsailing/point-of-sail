@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HULL } from "./boat.ts";
-import { EFFECTIVE_MASS, hullResistance } from "./hull.ts";
+import { EFFECTIVE_MASS, hullResistance, hullResistanceSlope } from "./hull.ts";
 import { ACCELERATION, RESISTANCE } from "./tuning.ts";
 import type { MetersPerSecond, Newtons, Seconds } from "./units.ts";
 
@@ -75,6 +75,36 @@ describe("the hull-speed wall (DESIGN.md §3.5)", () => {
     const ratio = hullResistance(1.2 * V_HULL) / hullResistance(V_HULL);
     expect(ratio).toBeGreaterThan(2.5);
     expect(ratio / 1.44).toBeGreaterThan(1.9);
+  });
+});
+
+describe("the resistance slope", () => {
+  it("is the derivative of the curve it comes from", () => {
+    // Against a central difference, which is independent of how the slope is
+    // written — the wall term gathers its powers differently in the two.
+    const h = 1e-6;
+    for (const speed of [0.4, 1, 2, V_HULL, 3.5, -0.4, -2, -V_HULL]) {
+      const numerical = (hullResistance(speed + h) - hullResistance(speed - h)) / (2 * h);
+      expect(hullResistanceSlope(speed)).toBeCloseTo(numerical, 4);
+    }
+  });
+
+  it("never goes negative, whichever way the boat is moving", () => {
+    // The integrator divides by `m + slope·dt` and relies on the result staying
+    // positive: a negative slope there would let a step run away rather than
+    // damp. Both limbs of an even curve slope the same way, so it cannot.
+    for (let speed = -6; speed <= 6; speed += 0.25) {
+      expect(hullResistanceSlope(speed)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("is steeper astern by the same factor the curve is", () => {
+    for (const speed of [0.5, 2, V_HULL]) {
+      expect(hullResistanceSlope(-speed)).toBeCloseTo(
+        RESISTANCE.asternFactor * hullResistanceSlope(speed),
+        9,
+      );
+    }
   });
 });
 
