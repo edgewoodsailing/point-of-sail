@@ -544,13 +544,22 @@ export type SailDeformation = (chordFraction: number, camberOffset: Meters) => M
  *
  * Over-drawn for the same reason {@link MAX_DRAFT_FRACTION} is, and calibrated
  * against the same binding case: the jib on a 320 px phone, where `SHORT_SPAN`
- * puts its 2.29 m foot at 61 px. A wholly collapsed jib then shivers 4.4 px peak
- * to peak against a 2.2 px stroke — a shiver rather than a thickened line — and
- * the main 5.7 px. (The drawn figure is below `4% × chord` because
- * {@link flutterEnvelope} peaks at 0.9, not at 1.) A quarter of full camber, so
- * a fluttering sail can never be mistaken for a drawing one at a glance. This is
- * a knob to move by eye against the running drawing; `sail.test.ts` pins the
- * pixel sizes so that moving it is a deliberate act.
+ * puts its 2.29 m foot at 61 px. A wholly collapsed jib shivers 4.4 px peak to
+ * peak there against a 2.2 px stroke — a shiver rather than a thickened line —
+ * and the main 5.7 px.
+ *
+ * **Head to wind is not where the ripple is largest**, which is worth knowing
+ * before quoting either of those as a maximum. {@link flutterEnvelope} tops out
+ * at **0.942**, not at full collapse but at `collapsedFraction ≈ 0.95` —
+ * α = 2.68°, in the middle of the cross-fade — and at `s = 0.10` rather than at
+ * the leech. So the largest ripple the drawing can show is about 5% above the
+ * figures above: 5.9 px on the main and 4.6 px on the jib. `sail.test.ts` pins
+ * that maximum as well as the flogging case, because it is the one that has to
+ * stay legible and the one a change to any of these constants would move first.
+ *
+ * A quarter of full camber, so a fluttering sail can never be mistaken for a
+ * drawing one at a glance. This is a knob to move by eye against the running
+ * drawing; the pixel sizes are pinned so that moving it is a deliberate act.
  */
 const FLUTTER_AMPLITUDE_FRACTION = 0.04;
 
@@ -965,10 +974,13 @@ export function createSailLayer(): Layer {
   // runs, so a state change that lands first is picked up rather than raced.
   let pending = false;
 
-  // Consulted rather than subscribed to: `Layer` has no teardown, so a listener
-  // registered here could never be removed. Turning the preference *on* is seen
-  // by the next frame the loop runs; turning it off is seen at the next state
-  // change, which on a page whose whole point is dragging is the next touch.
+  // Subscribed to, not merely consulted. An earlier version read `.matches` and
+  // justified that by `Layer` having no teardown — which is not a reason, since
+  // the animation loop below is exactly as un-removable. The real consequence of
+  // not subscribing was worse: `update` fires only on input, so a viewer who
+  // turned the preference *off* while the boat sat head to wind would watch a
+  // frozen sail until they touched something. `addEventListener` on a
+  // `MediaQueryList` is well below the Safari 15.4 floor (§4.4).
   const stillness = matchMedia(REDUCED_MOTION_QUERY);
 
   function fluttering(): boolean {
@@ -976,16 +988,37 @@ export function createSailLayer(): Layer {
     return rig.main.shape.collapsedFraction > 0 || (rig.jib?.shape.collapsedFraction ?? 0) > 0;
   }
 
+  /**
+   * Writes `d` only when it differs from what is already there.
+   *
+   * The loop repaints *both* cloths whenever *either* is shaking, and "jib
+   * luffing, main drawing" is an ordinary state — the two trims are independent
+   * — so without this the main's identical bare Bézier would be rewritten sixty
+   * times a second, paying an attribute write and a path re-parse for a shape
+   * that has not moved. `sailPathData` is deterministic (`sail.test.ts` says
+   * so), which is what makes the comparison sound rather than merely likely.
+   * Read back from the element rather than cached beside it, so the check cannot
+   * go stale against the DOM.
+   */
+  function drawCloth(path: SVGPathElement, d: string): void {
+    if (path.getAttribute("d") !== d) path.setAttribute("d", d);
+  }
+
   /** Both cloths at one instant on the flutter's clock. Nothing else per frame. */
   function paintCloth(time: Seconds): void {
     if (rig === null) return;
-    main.cloth.setAttribute("d", sailPathData(rig.main.shape, luffFlutter(rig.main.shape, time)));
+    drawCloth(main.cloth, sailPathData(rig.main.shape, luffFlutter(rig.main.shape, time)));
     if (rig.jib === null) return;
     const shape = rig.jib.shape;
-    jib.cloth.setAttribute(
-      "d",
-      sailPathData(shape, luffFlutter(shape, time + JIB_FLUTTER_LEAD)),
-    );
+    drawCloth(jib.cloth, sailPathData(shape, luffFlutter(shape, time + JIB_FLUTTER_LEAD)));
+  }
+
+  /** The cloth at the phase the viewer's motion preference asks for, and the loop re-armed. */
+  function repaint(): void {
+    // The same clock the loop runs on, so a state change lands on the phase the
+    // ripple was already at instead of restarting the wave.
+    paintCloth(stillness.matches ? STILL_PHASE : performance.now() / 1000);
+    schedule();
   }
 
   function schedule(): void {
@@ -993,10 +1026,20 @@ export function createSailLayer(): Layer {
     pending = true;
     requestAnimationFrame((now) => {
       pending = false;
+      // Re-checked *inside* the frame, not only before arming it: a preference
+      // turned on while this frame was in flight would otherwise land the ripple
+      // on that frame's own timestamp, which is the one thing {@link STILL_PHASE}
+      // exists to make deterministic.
+      if (stillness.matches) {
+        paintCloth(STILL_PHASE);
+        return;
+      }
       paintCloth(now / 1000);
       schedule();
     });
   }
+
+  stillness.addEventListener("change", repaint);
 
   return {
     element,
@@ -1017,10 +1060,7 @@ export function createSailLayer(): Layer {
       jib.group.classList.toggle(STRUCK_CLASS, rig.jib === null);
       if (rig.jib !== null) setSailInk(jib.group, rig.jib.quality);
 
-      // The same clock the loop runs on, so a state change lands on the phase
-      // the ripple was already at instead of restarting the wave.
-      paintCloth(stillness.matches ? STILL_PHASE : performance.now() / 1000);
-      schedule();
+      repaint();
     },
   };
 }

@@ -1014,7 +1014,11 @@ The ripple is three waves across the chord at 3 Hz, scaled to 4% of the chord �
 a quarter of full camber, so a shaking sail can never be read as a drawing one.
 Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
 shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
-px. It **travels with the flow** at one chord a second, so the ripples run aft
+px. **The largest ripple is not the flogging one**: the amplitude envelope tops
+out 5% higher, at `collapsedFraction ≈ 0.95` and a tenth of the way aft — in the
+middle of the cross-fade described below, which is broadest there — so the
+biggest thing the drawing shows is 4.6 px on that jib and 5.9 px on the main.
+It **travels with the flow** at one chord a second, so the ripples run aft
 when the wind arrives at the luff and forward when it arrives at the leech, and
 the jib's clock is offset from the main's so two flogging sails do not read as
 one mechanism. Both ends of the drawn chord are attachments — the mast or the

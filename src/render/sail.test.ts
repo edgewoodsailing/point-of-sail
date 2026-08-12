@@ -805,6 +805,45 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
   });
 
   /**
+   * **The largest ripple is not the flogging one**, which the test above would
+   * leave you believing. The envelope tops out at 0.942 — 5% above its
+   * full-collapse value — at `collapsedFraction ≈ 0.95`, α = 2.68°, and at
+   * `s = 0.10` rather than at the leech: the normalised cross-fade is broadest
+   * halfway across, so the peak sits higher there than at either end of it.
+   *
+   * Pinned because it is the figure that actually has to stay legible, and
+   * because a change to any of the flutter constants moves this before it moves
+   * the flogging case.
+   */
+  it("is largest in the middle of the cross-fade, not head to wind", () => {
+    let highest = 0;
+    let highestAt = { alpha: 0, s: 0, collapsed: 0 };
+    for (let alpha = 0; alpha <= 180; alpha += 0.02) {
+      const shape = shapeAtAlpha(alpha);
+      if (shape.collapsedFraction <= 0) continue;
+      for (let i = 0; i <= 1000; i += 1) {
+        const value = flutterEnvelope(shape, i / 1000);
+        if (value > highest) {
+          highest = value;
+          highestAt = { alpha, s: i / 1000, collapsed: shape.collapsedFraction };
+        }
+      }
+    }
+
+    expect(highest).toBeCloseTo(0.942, 3);
+    expect(highestAt.alpha).toBeCloseTo(2.68, 2);
+    expect(highestAt.collapsed).toBeCloseTo(0.95, 2);
+    expect(highestAt.s).toBeCloseTo(0.1, 3);
+
+    // 5.9 px peak to peak on the main, 4.6 on the jib, on a 320 px phone —
+    // above the flogging figures above rather than below them.
+    const pxPerMeter = 320 / (2 * SCENE.shortRadius);
+    const spread = (shape: SailShape): number => 2 * highest * peakRipple(shape) * pxPerMeter;
+    expect(spread(shapeAtAlpha(0))).toBeCloseTo(5.94, 2);
+    expect(spread(jibShape(0, wind(10, 0)))).toBeCloseTo(4.59, 2);
+  });
+
+  /**
    * It *travels*, and it travels with the flow — aft when the wind arrives at
    * the luff, forward when it arrives at the leech. Asserted as an exact phase
    * invariance rather than by eyeballing two frames: a wave moving at one chord
@@ -958,27 +997,40 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
    */
   it("grows out of its attachments instead of spiking off them", () => {
     let worstEnd = 0;
-    let largestAnywhere = 0;
     for (const make of [mainShape, jibShape]) {
       for (let alpha = 0; alpha <= 180; alpha += 0.05) {
         const shape = make(0, wind(10, alpha));
         if (shape.collapsedFraction <= 0) continue;
-        const amplitude = peakRipple(shape);
-        largestAnywhere = Math.max(largestAnywhere, envelopePeak(shape).value * amplitude);
         for (const s of [1 / SAIL_SAMPLES, 1 - 1 / SAIL_SAMPLES]) {
-          worstEnd = Math.max(worstEnd, flutterEnvelope(shape, s) * amplitude);
+          worstEnd = Math.max(worstEnd, flutterEnvelope(shape, s) * peakRipple(shape));
         }
       }
     }
+
+    // Compared against the envelope maximum the test above *pins*, not against
+    // one re-swept here: a running maximum over a sampled sweep is a property
+    // of the step size as much as of the function, and pinning it to three
+    // decimals would pin the sweep.
+    const largestAnywhere = 0.942 * peakRipple(shapeAtAlpha(0));
 
     // Measured in metres rather than as a share of *this* shape's own peak: at a
     // collapse so slight that only one sample falls inside the region, that
     // sample necessarily is the peak, and the ratio reads 0.99 while the sail
     // moves two hundredths of a pixel. The size is the thing that matters.
-    expect(worstEnd).toBeLessThan(0.028);
-    expect(worstEnd).toBeLessThan(0.25 * largestAnywhere);
-    expect(worstEnd * (320 / (2 * SCENE.shortRadius))).toBeLessThan(0.75);
-    expect(worstEnd * (1024 / (2 * SCENE.shortRadius))).toBeLessThan(2.4);
+    //
+    // The first two are **pinned measurements of the current constants, not
+    // bounds** — the margin to any round number is a few percent, and it is
+    // `FLUTTER_END_TAPER` against `1 / SAIL_SAMPLES` that sets it, so dropping
+    // the taper to 0.09 turns them red. That is the intent: these exist to fail
+    // when a taste constant moves, not to certify a safety factor.
+    expect(worstEnd).toBeCloseTo(0.0266, 4);
+    expect(worstEnd / largestAnywhere).toBeCloseTo(0.239, 3);
+
+    // These two *are* bounds, and they are the ones that mean something: under
+    // a pixel on a phone, and under two and a half on the tablet §4.5 sizes
+    // everything against.
+    expect(worstEnd * (320 / (2 * SCENE.shortRadius))).toBeLessThan(1);
+    expect(worstEnd * (1024 / (2 * SCENE.shortRadius))).toBeLessThan(2.5);
   });
 
   /**
