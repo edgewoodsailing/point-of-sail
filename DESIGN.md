@@ -1010,6 +1010,32 @@ leech when the wind is coming over the back of the sail. A sail that is *just*
 starting to break shows a small ripple at that edge only, which is exactly what a
 student should learn to spot.
 
+The ripple is three waves across the chord at 3 Hz, scaled to 4% of the chord —
+a quarter of full camber, so a shaking sail can never be read as a drawing one.
+Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
+shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
+px. **The largest ripple is not the flogging one**: the amplitude envelope tops
+out 5% higher, reaching 0.945 at the cross-fade midpoint described below,
+`collapsedFraction = 0.95`, and a tenth of the way aft, where the end taper stops
+biting — so the biggest thing the drawing shows is 4.61 px on that jib and
+5.96 px on the main. That is the value at the taper's corner rather than the
+supremum, which sits `2.2 × 10⁻⁶` higher and a hair inside the taper, because
+`smoothstep`'s slope is zero *at* saturation and not near it. Nothing physical
+turns on 2.2 × 10⁻⁶ — about 10⁻⁵ px — but the figure is derived rather than
+sampled, and a derived figure is worth quoting accurately.
+It **travels with the flow** at one chord a second, so the ripples run aft
+when the wind arrives at the luff and forward when it arrives at the leech, and
+the jib's clock is offset from the main's so two flogging sails do not read as
+one mechanism. Both ends of the drawn chord are attachments — the mast or the
+jib tack, and the clew — so the amplitude tapers into each over a tenth of the
+chord: the flutter grows out of its fixings rather than spiking off them.
+
+**Under `prefers-reduced-motion: reduce` the ripple is held at a fixed phase
+rather than removed.** The flutter is a *reading*, not an ornament — it is what
+keeps [§4.2](#42-the-traffic-light)'s two red states apart, since undertrimmed is
+red and fluttering while overtrimmed is red and dead still — so a still crinkle
+still says "this sail has let go" with nothing on the page moving.
+
 #### How the camber is drawn
 
 The offset from the chord runs along `perpendicular(chordDirection)` — 90°
@@ -1095,17 +1121,68 @@ on. Three properties of it are load-bearing and should not be traded away:
   attachments, and the clew is a grab point ([§5](#5-direct-manipulation)), so no
   animation can walk a touch target off the drawn sail.
 
-**One thing the seam deliberately does not settle.** `collapseAt` is an
-*aerodynamic* ramp: it measures depth into the **detached** region, which is
-where a partly collapsed sail really does shake — the flow has left the cloth at
-the breaking edge and is still attached further along. At **full** collapse there
-is no pressure gradient left to measure, and the ramp goes on peaking at the edge
-the collapse arrived from, which for a luff-first collapse is the end pinned to
-the mast. A sail flogging head to wind moves most at its **unsupported** edge,
-the leech, because nothing is holding it. Both are real behaviour in different
-regimes, so a flutter that wants the second must blend toward the free edge as
-the collapsed fraction approaches 1. That is an animation decision, and this
-section leaves it to the animation.
+**Detached, then unsupported.** `collapseAt` is an *aerodynamic* ramp: it
+measures depth into the **detached** region, which is where a partly collapsed
+sail really does shake — the flow has left the cloth at the breaking edge and is
+still attached further along. At **full** collapse there is no pressure gradient
+left to measure, and the ramp goes on peaking at the edge the collapse arrived
+from, which for a luff-first collapse is the end pinned to the mast. A sail
+flogging head to wind moves most at its **unsupported** edge, the leech, because
+nothing is holding it. Both are real behaviour in different regimes, so the
+flutter uses each where it is true: pos-dmg.2 cross-fades the amplitude ramp from
+`collapseAt` to a plain chord fraction — 0 at the luff, 1 at the leech — over
+`collapsedFraction ∈ [0.9, 1]`. This section left that decision to the animation
+and the animation made it; what follows is what it costs.
+
+**Two things stop 0.9 being a magic number, and they are what make the
+cross-fade cheap enough to be worth it.** Below the onset the weight is
+*exactly* 0, because `smoothstep` clamps — so every partial collapse, which is
+the whole of what this section is about, is left byte for byte where `collapseAt`
+puts it, with no ripple outside the collapsed region at all. And on the
+leech-first limb the cross-fade is the **identity**, not a mirror: at full
+collapse from the leech, `collapseAt(shape, s)` already *is* `s` — 0.25 reads
+0.250, 0.90 reads 0.900. The onset itself is |α| = 2.98°. So the entire effect of
+this constant is one case: a sail head to wind, on the luff limb, where
+`collapseAt` is `1 − s` and would otherwise shake the sail hardest against its
+own mast.
+
+Two consequences are worth writing down rather than discovering.
+
+- **The mixture has to be normalised.** On the luff-first limb the two ramps
+  point at opposite ends, so mixing them cancels: halfway across, the raw
+  mixture is nearly flat at half height, and the ripple would shrink by a third
+  and swell again as a boat came head to wind. Dividing by the mixture's own
+  peak — which is available in closed form, since it is piecewise linear in `s`
+  and its only interior breakpoint is the collapse boundary — holds the
+  amplitude while letting the shape slide, and leaves a residual dip of 5.3%.
+  What that draws is a progression rather than a swap: the sail breaks at the
+  luff, the shake spreads over the whole cloth, and once the chord is wholly
+  gone it concentrates at the leech. `render/sail.ts` exposes that normalised
+  ramp separately from the envelope, because it is the only form in which the
+  closed form can be *checked*: the envelope multiplies it by the collapsed
+  fraction and by the end taper, and both bite hardest exactly where the ramp
+  peaks, so sweeping the envelope tops out around 0.945 and would wave through a
+  normaliser understated by 5%. Swept on the ramp itself it reaches exactly 1.
+- **A little ripple overhangs the boundary.** The chord-fraction term is not
+  gated on the collapsed region, so above the onset it reaches onto cloth §3.3
+  still calls drawing. At the points actually drawn the worst case is 0.217 of
+  peak — 2.2 px of amplitude on a 1024 px iPad, on the single sample at
+  `s = 0.969`, at α = 2.55°, where 96.6% of the sail has gone and the drawn
+  camber is 0.65 mm. Gating it would trade that smear for a discontinuity in the
+  drawn shape at the boundary, which is worse. `render/sail.test.ts` measures the
+  overhang rather than arguing it away.
+
+**What the flutter costs per frame, and what that does not establish.** The
+animation lives in the sail layer's own `requestAnimationFrame` loop rather than
+in `Layer.update`, because `update` is called when the *state* changes and a
+travelling wave has to move when nothing changes. The split is where the cost is:
+`update` caches the frame's `rigDrawing` — 55 µs for the rig, nearly all of it
+[§4.2](#42-the-traffic-light)'s optimal-trim search — and the loop only re-emits
+the two path strings, measured at 27 µs for both cloths against 2 µs for two
+sails drawing. **And no frame is scheduled at all unless something is
+collapsed**, so the ordinary case costs nothing rather than a little. Those are
+node measurements of JavaScript; they say nothing about SVG parsing, layout or
+rasterisation on a tablet, which is the half no test in this repo can reach.
 
 **Weight and colour.** The sailcloth is the heaviest line in the drawing —
 heavier than the hull, and heavier than the boom, which is only a spar. That is
@@ -1271,6 +1348,10 @@ more forgiving downwind, and nothing anywhere says so.
 
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
+Since pos-dmg.2 that is drawn rather than promised ([§4.1](#41-whats-drawn)), and
+it is why a viewer who has asked for less motion gets the ripple *held* at a
+fixed phase rather than removed: taking it away would collapse the two red states
+back into one.
 
 One qualification, and it comes from the physics rather than from the ramp:
 **you cannot badly oversheet close hauled.** The best trim there is already
