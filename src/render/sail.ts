@@ -328,7 +328,8 @@ export function jibShape(jibAngle: Radians, apparent: ApparentWind): SailShape {
  * the wind: perfectly trimmed sails would refuse to go green in light air and
  * the ramp would be answering a question nobody asked. Divided out, the same
  * number means the same thing at 2 kt as at 25 kt — measured, not assumed;
- * `sail.test.ts` pins the peak coefficient across three wind speeds.
+ * `sail.test.ts` sweeps a grid of trims at four wind speeds and pins the
+ * quality to the same value at each.
  *
  * 0.05 is reached at an apparent wind angle of about 8°, deep inside the no-go
  * zone: the main's peak coefficient is 0.006 at AWA 5°, 0.05 at 8°, 0.21 at
