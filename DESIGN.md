@@ -338,8 +338,9 @@ a = (F_drive − R(v)) / m_effective
 v += a · dt
 ```
 
-with `m_effective` ≈ 880 kg (boat + two crew + ~15% added mass). Three reasons
-to integrate rather than solve for equilibrium:
+with `m_effective` ≈ 880 kg — boat + two crew + ~15% added mass, which is a
+sanity check on the figure rather than its source; see the lag knob below.
+Three reasons to integrate rather than solve for equilibrium:
 
 1. Apparent wind depends on speed and speed depends on apparent wind. Integration
    resolves that feedback loop for free; a fixed-point solve has to iterate.
@@ -350,13 +351,58 @@ to integrate rather than solve for equilibrium:
 
 The boat still doesn't *translate*; only the speed number evolves.
 
-**The lag is a tuning knob, not a derived constant.** `m_effective` is exposed
-in [`tuning.ts`](#6-architecture) alongside a documented mapping to what we
-actually care about — *time to reach ~63% of terminal speed from rest.* Starting
-value **10 s**, which is about right for a keelboat. If it reads as sluggish
-when comparing two trim settings back to back, we shorten it; the number is a
-feel decision to be made against the running thing, not something to argue about
-now.
+**One numerical wrinkle: the resistance is taken implicitly.** Written exactly as
+above, each step charges the resistance the boat felt at the *start* of the
+interval, and against a sixth power on top of a square that error compounds
+badly. Trimmed for the wind it's in, the boat stops settling at around 55 kt — a
+tenth-of-a-second step alternates between two speeds forever — and by 85 kt it
+diverges to `NaN`, permanently, since every later step adds to it. Nobody sails a
+Rhodes 19 in 85 kt, but the wind slider ([§5](#5-direct-manipulation)) has no
+natural ceiling, and a model that quietly dies past one is a trap for whoever
+picks it. So the step linearizes the resistance about the current speed:
+
+```text
+v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
+```
+
+Same equation to first order — at 60 Hz the correction is about a percent and
+the trajectory matches the naive form to three figures — but the faster the
+water would answer, the smaller the step it takes, so the speed can't run away
+from a curve climbing faster than the step can see. The fixed point is still
+exactly `F_drive = R(v)` and doesn't depend on `dt`.
+
+It does *not* make overshoot impossible: the step follows a tangent to a convex
+curve, so it aims slightly beyond the balance point, and in a gale not slightly
+at all. What makes that harmless is that resistance grows faster than linearly,
+so a speed past the balance point meets a restoring step larger than the one
+that took it there, and overshoots decay instead of feeding themselves.
+
+**`settle()` runs real frames, and that is not an oversight.** Long steps look
+free — where resistance dominates, the update becomes a Newton step and lands in
+ten iterations rather than three hundred — but the *drive* is not in the
+linearization, and it can fall with speed faster than resistance rises. Then a
+long step isn't a step toward anything: at five seconds, a sloop in 10 kt at
+TWA 105 with the sails eased to 80° alternates between 1.667 and 1.834 m/s
+forever, 46 N out of balance. Frame-length steps have an argument rather than a
+survey behind them — the underlying equation is a one-dimensional flow, so speed
+moves to the nearest balance point and stops, because there is nowhere else to
+go — and the tests assert the balance itself, not just that the number stopped
+moving. The cost is iterations, which are cheap.
+
+**The lag is the tuning knob; the mass is derived from it.** What
+[`tuning.ts`](#6-architecture) exposes is the thing anyone can judge by watching
+— *time to reach ~63% of terminal speed from rest*, starting at **10 s**, about
+right for a keelboat. `hull.ts` inverts the closed form `v(t) = v_t·tanh(t·A·v_t/m)`
+to get `m_effective` from it, so that calibrating the resistance can't move the
+lag out from under us. It lands at ≈ 877 kg, which is where the boat + two crew +
+~15% added mass estimate above independently lands — two routes to one number,
+and the reason that estimate is quoted as a sanity check rather than used as an
+input. The anchor holds at the reference speed and stretches away from it: the
+lag works out as `10 s · v_hull / v_terminal`, so a calibration pass that leaves
+the boat settling slower will also leave it a little slower off the mark. If it
+reads as sluggish when comparing two trim settings back to back, we shorten the
+time; it's a feel decision to be made against the running thing, not something
+to argue about now.
 
 ### 3.6 Calibration targets
 

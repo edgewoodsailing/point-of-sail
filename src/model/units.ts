@@ -22,6 +22,7 @@
 export type Radians = number;
 /** An angle in degrees — UI edge only. */
 export type Degrees = number;
+export type Seconds = number;
 export type Meters = number;
 export type MetersPerSecond = number;
 /** Speed in knots — display only. */

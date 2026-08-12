@@ -129,7 +129,7 @@ export const HULL: {
   displacement: poundsToKilograms(DISPLACEMENT_LB),
   /**
    * ≈ 5.65 kt. The wall the resistance curve is shaped around (§3.5) — not the
-   * mass the boat accelerates with, which is `m_effective` in `tuning.ts` and
+   * mass the boat accelerates with, which is `EFFECTIVE_MASS` in `hull.ts` and
    * includes crew and added mass.
    */
   hullSpeed: knotsToMetersPerSecond(HULL_SPEED_COEFFICIENT * Math.sqrt(LWL_FT)),
