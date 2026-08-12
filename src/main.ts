@@ -2,9 +2,17 @@ import "./shell.css";
 
 import { SWING_LIMIT } from "./model/boat.ts";
 import type { SimState } from "./model/simulation.ts";
-import { degreesToRadians, knotsToMetersPerSecond, radiansToDegrees } from "./model/units.ts";
+import type { Meters, Radians, Vec2 } from "./model/units.ts";
+import {
+  add,
+  degreesToRadians,
+  knotsToMetersPerSecond,
+  radiansToDegrees,
+  vectorFromAngle,
+} from "./model/units.ts";
 import { createSailLayer } from "./render/sail.ts";
-import { createScene } from "./render/scene.ts";
+import { SCENE, createScene } from "./render/scene.ts";
+import { formatNumber, svgElement } from "./render/svg.ts";
 
 // Shell bootstrap. Later beads mount the remaining layers through the scene:
 //   render/wind.ts onto scene.layers.wind, render/speed.ts onto
@@ -50,10 +58,57 @@ const scene = createScene(surface);
 const sails = createSailLayer();
 scene.layers.sails.append(sails.element);
 
+// --- Scaffolding: the wind arrow -------------------------------------------
+//
+// A bare arrow at the perimeter, flying with the true wind, so the drawing can
+// be read against a known wind instead of an inferred one. DELETE THIS when
+// pos-qmk.3 lands the real wind ring (§4.1), which owns both this space and the
+// gesture that will set the wind.
+//
+// It lives in the **world** frame — `scene.layers.wind`, which carries no
+// transform — because a wind bearing is absolute. That is the whole point of
+// having it here: swinging the heading moves the boat under a wind that stays
+// put, which is the relationship the sails are supposed to be answering.
+//
+// The head is drawn as path geometry in metres rather than as a `marker`.
+// Markers are sized in stroke widths by default, and these strokes are
+// `non-scaling-stroke` (§4.5), so a marker would size itself off a length that
+// has been taken out of user space — which draws an arrowhead the size of the
+// boat.
+
+/** Where the tail sits: on the wind ring's centreline, so the arrow points in. */
+const ARROW_TAIL: Meters = SCENE.windRingRadius;
+const ARROW_LENGTH: Meters = 1.4;
+const ARROW_BARB: Meters = 0.4;
+const ARROW_SPREAD: Radians = degreesToRadians(28);
+
+const windArrow = svgElement("path", {
+  class: "wind-scaffold",
+  "vector-effect": "non-scaling-stroke",
+});
+scene.layers.wind.append(windArrow);
+
+function windArrowPath(from: Radians): string {
+  const point = (v: Vec2): string => `${formatNumber(v.x)} ${formatNumber(v.y)}`;
+  // `wind.from` is the direction it blows *from*, so the tail goes there and the
+  // arrow flies inward along `from + 180°` — the way the wind is actually going.
+  const tail = vectorFromAngle(from, ARROW_TAIL);
+  const tip = vectorFromAngle(from, ARROW_TAIL - ARROW_LENGTH);
+  // Barbs splay back upwind from the tip, which is bearing `from` again.
+  const barb = (sign: number): Vec2 =>
+    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, ARROW_BARB));
+
+  return [
+    `M ${point(tail)} L ${point(tip)}`,
+    `M ${point(barb(-1))} L ${point(tip)} L ${point(barb(1))}`,
+  ].join(" ");
+}
+
 /** Everything that reads state, in one place, so no control can forget a layer. */
 function draw(next: SimState): void {
   scene.render(next);
   sails.update?.(next);
+  windArrow.setAttribute("d", windArrowPath(next.wind.from));
 }
 
 draw(state);
@@ -104,6 +159,11 @@ if (controls !== null) {
   };
 
   const trimLimit = Math.round(radiansToDegrees(SWING_LIMIT));
+
+  slider("Wind from", 0, 360, radiansToDegrees(state.wind.from), (degrees) => {
+    state = { ...state, wind: { ...state.wind, from: degreesToRadians(degrees) } };
+    draw(state);
+  });
 
   slider("Heading", 0, 360, radiansToDegrees(state.motion.heading), (degrees) => {
     state = { ...state, motion: { ...state.motion, heading: degreesToRadians(degrees) } };

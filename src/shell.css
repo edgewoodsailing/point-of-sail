@@ -78,3 +78,16 @@ body {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/*
+ * The wind arrow. Deliberately a different hue from anything on the boat, so it
+ * reads as an annotation rather than as a part of the rig — pos-qmk.3 will make
+ * this a proper ring in the palette's own colours.
+ */
+.pos-sim .wind-scaffold {
+  fill: none;
+  stroke: oklch(62% 0.13 235deg);
+  stroke-width: clamp(1.6px, 0.45vmin, 4px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
