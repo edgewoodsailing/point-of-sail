@@ -402,11 +402,15 @@ mooring.
 Resistance rises steeply approaching hull speed:
 
 ```text
-R(v) = A·v² + B·v²·(v / v_hull)⁶        v_hull = 2.91 m/s (5.65 kt)
+R(v) = A·v² + B·v²·(v / v_hull)⁴        v_hull = 2.91 m/s (5.65 kt)
 ```
 
-The sixth-power term is a shape, not a theory — it produces the wall a
-displacement hull hits, so no amount of sail area gets a Rhodes 19 to 9 knots.
+The fourth-power term is a shape, not a theory — it produces the wall a
+displacement hull hits, so no amount of sail area gets a Rhodes 19 to 9 knots
+in the wind it is actually sailed in. It was a sixth power until `pos-lcz`;
+[the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) below is
+the decision that moved it, and it is the one place in this section where a
+number was chosen against something other than the 10 kt polar.
 Going astern, multiply by ≈ 2.5: transom-first with a stalled keel and rudder is
 genuinely much draggier, and students should feel that backing up is slow.
 
@@ -445,6 +449,66 @@ scale the same way. The stall ceiling turns out to be the constant that sets
 where the no-go zone ends, since the whole upwind quarter runs at or just under
 it.
 
+#### The wall exponent is the model's only wind-scale
+
+Everything else in this model is *homogeneous of degree two* in speed. Sail
+force is dynamic pressure times coefficients that depend only on angles; the
+keel's induced drag is `k·F²/v²` with `F` itself going as `v²`; the keel's stall
+ratio is capacity over load, which is unchanged when both scale together; and
+`A·v²` is quadratic by construction. Scale the true wind and the boat's speed by
+the same factor and every one of those scales by that factor squared — so the
+balance `F_drive = R(v)` is preserved, and the *shape* of the polar does not
+move at all.
+
+The wall term is the exception, because `v_hull` is an absolute speed:
+`B·v^(n+2)/v_hull^n` scales by the (n+2)th power instead. That is not a detail.
+Set `B` to zero and re-solve `A` to hold the 10 kt beam reach, and the polar
+becomes exactly scale-invariant — a 45° upwind VMG peak, a run at 0.58 of a beam
+reach, and a beam reach of 0.555 kt per knot of true wind, at *every* wind from
+4 to 30 kt. **So the wall is the sole source of wind-dependence in this model,
+and everything the polar does as the breeze fills in is the exponent's doing.**
+
+Which is why the exponent is a design decision and not a knob, and why `pos-lcz`
+moved it from 6 to 4 rather than the other way. The wall bites hardest where the
+boat is fastest, so it clips a reach harder than it clips close hauled — and
+clipping the fast angles is precisely what slides the upwind VMG optimum to a
+*smaller* angle. Sharpening the wall therefore buys a slower beam reach in a
+breeze at the cost of a boat that points ever higher in it, which is the
+opposite of what a keelboat does. Measured, holding the 10 kt beam reach at
+5.55 kt by re-solving `B` each time:
+
+| exponent | 10 kt polar (45/90/135/180) | VMG peak, 6→14 kt | run/beam at 14 kt | beam at 20 kt | beam at 30 kt |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 4.18 5.55 4.73 3.71 | 49° → 40° | 0.74 | 7.59 | 8.88 |
+| 6 | 4.29 5.55 4.83 3.79 | 49° → 39° | 0.78 | 7.07 | 7.95 |
+| 10 | 4.42 5.55 4.96 3.85 | 49° → 38° | 0.83 | 6.54 | 7.07 |
+| 20 | 4.53 5.55 5.13 3.87 | 49° → 37° | 0.88 | 6.08 | 6.34 |
+
+There is no row that keeps a beam reach at hull speed in a breeze *and* holds
+the pointing angle, because there is only the one knob. Holding a beam reach at
+or under hull speed at 30 kt while [§3.6](#36-calibration-targets)'s table
+survives needs an exponent of about 126 — a speed clamp, not a wall — and the
+pointing is long gone well before that. Pulling the 10 kt beam reach down to
+make room instead fails a different way: the run sits at ≈ 3.85 kt in every
+configuration, being far enough below the wall to be untouched by it, so a
+slower beam reach simply breaks "a run is notably slower than a reach".
+
+Four is that trade taken deliberately toward the range the simulator opens in.
+It costs speed discipline at the top of the wind range — a beam reach reaches
+7.59 kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and
+a Rhodes 19 does neither — and it costs the broad reach two more points of the
+shortfall [§3.6](#36-calibration-targets) already calls structural. What it buys
+is that the three lessons the model exists to teach hold their shape across the
+6–14 kt [§2.1](#21-initial-state-a-random-solvable-problem) actually opens on.
+`calibration.test.ts` asserts both halves, the gain and the cost.
+
+The honest reading is that the wall is being asked to do a job it is the wrong
+shape for. What holds a real Rhodes 19 down in a breeze is not extra water drag
+but the rig giving up: it heels, the sail twists off, and the crew eases and
+feathers. That caps the *drive* rather than clipping the *speed*, and because it
+acts on every point of sail together it is the only kind of term that can slow
+the boat in a gale without bending the polar. `pos-d7u` is the bead for it.
+
 **Speed is integrated, not solved.** Each frame:
 
 ```text
@@ -467,13 +531,15 @@ The boat still doesn't *translate*; only the speed number evolves.
 
 **One numerical wrinkle: the resistance is taken implicitly.** Written exactly as
 above, each step charges the resistance the boat felt at the *start* of the
-interval, and against a sixth power on top of a square that error compounds
-badly. Trimmed for the wind it's in, the boat stops settling at around 55 kt — a
-tenth-of-a-second step alternates between two speeds forever — and by 85 kt it
+interval, and against a fourth power on top of a square that error compounds
+badly. Trimmed for the wind it's in, the boat stops settling at around 80 kt — a
+tenth-of-a-second step alternates between two speeds forever — and by 120 kt it
 diverges to `NaN`, permanently, since every later step adds to it. Nobody sails a
-Rhodes 19 in 85 kt, but the wind slider ([§5](#5-direct-manipulation)) has no
-natural ceiling, and a model that quietly dies past one is a trap for whoever
-picks it. So the step linearizes the resistance about the current speed:
+Rhodes 19 in 120 kt, but the wind slider ([§5](#5-direct-manipulation)) is
+scaffolding rather than a limit, and a model that quietly dies past some speed is
+a trap for whoever raises it. (Those thresholds were 55 kt and 85 kt while the
+wall was a sixth power; a gentler curve is a gentler thing to linearize.) So the
+step linearizes the resistance about the current speed:
 
 ```text
 v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
@@ -534,25 +600,36 @@ Constants get tuned until the polar hits roughly these marks in 10 kt true:
 | Point of sail | TWA | Sloop | Main only | **Model (sloop)** |
 | --- | --- | --- | --- | --- |
 | Head to wind | 0° | 0 (in irons) | 0 (in irons) | **0** |
-| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.29 kt** |
+| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.18 kt** |
 | Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt | **5.55 kt** |
-| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.83 kt** |
-| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt | **3.79 kt** |
+| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.73 kt** |
+| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt | **3.71 kt** |
 | **Closest useful angle** | — | **≈ 45°** | **≈ 55°** | **44°** |
 
 Beam reach fastest, run notably slower, and a no-go zone that simply *is* rather
 than being drawn on. These are the model layer's unit tests, in
 `calibration.test.ts`.
 
-The right-hand column is where `pos-fo1.4` left the sloop; every figure is inside
-the ~10% the targets are quoted to. Two of them are worth reading rather than
-just checking.
+The right-hand column is where `pos-fo1.4` left the sloop and `pos-lcz` last
+moved it; every figure is inside the ~10% the targets are quoted to. Two of them
+are worth reading rather than just checking.
 
-The **broad reach is 7% light, and structurally so.** The table puts a beam reach
+The **broad reach is 9% light, and structurally so.** The table puts a beam reach
 and a broad reach 0.2 kt apart while the driving force at 135° is barely half
 what it is at 90° — that needs resistance going as `v¹⁰`, and this section's
-curve is a square under a sixth power, which tops out at `v⁸`. No further tuning
-closes that gap; a different resistance curve would.
+curve is a square under a fourth power, which tops out at `v⁶`. No further tuning
+closes that gap.
+
+It used to read that "a different resistance curve would", and that was too
+generous to the resistance. A steeper wall does close some of it — at a sixth
+power this figure was 7% light and at a twentieth it is 1% — but
+[§3.5](#the-wall-exponent-is-the-models-only-wind-scale) shows what that costs:
+the wall is the model's only wind-scale, so steepening it to buy the broad reach
+sends the pointing angle through the floor as the breeze fills in. `pos-lcz`
+went the other way and spent two points of this figure to hold the pointing,
+leaving about one point of margin against the tolerance. What is actually wanted
+is not a different resistance curve but a term acting on the *drive* — see
+`pos-d7u`.
 
 The **closest useful angle is read as the peak of upwind VMG**, which is what a
 sailor means by it and what a test can check. It came out at 30–35° before
@@ -563,20 +640,36 @@ The **main-only column is not yet met** and is not this section's to meet: it
 belongs to [§3.7](#37-sailing-under-main-alone)'s upwind bonus, which changes
 the sloop numbers too and so has to recalibrate against this table.
 
-**This table is one wind speed, and the model knows it.** [§2.1](#21-initial-state-a-random-solvable-problem)
-opens anywhere in 6–14 kt and [§5](#5-direct-manipulation)'s slider has no
-ceiling, and the three qualitative lessons weaken monotonically as the breeze
-fills in — the closest useful angle runs from 49° at 6 kt to 39° at 14 kt, and
-the run climbs from 55% of a beam reach to 78% of it. Partly that is real, since
-a displacement hull meets its wall on both points of sail as the wind rises. The
-rest is the wall not being sharp enough to hold the speed down while the keel's
-`1/v²` charge falls away — the same softness as the broad-reach shortfall above,
-and by 20 kt it puts a beam reach 25% *over* hull speed. `calibration.test.ts`
-asserts the looser bounds that do hold across 6–14 kt, so the limit is stated
-rather than discovered; `pos-lcz` is the bead for narrowing it, and the lever it
-will have to reach for is the wall exponent, which
-[§3.5](#35-hull-resistance-and-integration) currently treats as shape rather
-than knob.
+**This table is one wind speed, and the model knows it.**
+[§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
+[§5](#5-direct-manipulation)'s slider runs to 30, so the three qualitative
+lessons have to survive a range the table says nothing about. They still weaken
+as the breeze fills in, but `pos-lcz` narrowed it to where the same bounds hold
+across the whole opening range:
+
+```text
+wind      4     6     8    10    12    14    16    20    30
+angle    51°   49°   47°   44°   41°   40°   38°   36°   33°
+run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.77  0.80  0.85
+beam kt  2.91  4.05  4.90  5.55  6.08  6.53  6.92  7.59  8.88
+```
+
+The closest useful angle now stays inside 40–50° for every wind in 6–14 kt — the
+same band the 10 kt test pins — where before it ran to 39° by 14 kt, and the run
+stays under 75% of a beam reach across the range rather than reaching 78%.
+`calibration.test.ts` asserts exactly that, at the real bound: the 14 kt figure
+lands on 40° with *no margin*, and buying a degree back by nudging the keel's
+stall ceiling was available, considered, and declined, because it would move the
+boat to make a test comfortable while the drift underneath stayed put.
+
+**What this does not fix is the beam reach in a lot of wind**, and that is now a
+recorded limit rather than an open question. At 20 kt it is 7.59 kt and at 30 kt
+8.88 kt, against a 5.65 kt hull speed — 34% and 57% over, where before `pos-lcz`
+it was 25% and 41%. That got *worse*, deliberately:
+[§3.5](#the-wall-exponent-is-the-models-only-wind-scale) shows the two are the
+same knob pulling opposite ways, and the pointing angle across the range anyone
+actually sails in was judged the more valuable of the two. No setting of the wall
+exponent satisfies both, and the term that could is `pos-d7u`.
 
 The last row matters as much as the speeds. Main-only falls off *hardest close
 hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
