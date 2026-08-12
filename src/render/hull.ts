@@ -135,7 +135,12 @@ function mirroredReverse(segment: CubicSegment, start: Vec2): CubicSegment {
   };
 }
 
-function cubicTo({ control1, control2, end }: CubicSegment): string {
+/**
+ * One cubic segment as a `C` command. Exported because `sail.ts` emits the same
+ * curve type; if a third caller appears, this and {@link cubicPoint} are what
+ * would move to a shared `render/path.ts`.
+ */
+export function cubicTo({ control1, control2, end }: CubicSegment): string {
   return (
     `C ${formatNumber(control1.x)} ${formatNumber(control1.y)}` +
     ` ${formatNumber(control2.x)} ${formatNumber(control2.y)}` +

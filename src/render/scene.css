@@ -35,6 +35,23 @@
    * exact, but it starts at Safari 16, above the §4.4 floor.
    */
   --pos-rule-hull: clamp(1.4px, 0.4vmin, 4px);
+
+  /* A spar, so it carries the hull's weight — it is a reference line, not the
+     subject. */
+  --pos-rule-boom: clamp(1.4px, 0.4vmin, 4px);
+
+  /*
+   * The heaviest line in the drawing, and the only one that is heavy on
+   * purpose. The sails are what the simulator is about, and pos-dmg.1 paints
+   * this stroke with the §4.2 traffic light — a ramp that has to read on an
+   * iPad lying flat on a table, seen at an angle by three students. A hull-
+   * weight stroke cannot carry that.
+   *
+   * Filling the lens between the boom and the curve would carry it better
+   * still, and is disqualified: the lens has zero area exactly when the sail is
+   * fully luffing, which is exactly when the light is red.
+   */
+  --pos-rule-sail: clamp(2.2px, 0.7vmin, 6px);
   --pos-ink: oklch(38% 0.03 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
 }
@@ -53,4 +70,40 @@
 
 .pos-sim .pos-mast {
   fill: var(--pos-ink);
+}
+
+.pos-sim .pos-boom {
+  stroke: var(--pos-ink);
+  stroke-width: var(--pos-rule-boom);
+  stroke-linecap: round;
+}
+
+.pos-sim .pos-sailcloth {
+  /*
+   * `fill: none` in CSS rather than as a presentation attribute. It would be
+   * legal as an attribute — it is not a colour — but keeping every paint
+   * property on one side of the line is what stops §4.4's rule from having to
+   * be remembered case by case.
+   */
+  fill: none;
+
+  /*
+   * The seam pos-dmg.1 writes to: it sets `--pos-sail-ink` on the per-sail
+   * group, custom properties inherit down to this path, and because the value
+   * runs through the CSS parser an `oklch()` colour works everywhere at the
+   * support floor rather than in Safari alone (§4.4). The fallback means this
+   * bead ships in plain ink and pos-dmg.1 needs no CSS change at all.
+   */
+  stroke: var(--pos-sail-ink, var(--pos-ink));
+  stroke-width: var(--pos-rule-sail);
+  stroke-linecap: round;
+
+  /* Rounds off the faceting when a deformation makes the path a polyline. */
+  stroke-linejoin: round;
+}
+
+/* A struck jib is absent entirely (§4.1) — from painting, hit-testing and the
+   accessibility tree alike. */
+.pos-sim .pos-struck {
+  display: none;
 }
