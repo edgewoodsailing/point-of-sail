@@ -895,11 +895,18 @@ quiet, and slow; without this, it would look identical to a well-trimmed one.
 The scale is driven by **driving-force ratio, not angular error**:
 
 ```text
-quality = F_drive(current angle) / F_drive(best angle at this apparent wind)
+quality = F_drive(current angle) / max(F_drive(best angle at this apparent wind), 0.05 · q · A)
 ```
 
 Best angle is found by sampling the sail's range each frame — a few dozen
 evaluations, negligible cost.
+
+Read the denominator as `F_drive(best)` everywhere a student can sail: the
+second term is a floor that binds only inside the no-go zone, below an apparent
+wind angle of about 8°, where the best trim available is itself worth nothing.
+It is what stops the ratio being 0/0 in irons, and
+[below](#where-the-best-trim-is-itself-worth-nothing) is the whole of why it is
+written as a dimensionless coefficient rather than as a force.
 
 This choice matters pedagogically. Keyed to *angle*, a fixed 10° error would
 look equally bad everywhere. Keyed to *force*, the color falloff is
@@ -908,8 +915,59 @@ critical — and forgiving where the physics is forgiving. On a run, a wide rang
 of sail angles really is fine, and the sail really should stay green across all
 of it. The colors inherit the truth of the model instead of restating a rule.
 
+And it comes out that way. Measured on the main in 10 kt of apparent wind, the
+trims reading 0.8 or better span 6.2% of the sail's legal range close hauled
+against 30.0% dead downwind; at 0.5 or better, 11.5% against 50.8%. Put as a
+trim error, close hauled loses 0.8 within 5.25° of sheeting in past the optimum
+and 6.25° of easing past it, against 27° on a run. Getting on for five times
+more forgiving downwind, and nothing anywhere says so.
+
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
+
+One qualification, and it comes from the physics rather than from the ramp:
+**you cannot badly oversheet close hauled.** The best trim there is already
+nearly on the centreline — 9° off it at an apparent wind angle of 30°, and
+exactly on it at 20° — so the boom hauled all the way in is a small error, and
+reads amber. Sheeted to the centreline, the quality first reaches amber at 28°
+and red at 35°. Past the centreline is not oversheeting at all but *backing*
+the sail ([§3.4](#34-backing-a-sail)), which is red for a different reason: it
+drives the boat astern. So overtrimming is a reaching and running mistake,
+which is where it is a mistake on the water too, and the error available close
+hauled is easing too far — which luffs, and reads red the other way.
+
+#### Where the best trim is itself worth nothing
+
+The denominator needs a floor, because in the no-go zone it goes to zero. The
+optimal-trim search reports the honest in-irons answer — a non-positive best
+force, and *exactly* zero below an apparent wind angle of 4.3°: the main is
+still at zero *at* 4.3° and first drives at 4.4°, with 0.06 N, reaching 0.22 N
+at 4.5°, while the jib crosses a tenth of a degree sooner. Not because
+everything luffs there — a boom right out at 4° off the wind is fully attached,
+and pulling 200 N *astern*. Every trim that holds its shape drives backwards,
+so the maximum lands on a luffing trim at exactly zero.
+
+The bare ratio there is 0/0. Worse than undefined: a sail sitting on the
+optimum at 5° off the wind would read fully green while making 1 N and going
+nowhere, then snap to red as the best force crossed zero.
+
+So the denominator is `max(F_drive(best), 0.05 · q · A)`. The floor is a drive
+*coefficient*, not a force, which is what keeps it from becoming a statement
+about the strength of the wind: `F_drive` scales with dynamic pressure, so a
+floor in newtons would refuse to let a perfectly trimmed sail go green in light
+air. Divided out, 0.05 means the same thing at 2 kt as at 25 kt.
+
+It binds only where the answer is "bear away". The main's peak drive
+coefficient is 0.006 at 5° off the wind, 0.047 at 8°, 0.21 at 15°, 0.59 close
+hauled and 1.57 on a beam reach, first reaching the floor itself at 8.2° — so
+every point of sail a student can actually sail divides by the same number it
+always did, and inside the no-go zone the best trim fades from red rather than
+sitting green: 0.13 of the ramp at 5°, 0.36 at 6°, 0.95 at 8°, full green at
+8.2°. The fade is continuous *through* the boundary, which is the point of
+doing it this way rather than with a threshold.
+
+A flat calm is the one case with no answer at all — every trim ties at zero
+force — and it paints red.
 
 ### 4.3 The speed arrow
 
