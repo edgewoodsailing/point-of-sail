@@ -533,6 +533,91 @@ region extending aft as the collapse spreads. A sail that is *just* starting to
 break shows a small ripple at the luff only, which is exactly what a student
 should learn to spot.
 
+#### How the camber is drawn
+
+The offset from the chord runs along `perpendicular(chordDirection)` — 90°
+clockwise of tack→clew — scaled by a signed depth:
+
+```text
+depth = chord · MAX_DRAFT · (1 − luffFraction) · pressureFactor(q) · sin α
+```
+
+**Signing it with `sin α` is what makes "bulges to leeward" a fact rather than a
+check.** Since `flowBearing = chordBearing + α`,
+
+```text
+dot(perpendicular(chordUnit), flowUnit) = cos(90° − α) = sin α
+```
+
+so the offset's dot product with the direction the wind blows *toward* is
+`|depth|·|sin α|` — non-negative at every trim, on either tack, by construction.
+`render/sail.test.ts` asserts it over a grid instead of at spot checks.
+
+Note what that says about a phrase it is easy to get backwards: **crossing the
+centreline does not flip the bulge — crossing the wind does.** A boom swept from
+port to starboard under a beam wind keeps its belly to leeward the whole way.
+
+The invariant is against the *flow*, not against lift. The two agree wherever the
+flow is attached, but the flat-plate limb of [§3.2](#32-sail-forces) makes
+`Cl = 2 sinα cosα`, which reverses at |α| = 90° where the belly does not.
+
+Using `sin α` whole rather than only for its sign also buys both knife edges:
+
+- **α → 0** — edge-on and luffing. Depth → 0, so the side flip at the luff
+  happens through a flat sail and is invisible.
+- **α → ±180°** — the flow arrives at the leech instead, a flogging sail making
+  nothing. Depth → 0 again. This one is easy to miss, because **the luff fraction
+  is blind to it**: [§3.3](#33-luffing) folds the thresholds about zero, so an
+  edge-on-at-the-leech sail reports as fully drawing. `(1 − luffFraction)` alone
+  would draw full camber there, on an arbitrary side, and flip it as α crossed
+  180° — a maximum-amplitude pop in a state a student reaches by easing on a run.
+
+The visible consequence, chosen deliberately: a close-hauled sail reads
+distinctly flatter than a reaching one, which is true on the water. The pressure
+term is a *floor near calm*, not a growth law — a real sail in 15 kt is flatter
+than the same sail in 5 kt, because you flatten it — so it saturates by 8 kt and
+only bites in a drifter.
+
+The curve is a genuine cubic Bézier with its handles at exactly 1/3 and 2/3
+*along the chord*, which makes the chordwise coordinate `u(t) ≡ t` identically:
+the curve parameter **is** the chord fraction. That is what lets the renderer
+emit the bare Bézier when nothing is deforming the sail and a sampled polyline
+when something is, with the samples lying exactly on the same curve rather than
+near it.
+
+**The deformation seam.** `sailPathData` takes an optional per-point hook, which
+is what [§4.2](#42-the-traffic-light)'s companion — the flutter animation — hangs
+on. Three properties of it are load-bearing and should not be traded away:
+
+- Its chord fraction is measured **from the luff aft**, the same axis the luff
+  fraction is defined on, so the fluttering region is literally
+  `s < luffFraction`.
+- It returns a **replacement, not an addend**, so the flutter can flatten the
+  collapsed portion *and* ripple it — `offset · collapse(s) + ripple(s)` — which
+  is what "the fluttering region extends aft as the collapse spreads" requires.
+- It is **never called at the endpoints**. The tack and clew are physical
+  attachments, and the clew is a grab point ([§5](#5-direct-manipulation)), so no
+  animation can walk a touch target off the drawn sail.
+
+**Weight and colour.** The sailcloth is the heaviest line in the drawing —
+heavier than the hull, and heavier than the boom, which is only a spar. That is
+not emphasis for its own sake: [§4.2](#42-the-traffic-light) paints this stroke
+with the trim-quality ramp, and a hull-weight line cannot carry a five-stop ramp
+on a tablet seen at an angle. Filling the lens between boom and curve would carry
+it better still and is disqualified, because the lens has zero area exactly when
+the sail is fully luffing — exactly when the light is red. The ramp reaches the
+stroke through a `--pos-sail-ink` custom property set on each sail's group, so
+the colour runs through the CSS parser rather than a presentation attribute
+(§4.4), with plain ink as the fallback.
+
+A struck jib is hidden by class rather than by a `display` presentation
+attribute. This is the *inverse* of §4.5's belt-and-braces argument for
+`vector-effect`, and deliberately: `display: none` is universally supported, so
+there is no missing-support failure to guard against, while a presentation
+attribute loses to any CSS rule that later touches the same property. `display:
+none` is also genuinely absent from painting, hit-testing and the accessibility
+tree, which is what "absent entirely" has to mean.
+
 #### Why no standing rigging
 
 An earlier version of this section drew the headstay, on the argument that it
@@ -565,6 +650,12 @@ rather than being smuggled in as a line on a hull.
 The tack/stemhead distinction still matters to the *model* even with nothing
 drawn, because the jib's clew swings about the tack. It lives in
 `model/boat.ts` as `STATIONS.jibTack`, named so nothing conflates the two again.
+
+It matters to the drawing too, now that the jib is drawn: the curve starts at the
+tack, half a foot abaft the stem, and not at the bow. Drawing it from the bow
+would put the curve on the wrong radius and leave a gap at the wrong end — the
+same half foot that would have looked like a bug on a forestay looks like one on
+a sail.
 
 #### The coordinate story
 
