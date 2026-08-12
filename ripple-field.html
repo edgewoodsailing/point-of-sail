@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ripple field — sailor's-eye backdrop</title>
+<style>
+  :root{
+    --buff:#EDE3D0;
+    --ink:#16242C;
+    --ink-soft:#5C6B72;
+    --rose:#B4256B;
+    --rule:#B9AB92;
+    --label:"Avenir Next Condensed","Helvetica Neue",Inter,system-ui,sans-serif;
+    --data:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--buff);color:var(--ink);font-family:var(--data);display:flex;flex-direction:column}
+
+  .stage{position:relative;flex:1 1 auto;min-height:240px;overflow:hidden;background:#12303c;border-bottom:1px solid var(--ink)}
+  .stage canvas,.stage svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .panel{flex:0 0 auto;background:var(--buff);padding:13px 16px 15px;border-top:3px double var(--rule);
+         max-height:52vh;overflow-y:auto}
+  .row{display:flex;flex-wrap:wrap;gap:0;align-items:flex-start}
+  .cell{flex:1 1 168px;min-width:152px;padding:0 14px 10px;border-left:1px solid var(--rule)}
+  .cell:first-child{border-left:0;padding-left:0}
+
+  label.k{display:block;font-family:var(--label);font-size:10px;text-transform:uppercase;
+          letter-spacing:.16em;color:var(--ink-soft);margin-bottom:5px}
+  .val{font-size:18px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .val small{font-size:11px;color:var(--ink-soft);letter-spacing:.04em;margin-left:3px}
+
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:2px 0 0;display:block}
+  input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--ink)}
+  input[type=range]::-moz-range-track{height:1px;background:var(--ink)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:3px;height:16px;background:var(--rose);border:0;border-radius:0;margin-top:-8px;cursor:ew-resize}
+  input[type=range]::-moz-range-thumb{width:3px;height:16px;background:var(--rose);border:0;border-radius:0;cursor:ew-resize}
+  input[type=range]:focus-visible{outline:2px solid var(--rose);outline-offset:3px}
+  .ticks{width:100%;height:10px;display:block;margin-top:-1px}
+
+  .seg{display:flex;border:1px solid var(--ink);width:fit-content;margin-top:3px}
+  .seg button{font-family:var(--label);font-size:10px;text-transform:uppercase;letter-spacing:.13em;
+              padding:5px 9px;background:transparent;color:var(--ink);border:0;border-left:1px solid var(--ink);cursor:pointer}
+  .seg button:first-child{border-left:0}
+  .seg button[aria-pressed=true]{background:var(--ink);color:var(--buff)}
+  .seg button:focus-visible{outline:2px solid var(--rose);outline-offset:2px}
+
+  select{font-family:var(--data);font-size:12px;padding:4px 6px;margin-top:5px;background:transparent;
+         border:1px solid var(--ink);border-radius:0;color:var(--ink)}
+
+  .note{font-family:var(--label);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+        margin:6px 0 0;padding-top:8px;border-top:1px solid var(--rule)}
+  .note b{color:var(--rose);font-weight:600}
+
+  @media (max-width:640px){
+    .cell{border-left:0;padding:0 0 13px;flex-basis:100%}
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <canvas id="water"></canvas>
+  <svg id="scene" viewBox="-500 -300 1000 600" preserveAspectRatio="xMidYMid meet" aria-label="Boat, wind and eye indicators">
+    <g fill="none" stroke="#F2ECE0" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+      <path id="wake" d="M-16,74 L-40,250 M16,74 L40,250" stroke-width="1.2" opacity=".5"/>
+      <path d="M0,-88 C27,-47 35,10 27,54 L21,74 L-21,74 L-27,54 C-35,10 -27,-47 0,-88 Z"/>
+      <path d="M0,-88 L0,74" stroke-width="1" opacity=".45"/>
+      <g id="jibg"><path id="jib" d="M0,-86 C-13,-64 -21,-40 -24,-22 L0,-20 Z"/></g>
+      <g id="maing">
+        <path id="main" d="M0,-24 C-16,4 -27,32 -31,54 L0,50 Z"/>
+        <path id="boom" d="M0,-24 L0,52" stroke-width="1.6"/>
+      </g>
+      <circle cx="0" cy="-24" r="3.2" fill="#F2ECE0"/>
+    </g>
+
+    <g id="windg" stroke="#B4256B" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M0,-52 L0,52 M-13,30 L0,52 L13,30"/>
+    </g>
+    <text x="-406" y="-158" fill="#B4256B" font-family="Avenir Next Condensed, Helvetica Neue, sans-serif"
+          font-size="15" letter-spacing="2.6" text-anchor="middle">WIND</text>
+
+    <g id="eyeg" stroke="#F2ECE0" fill="none" stroke-width="2" opacity=".5">
+      <path d="M-26,0 L0,-15 L26,0" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="0" cy="4" r="4"/>
+    </g>
+    <text id="eyelbl" x="0" y="272" fill="#F2ECE0" opacity=".5"
+          font-family="Avenir Next Condensed, Helvetica Neue, sans-serif"
+          font-size="13" letter-spacing="2.4" text-anchor="middle">EYE</text>
+  </svg>
+</div>
+
+<div class="panel">
+  <div class="row">
+
+    <div class="cell">
+      <label class="k" for="twa">True wind angle</label>
+      <div class="val"><span id="twaV">045</span><small>° <span id="twaSide">STBD</span></small></div>
+      <input id="twa" type="range" min="-180" max="180" step="1" value="45">
+      <svg class="ticks" viewBox="0 0 360 10" preserveAspectRatio="none" aria-hidden="true">
+        <g id="tickmarks" stroke="#B9AB92" stroke-width="1"></g>
+        <line id="needle" x1="225" y1="0" x2="225" y2="10" stroke="#B4256B" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <div class="cell">
+      <label class="k" for="wind">Wind speed</label>
+      <div class="val"><span id="windV">12</span><small>kn · rms slope <span id="sigV">—</span>°</small></div>
+      <input id="wind" type="range" min="0" max="25" step="0.5" value="12">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="boat">Boat speed</label>
+      <div class="val"><span id="boatV">4.5</span><small>kn</small></div>
+      <input id="boat" type="range" min="0" max="9" step="0.1" value="4.5">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="eye">Eye elevation</label>
+      <div class="val"><span id="eyeV">4.0</span><small>° above surface</small></div>
+      <input id="eye" type="range" min="1" max="25" step="0.5" value="4">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="sun">Sun bearing</label>
+      <div class="val"><span id="sunV">150</span><small>° <span id="sunTag">astern</span></small></div>
+      <input id="sun" type="range" min="-180" max="180" step="1" value="150">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="occ">Trough occlusion</label>
+      <div class="val"><span id="occV">75</span><small>%</small></div>
+      <input id="occ" type="range" min="0" max="100" step="1" value="75">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="aspect">Crest aspect</label>
+      <div class="val"><span id="aspectV">4.5</span><small>: 1</small></div>
+      <input id="aspect" type="range" min="1" max="10" step="0.1" value="4.5">
+    </div>
+
+    <div class="cell">
+      <label class="k" for="meander">Crest meander</label>
+      <div class="val">±<span id="meanderV">7</span><small>° of crest angle</small></div>
+      <input id="meander" type="range" min="0" max="25" step="0.5" value="7">
+    </div>
+
+    <div class="cell">
+      <label class="k">Shading model</label>
+      <div class="seg" id="mode">
+        <button data-m="graze" aria-pressed="true">Grazing</button>
+        <button data-m="over" aria-pressed="false">Overhead</button>
+      </div>
+    </div>
+
+    <div class="cell">
+      <label class="k" for="detail">Sample step</label>
+      <select id="detail">
+        <option value="2">2 px — fine</option>
+        <option value="3" selected>3 px — balanced</option>
+        <option value="4">4 px — cheap</option>
+        <option value="6">6 px — very cheap</option>
+      </select>
+    </div>
+
+  </div>
+  <p class="note">Field <b><span id="res">—</span></b> · base &lambda; <b><span id="lamV">—</span></b> px · drift <b><span id="cV">—</span></b> px/s (<b><span id="fV">—</span></b> Hz) · mean brightness <b><span id="lum">—</span></b> · <b><span id="fps">—</span></b> ms/frame</p>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+// 1.  Sine lookup table. cos() comes free a quarter-turn along.
+// ═══════════════════════════════════════════════════════════════
+const LUT_BITS = 12, LUT_N = 1 << LUT_BITS, LUT_MASK = LUT_N - 1, QUART = LUT_N >> 2;
+const SIN = new Float32Array(LUT_N);
+for (let i = 0; i < LUT_N; i++) SIN[i] = Math.sin(i * 2 * Math.PI / LUT_N);
+const TAU = Math.PI * 2;
+const TO_IDX = LUT_N / TAU;
+const wrap = p => p - TAU * Math.floor(p / TAU);
+
+const smoothstep = (e0, e1, x) => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 2.  Wave spectrum
+//
+// dth: angular offset from downwind.  rl: wavelength, rel. to lam0.
+// st:  slope weight -- amplitude is derived so a*k matches st.
+//
+// Offsets come in +/- pairs sharing one SLOPE weight, not one
+// amplitude: shading is driven by a*k, so amplitude-matched pairs
+// leave the shorter member dominant and skew every crest ~10 deg.
+// Wavelengths within a pair differ so the pair can't form a lattice,
+// and all ratios are incommensurate, so nothing visibly repeats.
+// ═══════════════════════════════════════════════════════════════
+const COMP = [
+  { dth:  0.00, rl: 1.000, st: 1.00 },
+  { dth:  0.38, rl: 0.618, st: 0.78 },
+  { dth: -0.38, rl: 0.437, st: 0.78 },
+  { dth:  0.72, rl: 0.268, st: 0.55 },
+  { dth: -0.72, rl: 0.164, st: 0.55 },
+];
+
+const KN_TO_MS = 0.514444;
+
+// ── Scale constants ───────────────────────────────────────────────
+// The one thing that fixes apparent size is the boat: its hull is
+// about 195 px on a 1200 px stage, call it a 4.5 m dinghy, so roughly
+// 43 px per metre. Ripple wavelength then runs ~0.55 m in a drifter
+// to ~1.4 m at 25 kn, and the fundamental's drift speed ~0.1 m/s to
+// ~2.6 m/s. Both are compressed against open water; a bay with short
+// fetch is the right mental model, and both stay well under hull
+// scale so the boat never looks like a toy.
+const LAM_MIN    = 24;    // px, wavelength floor
+const LAM_GAIN   = 7.5;   // px per sqrt(knot)
+const SPEED_GAIN = 4.5;   // px/s per knot of wind
+const WARP_LAM   = 8.0;   // meander wavelength, in units of lam0
+
+// Cox & Munk (1954): mean square surface slope rises linearly with
+// wind speed, mss = 0.003 + 0.00512*U (U in m/s). This sets absolute
+// roughness, so the optics below follow from the wind rather than
+// from a tuned contrast knob.
+//
+// The 0.003 intercept is residual swell and slick left over from
+// earlier weather, NOT anything the present wind is doing. Here wind
+// is the only forcing there is, so the intercept is dropped and calm
+// means glass. Above ~3 kn the two forms differ by under a degree.
+const coxMunkSigma = windKn => Math.sqrt(0.00512 * windKn * KN_TO_MS);
+
+function buildWaves(windKn, windFromRad, sampleStep, aspect, meanderDeg) {
+  const down = windFromRad + Math.PI;
+  const dax = Math.sin(down), day = -Math.cos(down);   // along-wind
+  const cax = -day,           cay =  dax;              // across-wind
+
+  // Wavelength grows with the SQUARE ROOT of wind, not linearly.
+  // Linear growth ran lam0 from 22 px to 272 px over the range -- a
+  // 12x zoom that shrinks the boat by comparison, which is the whole
+  // reason wind read as scale rather than as strength. Real seas do
+  // grow faster than this; the compression is deliberate, so the
+  // ripples stay smaller than the hull at every wind speed.
+  const lam0 = LAM_MIN + LAM_GAIN * Math.sqrt(windKn);
+
+  // Crest aspect: crests stay coherent S times further across the wind
+  // than their along-wind wavelength. Dividing the across-wind part of
+  // every wavevector by S swings all components onto the wind axis;
+  // what survives becomes slow along-crest modulation.
+  const S = Math.max(1, aspect * (1 - 0.014 * windKn));
+
+  const raw = [];
+  let sumSt2 = 0;
+  for (const c of COMP) {
+    const lam = lam0 * c.rl;
+    const k = TAU / lam;
+    const ka = k * Math.cos(c.dth);
+    const kb = k * Math.sin(c.dth) / S;
+    const kx = ka * dax + kb * cax;
+    const ky = ka * day + kb * cay;
+    const kmag = Math.hypot(kx, ky);
+    raw.push({ kx, ky, kmag, lamEff: TAU / kmag, st: c.st });
+    sumSt2 += c.st * c.st;
+  }
+
+  const cRef = SPEED_GAIN * windKn;   // px/s, fundamental's phase speed
+
+  // Scale the set so RMS slope == Cox-Munk sigma. For a sum of
+  // sinusoids with slope amplitudes s_i, rms = sqrt(sum(s_i^2)/2).
+  const sigma = coxMunkSigma(windKn);
+  const scale = sigma / Math.sqrt(sumSt2 / 2);
+
+  const waves = [];
+  let h2 = 0, s2 = 0;
+  for (const r of raw) {
+    // Nyquist taper: anything the grid can't resolve aliases into
+    // crawling moire. Fade it, and DON'T renormalise afterwards --
+    // a faded component should genuinely flatten the water.
+    const tp = smoothstep(3 * sampleStep, 6 * sampleStep, r.lamEff);
+    const s = r.st * scale * tp;      // slope amplitude
+    const a = s / r.kmag;             // height amplitude
+    // Phase speed. Wind-driven waves near the spectral peak travel at
+    // roughly the wind speed, so the fundamental is pinned to it and
+    // the rest follow deep-water dispersion (c ∝ √λ) around that. The
+    // old form let c and lam grow together, which held the temporal
+    // frequency at a flat ~0.22 Hz from 0 to 25 kn -- the pattern
+    // rescaled but never sped up. Now f ∝ √wind and you feel it.
+    const cph = cRef * Math.sqrt(r.lamEff / lam0);
+    waves.push({ kx: r.kx, ky: r.ky, w: r.kmag * cph, a,
+                 akx: a * r.kx, aky: a * r.ky });
+    h2 += a * a / 2;
+    s2 += s * s / 2;
+  }
+
+  // Long, lazy meander running across the wind, displacing the sample
+  // point along it, so crest lines wander instead of running straight.
+  const wth = down + Math.PI / 2 + 0.10;
+  const wl = WARP_LAM * lam0, wk = TAU / wl;
+
+  // Crest meander. The warp displaces the sample point along the wind by
+  // A*sin(across-wind phase), so every component's phase picks up an
+  // across-wind gradient of k*A*wk*cos(...). The local crest normal
+  // therefore tilts by atan(A*wk) -- and the k cancels, so the tilt is
+  // the same for all five and the whole pattern swings together.
+  //
+  // That makes the meander angle the natural parameter, so solve for the
+  // amplitude instead of guessing it: A = tan(theta) / wk. The old fixed
+  // A = 0.34*lam0 over a 5.5*lam0 warp worked out to 21 degrees, which
+  // is far more wander than real crest lines show.
+  const A = Math.tan(meanderDeg * Math.PI / 180) / wk;
+  const warp = {
+    kx: wk * Math.sin(wth), ky: -wk * Math.cos(wth),
+    w: wk * cRef * Math.sqrt(wl / lam0) * 0.30,
+    ax: A * dax, ay: A * day,
+  };
+
+  return { waves, warp, dax, day,
+           hrms: Math.sqrt(h2) || 1e-6,
+           srms: Math.sqrt(s2),
+           sigma };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3.  Shading: a virtual grazing eye
+//
+// The scene is drawn top-down, but each point is SHADED as if seen
+// from a sailor's eye a few degrees above the surface, looking
+// up-screen. That one substitution is what carries wind strength.
+//
+//   n     = normalize(-dh/dx, -dh/dy, 1)
+//   v     = (0, cos e, sin e)          e = eye elevation, +y = astern
+//   cos0  = n . v
+//   R     = R0 + (1-R0)(1 - cos0)^5    Schlick, R0 = 0.0204 for water
+//   B     = BODY + vis * R * (SKY + glitter - BODY)
+//
+// Why this darkens with wind: on glassy water every facet sits at
+// cos0 = sin(e) ~ 0.07, so R ~ 0.7 -- a mirror of the bright sky.
+// Roughening tilts facets away from grazing, and R falls off a fifth
+// power, so a facet tilted a few degrees toward you drops to R ~ 0.3
+// and you see dark water body instead. Facets tilted the other way
+// swing toward R -> 1 but turn edge-on and get masked, so they don't
+// compensate. The darkening is Fresnel; occlusion is a modifier.
+//
+// Since this is a pure function of (dh/dx, dh/dy), it's precomputed
+// into a 2-D table on parameter change; per pixel it's one read.
+// ═══════════════════════════════════════════════════════════════
+const LN = 128;
+const SHADE = new Float32Array(LN * LN);
+const OCCN = 64;
+const OCC = new Float32Array(OCCN);
+
+const R0    = 0.0204;      // water, n = 1.333
+const SKY   = 0.97;        // reflected sky radiance
+const BODY  = 0.11;        // light returning from under the surface
+
+// A single view elevation puts every pixel on the same point of the
+// Fresnel curve, and at 4 degrees that point is the cliff edge: half
+// the total darkening was spent by 2.5 kn. Two corrections, both
+// geometry rather than taste.
+//
+// EYE_SAMPLES: one glance takes in water a few metres off (a steep
+// angle) out to the horizon (a grazing one). For a camera looking at a
+// plane, uniform steps down the screen are very nearly uniform steps
+// in elevation, so averaging uniformly over 0..eMax is the right
+// integral. Done once per control change, not per pixel.
+//
+// EYE_MASK_GAIN: as the sea roughens, crests occlude the far water, so
+// what you can still see is nearer -- and nearer means steeper. The
+// effective elevation therefore climbs with rms slope, which walks the
+// operating point back off the cliff as the wind builds and keeps the
+// response alive at the top of the range.
+const EYE_SAMPLES   = 10;
+const EYE_MASK_GAIN = 80;   // degrees of elevation per unit rms slope
+
+// Display range. The physics above works over a narrow band of
+// radiances; these two fixed numbers stretch that band across the
+// palette. They are CONSTANTS on purpose -- make them track the wind
+// and the darkening cancels itself out.
+const TONE_LO = 0.125;
+const TONE_HI = 0.645;
+const TONE_K  = 1 / (TONE_HI - TONE_LO);
+const BODY_MAPPED = (BODY - TONE_LO) * TONE_K;
+const SUNI  = 4.4;         // sun radiance relative to sky
+const SUN_ELEV = 15 * Math.PI / 180;   // low sun => long glitter path
+
+let gmax = 1, invG = 1, invHrms = 1;
+
+function buildShading(model, opts) {
+  const { eyeDeg, sunDeg, occAmt, grazing, lx, ly } = opts;
+  gmax = Math.max(0.05, 3.4 * Math.max(model.srms, 0.02));
+  invG = (LN - 1) / (2 * gmax);
+
+  const eMax = (eyeDeg + EYE_MASK_GAIN * model.srms) * Math.PI / 180;
+  const NE = grazing ? EYE_SAMPLES : 1;
+
+  const bs = sunDeg * Math.PI / 180, ce = Math.cos(SUN_ELEV);
+  const sx = Math.sin(bs) * ce, sy = -Math.cos(bs) * ce, sz = Math.sin(SUN_ELEV);
+
+  // Per-elevation view vectors and their glitter geometry, precomputed
+  // so the inner double loop stays arithmetic.
+  const EV = [];
+  for (let j = 0; j < NE; j++) {
+    const e = eMax * (j + 0.5) / NE;
+    const vy = Math.cos(e), vz = Math.sin(e);
+    let hx = sx, hy = sy + vy, hz = sz + vz;
+    const hn = Math.hypot(hx, hy, hz) || 1;
+    hx /= hn; hy /= hn; hz /= hn;
+    EV.push({ vy, vz, gsx: -hx / hz, gsy: -hy / hz });
+  }
+
+  // Sun glitter, expressed in SLOPE space rather than as a Phong lobe.
+  // A facet reflects the sun into your eye when its slope equals gs;
+  // the lobe width is the sun's angular size, which is tiny. Writing it
+  // this way makes glitter self-calibrating: on glassy water no facet
+  // is anywhere near gs, so there is no glitter at all, and the sparkle
+  // path only opens up once the sea is rough enough to reach it. A
+  // Phong lobe wide enough to render instead washes calm water white.
+  const sigG = Math.max(0.012, 0.10 * model.srms);
+  const invG2 = 1 / (2 * sigG * sigG);
+
+  const invSlope = 1 / Math.max(model.srms * 2.6, 1e-3);
+
+  for (let iy = 0; iy < LN; iy++) {
+    const gy = -gmax + (2 * gmax * iy) / (LN - 1);
+    for (let ix = 0; ix < LN; ix++) {
+      const gx = -gmax + (2 * gmax * ix) / (LN - 1);
+      let val;
+
+      if (grazing) {
+        const inv = 1 / Math.sqrt(1 + gx * gx + gy * gy);
+        const ny = -gy * inv, nz = inv;
+        let acc = 0;
+
+        for (let j = 0; j < NE; j++) {
+          const ev = EV[j];
+          const cos0 = ny * ev.vy + nz * ev.vz;
+
+          // Masking: a facet turned past edge-on to a grazing eye hides
+          // behind the crest in front of it. Never quite zero -- you
+          // still see something there, namely the next wave face.
+          const vis = 0.08 + 0.92 * smoothstep(-0.05, 0.08, cos0);
+
+          const c = cos0 > 0 ? cos0 : 0;
+          const om = 1 - c, om2 = om * om;
+          const R = R0 + (1 - R0) * om2 * om2 * om;   // Schlick
+
+          const ex = gx - ev.gsx, ey = gy - ev.gsy;
+          const q = (ex * ex + ey * ey) * invG2;
+          const glit = q < 30 ? SUNI * Math.exp(-q) : 0;
+
+          acc += vis * R * (SKY + glit - BODY);
+        }
+        val = (acc / NE) * TONE_K;
+      } else {
+        // Original overhead model, kept for A/B comparison.
+        const s = Math.max(-1, Math.min(1, (gx * lx + gy * ly) * invSlope));
+        val = 0.5 + 0.42 * s - BODY_MAPPED;
+      }
+      SHADE[iy * LN + ix] = val;
+    }
+  }
+
+  // Trough occlusion -- the mechanism you guessed at. How much of it
+  // applies scales as roughness over eye angle: the steeper the sea
+  // and the lower the eye, the more of each trough is hidden behind
+  // the crest ahead of it. Set the slider to 0 to see how much of
+  // the darkening is Fresnel alone.
+  // Keyed to the ACTUAL eye height, not the roughness-inflated eMax
+  // above: how much of a trough hides behind the crest ahead is set by
+  // where your head really is. Feeding it eMax made the term saturate
+  // just as the Fresnel term did, which is why the darkest tone stopped
+  // moving at about 5 kn. On the real elevation it keeps deepening.
+  const eBase = eyeDeg * Math.PI / 180;
+  const kOcc = grazing
+    ? Math.min(1, occAmt * model.srms / Math.max(Math.tan(eBase), 0.02) * 0.55)
+    : 0;
+  invHrms = 1 / model.hrms;
+  for (let i = 0; i < OCCN; i++) {
+    const hn = -3 + 6 * i / (OCCN - 1);
+    OCC[i] = 1 - kOcc * 0.62 * (1 - smoothstep(-1.9, 0.45, hn));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4.  Palette: brightness in [0,1] -> RGB.
+//     Bottom = water body, top = silvered sky seen at grazing.
+// ═══════════════════════════════════════════════════════════════
+const STOPS = [
+  { t: 0.00, c: [  9,  27,  35] },
+  { t: 0.22, c: [ 18,  55,  70] },
+  { t: 0.48, c: [ 45,  99, 118] },
+  { t: 0.72, c: [107, 152, 165] },
+  { t: 0.90, c: [178, 202, 207] },
+  { t: 1.00, c: [237, 242, 242] },
+];
+const PAL = new Uint8ClampedArray(256 * 3);
+for (let i = 0; i < 256; i++) {
+  const t = i / 255;
+  let j = 0;
+  while (j < STOPS.length - 2 && t > STOPS[j + 1].t) j++;
+  const a = STOPS[j], b = STOPS[j + 1], u = (t - a.t) / (b.t - a.t);
+  PAL[i * 3]     = a.c[0] + (b.c[0] - a.c[0]) * u;
+  PAL[i * 3 + 1] = a.c[1] + (b.c[1] - a.c[1]) * u;
+  PAL[i * 3 + 2] = a.c[2] + (b.c[2] - a.c[2]) * u;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5.  Renderer
+// ═══════════════════════════════════════════════════════════════
+const cvs = document.getElementById('water');
+const ctx = cvs.getContext('2d', { alpha: false });
+
+let SCALE = 3, W = 0, H = 0, img = null;
+const basePh = new Float64Array(8), stepPh = new Float64Array(8);
+let lastLum = 0;
+
+function resize() {
+  const r = cvs.getBoundingClientRect();
+  W = Math.max(2, Math.ceil(r.width / SCALE));
+  H = Math.max(2, Math.ceil(r.height / SCALE));
+  cvs.width = W; cvs.height = H;
+  img = ctx.createImageData(W, H);
+  document.getElementById('res').textContent = W + '\u00D7' + H;
+}
+
+const OSC = (OCCN - 1) / 6;
+
+function render(model, t, camX, camY) {
+  const { waves, warp } = model;
+  const n = waves.length;
+  const d = img.data;
+  const warpStep = warp.kx * SCALE;
+  let lumSum = 0;
+
+  for (let i = 0; i < n; i++) stepPh[i] = waves[i].kx * SCALE;
+
+  for (let y = 0; y < H; y++) {
+    const wy = y * SCALE + camY;
+
+    // Phase at x = 0 for this row, reduced into [0, 2pi). Along the
+    // row each phase just accumulates kx*step -- no trig in the loop.
+    for (let i = 0; i < n; i++) {
+      const w = waves[i];
+      basePh[i] = wrap(w.kx * camX + w.ky * wy - w.w * t);
+    }
+    let wp = wrap(warp.kx * camX + warp.ky * wy - warp.w * t);
+
+    let o = y * W * 4;
+    for (let x = 0; x < W; x++) {
+      const ws = SIN[((wp * TO_IDX) | 0) & LUT_MASK];
+      const dx = warp.ax * ws, dy = warp.ay * ws;
+
+      let gx = 0, gy = 0, h = 0;
+      for (let i = 0; i < n; i++) {
+        const w = waves[i];
+        const ph = basePh[i] + w.kx * dx + w.ky * dy;
+        const ix = (ph * TO_IDX) | 0;
+        const co = SIN[(ix + QUART) & LUT_MASK];
+        const si = SIN[ix & LUT_MASK];
+        gx += w.akx * co;
+        gy += w.aky * co;
+        h  += w.a * si;
+        basePh[i] += stepPh[i];
+      }
+
+      let sx = ((gx + gmax) * invG) | 0;
+      let sy = ((gy + gmax) * invG) | 0;
+      sx = sx < 0 ? 0 : sx > LN - 1 ? LN - 1 : sx;
+      sy = sy < 0 ? 0 : sy > LN - 1 ? LN - 1 : sy;
+
+      let hi = ((h * invHrms + 3) * OSC) | 0;
+      hi = hi < 0 ? 0 : hi > OCCN - 1 ? OCCN - 1 : hi;
+
+      let v = BODY_MAPPED + OCC[hi] * SHADE[sy * LN + sx];
+      v = v < 0 ? 0 : v > 1 ? 1 : v;
+      lumSum += v;
+
+      const p = ((v * 255) | 0) * 3;
+      d[o] = PAL[p]; d[o + 1] = PAL[p + 1]; d[o + 2] = PAL[p + 2]; d[o + 3] = 255;
+      o += 4;
+      wp += warpStep;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  lastLum = lumSum / (W * H);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6.  State + controls
+// ═══════════════════════════════════════════════════════════════
+const KN_TO_PX = 9;
+const state = { twa: 45, wind: 12, boat: 4.5, eye: 4, sun: 150,
+                occ: 0.75, aspect: 4.5, meander: 7, grazing: true };
+
+let model, camX = 0, camY = 0, simT = 0;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+
+function rebuild() {
+  model = buildWaves(state.wind, state.twa * Math.PI / 180, SCALE, state.aspect, state.meander);
+  let lx = 0.85 * model.dax + 0.15 * 0.6;
+  let ly = 0.85 * model.day + 0.15 * -0.8;
+  const ln = Math.hypot(lx, ly) || 1;
+  buildShading(model, {
+    eyeDeg: state.eye, sunDeg: state.sun, occAmt: state.occ,
+    grazing: state.grazing, lx: lx / ln, ly: ly / ln,
+  });
+
+  // Surface the two numbers that actually carry wind strength, so the
+  // scale/speed trade stays visible while tuning the constants above.
+  const w0 = model.waves[0];
+  const k0 = Math.hypot(w0.kx, w0.ky);
+  const lam = TAU / k0, c = w0.w / k0;
+  $('lamV').textContent = lam.toFixed(0);
+  $('cV').textContent   = c.toFixed(0);
+  $('fV').textContent   = (c / lam).toFixed(2);
+}
+
+{
+  const g = $('tickmarks');
+  for (let deg = -180; deg <= 180; deg += 15) {
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('x1', deg + 180); ln.setAttribute('x2', deg + 180);
+    ln.setAttribute('y1', deg % 45 === 0 ? 0 : 5); ln.setAttribute('y2', 10);
+    g.appendChild(ln);
+  }
+}
+
+function sunTag(b) {
+  const a = Math.abs(b);
+  if (a < 45)  return 'ahead';
+  if (a < 135) return b > 0 ? 'stbd beam' : 'port beam';
+  return 'astern';
+}
+
+function syncReadouts() {
+  const a = state.twa;
+  $('twaV').textContent = String(Math.abs(Math.round(a))).padStart(3, '0');
+  $('twaSide').textContent = a === 0 || Math.abs(a) === 180 ? '' : (a > 0 ? 'STBD' : 'PORT');
+  $('needle').setAttribute('x1', a + 180);
+  $('needle').setAttribute('x2', a + 180);
+  $('windV').textContent = state.wind.toFixed(state.wind % 1 ? 1 : 0);
+  $('sigV').textContent  = (Math.atan(coxMunkSigma(state.wind)) * 180 / Math.PI).toFixed(1);
+  $('boatV').textContent = state.boat.toFixed(1);
+  $('eyeV').textContent  = state.eye.toFixed(1);
+  $('sunV').textContent  = Math.round(state.sun);
+  $('sunTag').textContent = sunTag(state.sun);
+  $('occV').textContent  = Math.round(state.occ * 100);
+  $('aspectV').textContent = state.aspect.toFixed(1);
+  $('meanderV').textContent = state.meander.toFixed(1);
+}
+
+const bind = (id, key, fn) => $(id).addEventListener('input', e => {
+  state[key] = fn ? fn(+e.target.value) : +e.target.value;
+  rebuild(); syncReadouts(); drawOverlay();
+});
+bind('twa', 'twa'); bind('wind', 'wind'); bind('aspect', 'aspect');
+bind('eye', 'eye');  bind('sun', 'sun');   bind('occ', 'occ', v => v / 100);
+bind('meander', 'meander');
+$('boat').addEventListener('input', e => {
+  state.boat = +e.target.value; syncReadouts(); drawOverlay();
+});
+
+$('mode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.grazing = b.dataset.m === 'graze';
+  [...e.currentTarget.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  rebuild(); drawOverlay();
+});
+$('detail').addEventListener('change', e => { SCALE = +e.target.value; resize(); rebuild(); });
+
+// ═══════════════════════════════════════════════════════════════
+// 7.  SVG overlay
+// ═══════════════════════════════════════════════════════════════
+const maing = $('maing'), jibg = $('jibg'), main = $('main'), jib = $('jib');
+const windg = $('windg'), wake = $('wake'), eyeg = $('eyeg'), eyelbl = $('eyelbl');
+
+function drawOverlay() {
+  const twa = state.twa, mag = Math.abs(twa);
+
+  // Sails set to LEEWARD. Wind from starboard (twa > 0) puts the rig
+  // out to port, which is -x on screen; SVG's positive rotation is
+  // clockwise, and clockwise about the mast swings the boom to -x.
+  // So the sign of the rotation is the sign of twa, not its opposite.
+  const lee = twa >= 0 ? 1 : -1;
+  maing.setAttribute('transform', `rotate(${lee * Math.min(mag * 0.55, 82)} 0 -24)`);
+  jibg.setAttribute('transform',  `rotate(${lee * Math.min(mag * 0.62, 78)} 0 -86)`);
+
+  const luffing = mag < 35;
+  for (const el of [main, jib]) {
+    el.setAttribute('stroke-dasharray', luffing ? '7 6' : 'none');
+    el.setAttribute('stroke', luffing ? '#B4256B' : '#F2ECE0');
+    // Both sail paths are drawn cambered toward -x, which is the
+    // correct belly once rotated out to port; mirror for the other
+    // tack. Masts sit on x = 0, so scaling about the origin leaves
+    // the luff attached.
+    el.setAttribute('transform', `scale(${lee},1)`);
+  }
+  windg.setAttribute('transform', `translate(-406,-230) rotate(${twa})`);
+  wake.setAttribute('opacity', (0.12 + 0.06 * state.boat).toFixed(2));
+
+  // The eye marker creeps toward the boat as elevation rises: a higher
+  // viewpoint is effectively a nearer, steeper one.
+  const ey = 250 - 5 * state.eye;
+  eyeg.setAttribute('transform', `translate(0,${ey})`);
+  eyelbl.setAttribute('y', ey + 26);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8.  Loop
+// ═══════════════════════════════════════════════════════════════
+let last = performance.now(), acc = 0, frames = 0;
+
+function frame(now) {
+  let dt = (now - last) / 1000; last = now;
+  if (dt > 0.1) dt = 0.1;
+  if (!reduced) {
+    simT += dt;
+    camY -= state.boat * KN_TO_PX * dt;   // camera = integral of boat velocity
+  }
+  render(model, simT, camX, camY);
+
+  acc += performance.now() - now; frames++;
+  if (frames >= 30) {
+    $('fps').textContent = (acc / frames).toFixed(1);
+    $('lum').textContent = lastLum.toFixed(3);
+    acc = 0; frames = 0;
+  }
+  requestAnimationFrame(frame);
+}
+
+new ResizeObserver(resize).observe(cvs);
+resize(); rebuild(); syncReadouts(); drawOverlay();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
