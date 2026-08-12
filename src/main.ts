@@ -41,14 +41,14 @@ if (surface === null) {
  * - **The jib is set**, against §3.7's main-alone default, so both sails are
  *   visible without touching a control.
  * - **The trim is on the leeward side.** This wind and heading give an apparent
- *   wind 153° off the starboard bow — a broad reach — where the previous
+ *   wind 156° off the starboard bow — a broad reach — where the previous
  *   `mainAngle: +25°` put the boom to *windward* at an angle of attack of 180°:
  *   flow arriving at the leech, no force, and a sail that correctly draws dead
  *   flat. A fine state, a useless first paint. Eased to port both sails sit near
  *   α = 80° and belly forward, which is what a run looks like.
  *
  * The speed is not written down, because it is not an input: {@link settle}
- * supplies it. On this heading at this trim the boat comes out at 4.59 kt.
+ * supplies it. On this heading at this trim the boat comes out at 3.79 kt.
  */
 let state: SimState = settle({
   wind: { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
