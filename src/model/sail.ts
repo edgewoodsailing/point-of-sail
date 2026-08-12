@@ -70,7 +70,15 @@ export interface SailForce {
    * starboard tack and negative on port — not whether the trim is good.
    */
   readonly angleOfAttack: Radians;
-  /** How much of the sail, measured from the luff aft, has collapsed: 0..1. */
+  /**
+   * How much of the sail, measured from the luff aft, has collapsed: 0..1.
+   *
+   * The axis is a known simplification in one band. Past |α| = 173° the flow
+   * arrives at the *leech* and the cloth breaks there, running forward — but
+   * the fraction is still reported from the luff aft, so anything drawing the
+   * collapse shakes the wrong end there. See {@link luffFraction} and §3.3;
+   * pos-83f owns fixing it.
+   */
   readonly luffFraction: number;
   /** The component along the heading. Negative when the sail is backed. */
   readonly driving: Newtons;
@@ -136,6 +144,15 @@ export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radia
  * zero correct across tacks; see the reasoning there. The band this second fold
  * adds is `|α| > 173°` and nothing else, so the rest of the polar is untouched
  * by construction.
+ *
+ * **The name and the axis both lag the meaning, knowingly.** The result is
+ * still reported as a fraction *from the luff aft*, but in the leech-first band
+ * the cloth breaks at the leech and the collapse runs forward, so a renderer
+ * that shades or shakes the first `luffFraction` of the chord shakes the wrong
+ * end there. The fraction does not saturate fast enough to make that moot
+ * either — it is 0.35 at α = 175° and only reaches 1 at 178°. §3.3 records why
+ * it stands anyway (one axis for the deformation hook) and pos-83f owns fixing
+ * it, name included.
  *
  * Continuous, and `smoothstep` clamps, so no limb needs a branch.
  */

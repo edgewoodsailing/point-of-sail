@@ -192,6 +192,14 @@ export interface SailShape {
    * How much of the sail has collapsed, from the luff aft — the model's number,
    * carried through untouched for pos-dmg.2. `s < luffFraction` is the
    * fluttering region, because `s` and this are measured on the same axis.
+   *
+   * **One band where that axis is wrong, and pos-dmg.2 should know before it
+   * wires the shake.** Past |α| = 173° the flow arrives at the leech (§3.3
+   * collapses the sail there too, since pos-aa2), and the cloth breaks at the
+   * *leech* and runs forward — so `s < luffFraction` shakes the forward end of
+   * a sail whose after end is the one letting go. It is not a sliver: the
+   * fraction is 0.35 at α = 175° and only reaches 1 at 178°. pos-83f owns
+   * reporting which end it breaks from and drawing it that way.
    */
   readonly luffFraction: number;
 }
