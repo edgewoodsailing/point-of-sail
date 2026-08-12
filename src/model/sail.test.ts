@@ -42,14 +42,26 @@ function driving(sailAngleDegrees: number, apparent: ApparentWind, sail = MAIN):
 // which is a genuinely different route to the same number — no vectors, no
 // `perpendicular`, no sign convention borrowed from the code under test.
 
-/** The attached-flow limb of §3.2, for angles of attack below the stall. */
-function attachedCl(alphaDegrees: number, aspectRatio = AR): number {
+/**
+ * The lift thin-aerofoil theory asks for, before {@link FOIL.maxLift} bends the
+ * top over. The drag is charged against this rather than against the lift the
+ * sail delivers — see `foil.ts` for why that asymmetry is load-bearing — so
+ * both helpers below start here.
+ */
+function demandedCl(alphaDegrees: number, aspectRatio = AR): number {
   return ((TAU * aspectRatio) / (aspectRatio + 2)) * deg(alphaDegrees);
 }
 
+/** The attached-flow limb of §3.2, for angles of attack below the stall. */
+function attachedCl(alphaDegrees: number, aspectRatio = AR): number {
+  const demanded = demandedCl(alphaDegrees, aspectRatio);
+  const p = FOIL.saturationSharpness;
+  return demanded / (1 + Math.abs(demanded / FOIL.maxLift) ** p) ** (1 / p);
+}
+
 function attachedCd(alphaDegrees: number, aspectRatio = AR): number {
-  const lift = attachedCl(alphaDegrees, aspectRatio);
-  return FOIL.profileDrag + (lift * lift) / (Math.PI * aspectRatio * FOIL.spanEfficiency);
+  const demanded = demandedCl(alphaDegrees, aspectRatio);
+  return FOIL.profileDrag + (demanded * demanded) / (Math.PI * aspectRatio * FOIL.spanEfficiency);
 }
 
 /** The flat-plate limb of §3.2, which stands alone past stall + blend. */
@@ -536,15 +548,15 @@ describe("optimal trim (DESIGN.md §3.2)", () => {
   /**
    * Hand-worked: on a beam reach the drag term drops out entirely — it acts
    * dead abeam — so the best trim is simply the one with the most lift, which
-   * `tuning.ts` puts at α ≈ 22.4° and Cl ≈ 1.57.
+   * since pos-i4o is {@link FOIL.maxLift}'s business: α ≈ 23.8° and Cl ≈ 1.63.
    */
   it("trims for peak lift on a beam reach", () => {
     const best = optimalTrim(MAIN, wind(90));
-    expect(radiansToDegrees(best.angle)).toBeCloseTo(-67.6, 0);
+    expect(radiansToDegrees(best.angle)).toBeCloseTo(-66.3, 0);
 
     const alpha = radiansToDegrees(angleOfAttack(best.angle, wind(90)));
-    expect(alpha).toBeCloseTo(22.4, 0);
-    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(1.572, 2);
+    expect(alpha).toBeCloseTo(23.8, 0);
+    expect(best.driving / (dynamicPressure(BREEZE) * MAIN.area)).toBeCloseTo(1.63, 2);
   });
 
   /**

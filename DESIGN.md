@@ -249,17 +249,64 @@ a = 2π·AR / (AR + 2)        // main: ≈ 4.45 /rad  (0.078 /deg)
 **Attached flow** (|α| below stall, α_stall ≈ 18°):
 
 ```text
-Cl = a · α
-Cd = Cd0 + Cl² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
+Cl = a · α, turning over at Cl_max      // the saturation below
+Cd = Cd0 + (a · α)² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
 ```
 
 giving `Cl ≈ 1.4` at the stall — a realistic figure for a soft sail. The curve
-does not *peak* there: the blend below leaves the stall angle with zero slope, so
-the attached limb keeps climbing into it and lift tops out at ≈ **1.57 near
-22°**, which is where the optimal-trim search actually sits at every point of
-sail in [§3.6](#36-calibration-targets).
+does not *peak* there: it tops out at ≈ **1.63 near 24°**, which is where the
+optimal-trim search actually sits at every point of sail in
+[§3.6](#36-calibration-targets).
 
-**Past stall**, blend over ~20° into the flat-plate model — a normal force
+#### The attached limb has a maximum of its own
+
+`Cl = a·α` is a straight line, and a straight line has no maximum. For a long
+time nothing in the model supplied one — `Cl` reached 4.66 at α = 60°, against
+the 1.2–1.6 a real cambered sail can hold — and the only thing that ever brought
+the curve down was the crossfade into the flat plate. **So peak lift was not a
+quantity this model held. It was an artefact of where the blend happened to
+catch a ramp that was still climbing**, and it could not be moved without moving
+the post-stall falloff, because they were the same knob.
+
+That cost more than tidiness. The descent from that accidental peak was
+*steeper than the attached limb's own rise* — 0.102 per degree down against
+0.078 up — and a falling lift curve on a boat is a feedback loop: slowing swings
+the apparent wind aft, which raises α, which past the peak cuts lift, which
+slows the boat further. Where the loop closed, the boat had **two** settled
+speeds at one trim and picked whichever its history led it to. `pos-i4o` found
+it 2.90 kt wide, about 4° from the optimal trim, which is ordinary trimming.
+
+So the attached limb saturates, using the same rounded-corner `min` as
+[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze):
+
+```text
+Cl_attached = a·α / (1 + |a·α / Cl_max|^p)^(1/p)      // Cl_max = 1.7, p = 16
+```
+
+Exact for small incidence, asymptotic to `Cl_max`, smooth in between. `Cl_max`
+is an asymptote rather than the peak: the realised maximum is ≈ 1.63, because
+the blend starts pulling the curve down before it has finished approaching. The
+sharpness matters as much as the ceiling — at `p = 6` the softening reaches 4.4%
+down at the stall angle, which is thin-aerofoil theory quietly ceasing to be
+thin-aerofoil theory; at 16 it is 0.27% and only the top bends.
+
+**Drag is charged against `a·α`, not against the lift actually delivered**, and
+that asymmetry is doing real work rather than being an oversight left over from
+before the ceiling existed. Below the maximum the two are the same number and
+this is ordinary induced drag. Past it, the incidence the sail cannot turn into
+lift goes into separated flow — it costs drag and pays nothing, which is what a
+stall *is*. Charge the delivered lift instead and the fold comes back (measured:
+0.70 kt at 3 kt of wind, 1.00 kt at 6), because the sail stops being penalised
+for being oversheeted just as its lift stops answering.
+
+**The blend is not made redundant by this**, which was worth checking, since a
+limb that turns over physically might have left the crossfade with nothing to
+do. It has not: with the ceiling in place and the blend left at its old 20°, the
+fold returns at 2.40 kt. The stall is still the crossfade's doing. What changed
+is that the two constants now govern different things — `Cl_max` the peak, the
+width the falloff — where before one number did both badly.
+
+**Past stall**, blend over ~50° into the flat-plate model — a normal force
 `Cn = k·sinα` resolved along and across the flow:
 
 ```text
@@ -281,12 +328,32 @@ shadow — comes in under that. This single constant sets the speed of a run and
 nothing else in the model can substitute for it, so getting it wrong is
 expensive: at 2.0 the run came out a full knot fast.
 
-The blend is **~20°, not ~10°**, and that width is not cosmetic. A sharper stall
+The blend is **~50°, not ~10°**, and that width is not cosmetic. A sharper stall
 makes the model *bistable* on a reach — the same boat at the same trim in the
 same wind settling at 3.7 kt or 5.1 kt depending on whether it started from rest
 — because a sail eased for the apparent wind at speed is stalled at the apparent
-wind at rest, and with a cliff at the stall it cannot climb back out. Widening
-the blend is what removes that, at the cost of the higher peak lift above.
+wind at rest, and with a cliff at the stall it cannot climb back out.
+
+It went 10° → 20° in `pos-fo1.4` and 20° → 50° in `pos-i4o`, and the second move
+is the one that says what this constant can and cannot do. 20° was enough at the
+trim the optimal-trim search finds and nowhere else; widening *inside the old
+parameterisation* could not fix the rest, because it **relocated** the fold into
+lighter air rather than removing it — a gentler fall closes the same loop at a
+lower speed — and no width was clean at every wind while the polar still met
+[§3.6](#36-calibration-targets). What made 50° work is that the attached limb
+now has its own maximum, so the width governs the falloff alone. 35° is the
+narrowest width with no fold anywhere; 50° keeps the same margin over that
+threshold as the old 20° kept over its own 14°.
+
+**Where the search for this fix did *not* lead is worth recording**, because
+both directions look plausible and cost a week each. The keel's induced drag is
+not implicated: delete it and the fold gets *worse* (3.52 kt against 2.87 at
+10 kt), so [§3.5](#35-hull-resistance-and-integration)'s `keelStall` — which has
+no headroom anyway — is neither the cause nor the cure. And neither limb folds
+on its own: a pure attached curve is monotone with nothing to feed back on, and
+a pure flat plate peaks gently at 0.55. **Only the join between them has a
+segment steep enough to close the loop**, which is what pointed at the
+parameterisation rather than at either piece of physics.
 
 **Force assembly.** Lift acts perpendicular to the apparent wind, drag along it.
 Sum both sails, rotate into the boat frame, and take the component along the
@@ -349,7 +416,7 @@ fastest angles make little side force and escape the cap. **Heel is the right
 cause; its effect has to be spread evenly to be any use.**
 
 **The knee is sharp because the calibration table is tight.** The 10 kt broad
-reach sits at 4.73 kt against a 4.68 floor — about a tenth of the 10% tolerance
+reach sits at 4.78 kt against a 4.68 floor — about a fifth of the 10% tolerance
 [§3.6](#36-calibration-targets) quotes — so a knee soft enough to reach back
 into 10 kt breaks the table outright. At an exponent of 4 it does; at 16 the
 whole 4–10 kt range is unchanged to four decimal places and only 12 kt onward
@@ -638,16 +705,16 @@ Rhodes 19 down in a breeze is not extra water drag but the rig giving up: it
 heels, the sail twists off, and the crew eases and feathers. That caps the
 *drive* rather than clipping the *speed*, and because it acts on every point of
 sail together it is the only kind of term that can slow the boat in a gale
-without bending the polar. With it in place a beam reach settles at 6.34 kt in
-20 kt of wind and 6.36 in 30 — and the exponent above is free to go on being
+without bending the polar. With it in place a beam reach settles at 6.37 kt in
+20 kt of wind and 6.40 in 30 — and the exponent above is free to go on being
 chosen for what it is actually good at, which is the shape of the polar in the
 wind the simulator opens in.
 
 **Read that table as a study of the wall by itself, because that is what it
 is.** Every figure in it was measured with §3.2's depowering off, which is the
 only way to see what the exponent alone does, and its two right-hand columns are
-no longer what the model delivers: at exponent 4 the boat now reaches 6.34 kt
-and 6.36 kt in 20 and 30 kt of wind, not 7.59 and 8.88. The comparison the table
+no longer what the model delivers: at exponent 4 the boat now reaches 6.37 kt
+and 6.40 kt in 20 and 30 kt of wind, not 7.59 and 8.88. The comparison the table
 exists to make — that sharpening the wall buys a slower reach at the price of
 the pointing angle — is unaffected, since every row moves together.
 
@@ -770,9 +837,9 @@ Constants get tuned until the polar hits roughly these marks in 10 kt true:
 | Point of sail | TWA | Sloop | Main only | **Model (sloop)** |
 | --- | --- | --- | --- | --- |
 | Head to wind | 0° | 0 (in irons) | 0 (in irons) | **0** |
-| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.18 kt** |
-| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt | **5.55 kt** |
-| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.73 kt** |
+| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.19 kt** |
+| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt | **5.58 kt** |
+| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.78 kt** |
 | Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt | **3.71 kt** |
 | **Closest useful angle** | — | **≈ 45°** | **≈ 55°** | **44°** |
 
@@ -784,7 +851,7 @@ The right-hand column is where `pos-fo1.4` left the sloop and `pos-lcz` last
 moved it; every figure is inside the ~10% the targets are quoted to. Two of them
 are worth reading rather than just checking.
 
-The **broad reach is 9% light, and structurally so.** The table puts a beam reach
+The **broad reach is 8% light, and structurally so.** The table puts a beam reach
 and a broad reach 0.2 kt apart while the driving force at 135° is barely half
 what it is at 90° — that needs resistance going as `v¹⁰`, and this section's
 curve is a square under a fourth power, which tops out at `v⁶`. No further tuning
@@ -811,7 +878,15 @@ their *ratio* does not move at all. It also sits at 1.000 in 10 kt by
 construction, so it is not even present in this table. Closing this gap needs
 something that changes the *shape* of the force curve rather than its scale —
 the sails' own coefficients, or a resistance curve steeper than §3.5 can
-afford — and until something does, 9% light is where the broad reach stays.
+afford — and until something does, 8% light is where the broad reach stays.
+
+`pos-i4o` bought a point of it back, and by exactly the route this paragraph
+predicts rather than by tuning harder: giving the attached limb a maximum of its
+own ([§3.2](#the-attached-limb-has-a-maximum-of-its-own)) changes the *shape* of
+the lift curve rather than its scale, which is the one kind of change that can
+move a broad reach relative to a beam reach. It was not done for this figure —
+it was done to stop the boat having two settled speeds at one trim — and a point
+is all it is worth. The gap remains structural.
 
 The **closest useful angle is read as the peak of upwind VMG**, which is what a
 sailor means by it and what a test can check. It came out at 30–35° before
@@ -832,9 +907,9 @@ drift to where the same bounds hold across the whole opening range, and
 
 ```text
 wind      4     6     8    10    12    14    16    20    30    45
-angle    51°   49°   47°   44°   41°   41°   41°   41°   42°   42°
-run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.76  0.79  0.84  0.87
-beam kt  2.91  4.05  4.90  5.55  6.07  6.31  6.33  6.34  6.36  6.37
+angle    50°   48°   46°   44°   42°   41°   41°   41°   41°   41°
+run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.76  0.79  0.83  0.86
+beam kt  2.93  4.08  4.93  5.58  6.10  6.34  6.36  6.37  6.40  6.41
 k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
 ```
 
@@ -882,7 +957,7 @@ and turn the suite red with nothing having changed. It is now 41°, winning from
 The flatness is unchanged; what moved is where the pair sits.
 
 **The beam reach in a lot of wind is fixed, and that was `pos-d7u`'s whole
-point.** It reads 6.34 kt at 20 kt of wind and 6.36 at 30, against a 5.65 kt
+point.** It reads 6.37 kt at 20 kt of wind and 6.40 at 30, against a 5.65 kt
 hull speed — 12% and 13% over, where before it was 34% and 57%, and where before
 `pos-lcz` it was 25% and 41%. Not *at* hull speed, and deliberately not: a beam
 reach is the one point of sail a displacement boat holds a little past it, and

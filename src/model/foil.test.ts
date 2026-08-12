@@ -24,6 +24,30 @@ function cd(degrees: number, aspectRatio = AR): number {
 }
 
 /**
+ * The lift thin-aerofoil theory asks for, before the sail's own maximum. Not a
+ * lift the sail ever makes at large incidence — it passes 4 by 55° — but it is
+ * what the drag is charged against, so the tests need to name it.
+ */
+function demandedLift(degrees: number, aspectRatio = AR): number {
+  return liftCurveSlope(aspectRatio) * deg(degrees);
+}
+
+/**
+ * The attached limb, written out independently of the implementation: the
+ * linear limb bent over towards {@link FOIL.maxLift} by a rounded-corner `min`.
+ */
+function attachedLift(degrees: number, aspectRatio = AR): number {
+  const demanded = demandedLift(degrees, aspectRatio);
+  const p = FOIL.saturationSharpness;
+  return demanded / (1 + Math.abs(demanded / FOIL.maxLift) ** p) ** (1 / p);
+}
+
+function attachedDrag(degrees: number, aspectRatio = AR): number {
+  const demanded = demandedLift(degrees, aspectRatio);
+  return FOIL.profileDrag + (demanded * demanded) / (Math.PI * aspectRatio * FOIL.spanEfficiency);
+}
+
+/**
  * The flat-plate limb, written out independently of the implementation: a
  * normal force `Cn = k·sinα` resolved along and across the flow.
  */
@@ -49,16 +73,41 @@ describe("lift-curve slope (DESIGN.md §3.2)", () => {
 });
 
 describe("attached flow", () => {
-  it("puts lift exactly on the linear limb below the stall", () => {
+  it("is the attached limb below the stall, with nothing of the plate in it", () => {
     for (const degrees of [0.5, 5, 10, 15, 17.9]) {
-      expect(cl(degrees)).toBeCloseTo(liftCurveSlope(AR) * deg(degrees), 12);
+      expect(cl(degrees)).toBeCloseTo(attachedLift(degrees), 12);
     }
   });
 
-  it("charges induced drag on top of profile drag", () => {
-    const lift = cl(12);
-    const induced = (lift * lift) / (Math.PI * AR * FOIL.spanEfficiency);
-    expect(cd(12)).toBeCloseTo(FOIL.profileDrag + induced, 12);
+  /**
+   * And that limb is still the straight line §3.2 quotes over the range the
+   * polar is actually fitted in. {@link FOIL.maxLift} bends the top over, but
+   * {@link FOIL.saturationSharpness} keeps the bend near the top: a quarter of a
+   * percent by the stall angle, and a tenth of that by 10°. Pinned because the
+   * softening reaching further down is exactly how this constant would go wrong
+   * — at a sharpness of 6 it costs 4.4% at the stall, which is thin-aerofoil
+   * theory quietly stopping being thin-aerofoil theory.
+   */
+  it("still tracks the linear limb over the range §3.2 quotes", () => {
+    expect(Math.abs(cl(10) / demandedLift(10) - 1)).toBeLessThan(0.0003);
+    expect(Math.abs(cl(STALL_DEGREES) / demandedLift(STALL_DEGREES) - 1)).toBeLessThan(0.005);
+  });
+
+  /**
+   * **Charged against the lift demanded, not the lift delivered.** Below the
+   * maximum those are the same number and this is ordinary induced drag; past
+   * it, the incidence the sail cannot turn into lift goes into separated flow,
+   * which costs drag and pays nothing. Removing that asymmetry is what brings
+   * the §3.5 bistability back, so it is pinned here rather than left to read as
+   * an oversight — see `foil.ts` for the measurement.
+   */
+  it("charges induced drag on the incidence asked for, not the lift delivered", () => {
+    expect(cd(12)).toBeCloseTo(attachedDrag(12), 12);
+
+    // Past the maximum the two readings genuinely differ, which is the point.
+    const delivered = cl(30);
+    const cheaper = FOIL.profileDrag + (delivered * delivered) / (Math.PI * AR * FOIL.spanEfficiency);
+    expect(attachedDrag(30)).toBeGreaterThan(2 * cheaper);
   });
 
   it("is profile drag alone, and no lift, at zero incidence", () => {
@@ -77,14 +126,14 @@ describe("attached flow", () => {
   });
 
   /**
-   * And the *true* maximum, which sits past the stall angle rather than at it:
-   * the blend leaves the stall with zero slope, so the attached limb keeps
-   * climbing into it. That makes the peak a function of
-   * {@link FOIL.stallBlendWidth} as much as of the stall angle, and the width
-   * is the constant pos-fo1.4 had to double to kill a bistability. This is the
-   * bound that says how far it can go: at the 20° it now has, peak lift is 1.57
-   * — high for a soft sail but not absurd — where 30° would put it at 1.74,
-   * which is a rigid wing and not a sail.
+   * The *true* maximum, which sits past the stall angle rather than at it, and
+   * which since pos-i4o is a quantity this model states rather than one it
+   * stumbles into. It used to be neither: nothing bounded the attached limb, so
+   * the peak was wherever the crossfade happened to catch a ramp still
+   * climbing, and it could not be moved without moving the post-stall falloff
+   * with it. {@link FOIL.maxLift} is the stated figure now and the peak sits a
+   * little under it, because the blend starts pulling the curve down before it
+   * has finished approaching.
    *
    * It matters because every point of sail in §3.6's table trims to within a
    * degree or two of this peak, so it sets the whole force scale of the model.
@@ -101,14 +150,18 @@ describe("attached flow", () => {
 
     expect(peakAt).toBeGreaterThan(STALL_DEGREES);
     expect(peakAt).toBeLessThan(FULLY_STALLED_DEGREES);
-    expect(peak).toBeCloseTo(1.57, 2);
-    expect(peak).toBeLessThan(1.65);
+    expect(peak).toBeCloseTo(1.63, 2);
+
+    // Under the asymptote it is approaching, and inside what a soft sail can
+    // hold. A rigid wing's 1.8 is out of bounds here.
+    expect(peak).toBeLessThan(FOIL.maxLift);
+    expect(peak).toBeLessThan(1.7);
   });
 });
 
 describe("the flat-plate limb", () => {
   it("stands alone once the blend has finished", () => {
-    for (const degrees of [FULLY_STALLED_DEGREES, 40, 60, 90, 120, 150, 179]) {
+    for (const degrees of [FULLY_STALLED_DEGREES, 75, 90, 120, 150, 179]) {
       expect(cl(degrees)).toBeCloseTo(plateLift(degrees), 12);
       expect(cd(degrees)).toBeCloseTo(plateDrag(degrees), 12);
     }
@@ -220,14 +273,16 @@ describe("the stall blend", () => {
   });
 
   it("holds the attached limb right up to the stall and the plate right after", () => {
-    expect(cl(STALL_DEGREES - 1e-6)).toBeCloseTo(liftCurveSlope(AR) * deg(STALL_DEGREES), 5);
+    expect(cl(STALL_DEGREES - 1e-6)).toBeCloseTo(attachedLift(STALL_DEGREES), 5);
     expect(cl(FULLY_STALLED_DEGREES + 1e-6)).toBeCloseTo(plateLift(FULLY_STALLED_DEGREES), 5);
   });
 
   it("stays between the two limbs while blending", () => {
+    // Against the *saturated* attached limb, which is a far tighter fence than
+    // the linear one it replaced: the linear limb passes 4 by the end of the
+    // blend, so bounding against it barely constrained anything up there.
     for (let degrees = STALL_DEGREES; degrees <= FULLY_STALLED_DEGREES; degrees += 0.1) {
-      const attached = liftCurveSlope(AR) * deg(degrees);
-      expect(cl(degrees)).toBeLessThanOrEqual(attached + 1e-12);
+      expect(cl(degrees)).toBeLessThanOrEqual(attachedLift(degrees) + 1e-12);
       expect(cl(degrees)).toBeGreaterThanOrEqual(plateLift(degrees) - 1e-12);
     }
   });
