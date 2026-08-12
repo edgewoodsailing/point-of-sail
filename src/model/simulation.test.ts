@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, SWING_LIMIT } from "./boat.ts";
-import { hullResistance } from "./hull.ts";
+import { hullResistance, keelInducedDrag } from "./hull.ts";
 import { optimalTrim, rigForce } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle, step } from "./simulation.ts";
@@ -179,15 +179,40 @@ describe("integration (DESIGN.md §3.5)", () => {
     // wind draws forward as the boat accelerates and the drive grows with it.
     // The bound is loose on purpose. What it protects is the lesson — that trim
     // changes do not pay off instantly — not a particular number.
+    //
+    // **Measured with the sails kept trimmed as the boat accelerates**, which
+    // is what the reasoning above describes and what a sailor does. Held
+    // instead at the trim the boat ends up with, this measures something else
+    // entirely — a sail sheeted for 61° of apparent wind sits at α = 51° while
+    // the boat is stopped and 90° off the wind, which is a stalled sail, and
+    // what gets timed is how long it takes to unstall rather than how long the
+    // boat takes to accelerate. That number is wild: 39 s close hauled and 11 s
+    // on a beam reach before pos-fo1.4, 13 s and 26 s after it, with the
+    // difference sitting almost entirely in `FOIL.plateNormalForce`. The lag
+    // itself barely moved, which is the point of measuring it this way.
     const beamReach = wellTrimmed(deg(90));
     const target = (1 - 1 / Math.E) * settle(beamReach).motion.speed;
 
-    const speeds = speedsOver(beamReach, 60);
-    const frames = speeds.findIndex((speed) => speed >= target);
+    let sailed: SimState = { ...beamReach, motion: { ...beamReach.motion, speed: 0 } };
+    let elapsed = 0;
+    for (; elapsed < 60 && sailed.motion.speed < target; elapsed += FRAME) {
+      const apparent = apparentWind(sailed.wind, sailed.motion);
+      sailed = step(
+        {
+          ...sailed,
+          trim: {
+            ...sailed.trim,
+            mainAngle: optimalTrim(MAIN, apparent).angle,
+            jibAngle: optimalTrim(JIB, apparent).angle,
+          },
+        },
+        FRAME,
+      );
+    }
 
-    expect(frames).toBeGreaterThan(0);
-    expect(frames * FRAME).toBeGreaterThan(5);
-    expect(frames * FRAME).toBeLessThan(15);
+    expect(sailed.motion.speed).toBeGreaterThanOrEqual(target);
+    expect(elapsed).toBeGreaterThan(3);
+    expect(elapsed).toBeLessThan(15);
   });
 });
 
@@ -353,22 +378,26 @@ describe("state handling", () => {
   });
 
   it("settles on the speed the boat really reaches, even where it creeps up on it", () => {
-    // Just outside the no-go zone the boat closes on its speed with a time
-    // constant of 68 seconds, so the *change* per step goes small long before
-    // the *distance* to the balance point does. A settle that stopped on a small
-    // change would report a couple of percent low here — this is exactly where
-    // pos-fo1.4 has to find the closest useful angle, which is the boundary
-    // where the speed goes to nothing.
+    // Deep inside the no-go zone the boat closes on its speed very slowly, so
+    // the *change* per step goes small long before the *distance* to the
+    // balance point does. A settle that stopped on a small change would report
+    // a couple of percent low here — and this is the corner where §3.6's
+    // closest useful angle lives, the boundary where the speed goes to nothing.
     //
     // Checked against sixteen minutes of frame-length steps, which is a
     // trajectory rather than an iteration and cannot converge to anything but
     // the true balance point.
+    //
+    // The speed it crawls to is a quarter of a knot, down from 0.7 before
+    // pos-fo1.4 closed the no-go zone. The lower bound is here so that the test
+    // keeps having something to converge *to*: at exactly zero this would pass
+    // on a model that had stopped computing forces.
     const crawling = wellTrimmed(deg(5));
 
     let sailed = crawling;
     for (let elapsed = 0; elapsed < 960; elapsed += FRAME) sailed = step(sailed, FRAME);
 
-    expect(metersPerSecondToKnots(sailed.motion.speed)).toBeGreaterThan(0.4);
+    expect(metersPerSecondToKnots(sailed.motion.speed)).toBeGreaterThan(0.1);
     expect(
       metersPerSecondToKnots(Math.abs(settle(crawling).motion.speed - sailed.motion.speed)),
     ).toBeLessThan(1e-4);
@@ -409,8 +438,14 @@ describe("state handling", () => {
     for (const [name, state] of cases) {
       const settled = settle(state);
       const apparent = apparentWind(settled.wind, settled.motion);
+      const forces = rigForce(settled.trim, apparent);
+      // All three terms of §3.5's balance, the keel's included — leaving it out
+      // would let this pass on a settle that had converged to the wrong speed
+      // by exactly the induced drag, which upwind is over a hundred newtons.
       const unbalanced =
-        rigForce(settled.trim, apparent).driving - hullResistance(settled.motion.speed);
+        forces.driving -
+        hullResistance(settled.motion.speed) -
+        keelInducedDrag(settled.motion.speed, forces.lateral);
 
       // A tenth of a newton is a hundredth of what the boat feels drifting in a
       // calm, and four orders below the failures above.

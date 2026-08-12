@@ -7,7 +7,12 @@
  * and arrives with pos-dmg.3. Nothing about it needs a different `step`.
  */
 
-import { EFFECTIVE_MASS, hullResistance, hullResistanceSlope } from "./hull.ts";
+import {
+  EFFECTIVE_MASS,
+  hullResistance,
+  hullResistanceSlope,
+  keelInducedDrag,
+} from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
 import { rigForce } from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
@@ -125,12 +130,26 @@ export function step(state: SimState, dt: Seconds): SimState {
  * The other property {@link settle} leans on is exact: the fixed point is
  * `F_drive = R(v)`, independent of `dt`, since the increment vanishes only
  * where the numerator does.
+ *
+ * **The keel's induced drag is charged in the numerator and left out of the
+ * denominator**, which is not an oversight either. The denominator is a
+ * stiffness, and that term's is *negative* — a boat going faster makes its side
+ * force more cheaply, so `D` falls as `v` rises. Adding a negative stiffness to
+ * `m + R′·dt` would work against the very thing the linearisation is there to
+ * do, and a large enough one would drive the denominator through zero. Leaving
+ * it explicit costs nothing: unlike the sixth-power wall, `keelInducedDrag` is
+ * bounded and gently sloped everywhere — its steepest is where it peaks near
+ * the keel's stall, and even there `|dD/dv|·dt / m` is a few parts in a
+ * thousand at frame length.
  */
 function advance(state: SimState, dt: Seconds): SimState {
   const apparent = apparentWind(state.wind, state.motion);
-  const { driving } = rigForce(state.trim, apparent);
+  const { driving, lateral } = rigForce(state.trim, apparent);
 
-  const net = driving - hullResistance(state.motion.speed);
+  const net =
+    driving -
+    hullResistance(state.motion.speed) -
+    keelInducedDrag(state.motion.speed, lateral);
   const change = (net * dt) / (EFFECTIVE_MASS + hullResistanceSlope(state.motion.speed) * dt);
 
   return {

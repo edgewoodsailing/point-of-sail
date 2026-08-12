@@ -1,13 +1,19 @@
 /**
  * What the water does about it (DESIGN.md §3.5).
  *
- * `sail.ts` says how hard the rig pulls; this module says how hard the hull
+ * `sail.ts` says how hard the rig pulls; this module says how hard the water
  * resists, and how much boat there is to accelerate. Between them
  * `simulation.ts` has everything it needs to integrate a speed.
  *
- * Two exports, and the second is the interesting one: {@link EFFECTIVE_MASS} is
- * *derived* from the acceleration lag in `tuning.ts` rather than stated. See
- * there for why the lag is the knob and the mass is the consequence.
+ * The water charges twice. {@link hullResistance} is the hull's own drag, a
+ * function of speed alone; {@link keelInducedDrag} is what it costs to be held
+ * on a heading the wind is not blowing along, and it is the term that gives the
+ * simulator a no-go zone. Keeping them apart keeps §3.5's curve readable as the
+ * curve the design document writes down.
+ *
+ * {@link EFFECTIVE_MASS} is the odd one out: it is *derived* from the
+ * acceleration lag in `tuning.ts` rather than stated. See there for why the lag
+ * is the knob and the mass is the consequence.
  */
 
 import { HULL } from "./boat.ts";
@@ -75,6 +81,66 @@ export function hullResistanceSlope(speed: MetersPerSecond): number {
 }
 
 /**
+ * What it costs to be held on course: the drag the keel makes generating the
+ * side force the rig is pulling with, **signed along the direction of motion**
+ * like {@link hullResistance}.
+ *
+ * **Why the model needs this at all.** Without it nothing in the simulator
+ * charges the boat for sailing at a large angle to the wind. Sail drag is
+ * already inside `Cd`, and the lateral force the rig makes — which close hauled
+ * is more than twice the drive — simply vanished, because §7 rules out leeway
+ * and heel and there was nothing else to spend it on. The result was a boat
+ * that ran 29% fast close hauled and still made 3 kt at TWA 15°, where the
+ * §3.6 table wants nothing useful inside about 45°. Scaling
+ * {@link RESISTANCE.quadratic} could not fix it: it slows every point of sail
+ * together, where the whole problem is that one end of the polar is wrong.
+ *
+ * **The far field.** A keel is a foil, so the drag of making side force `F` at
+ * speed `v` is induced drag, `F²/(½ρ·v²·π·b²·e)` — quadratic in the load and
+ * inverse in the dynamic pressure. Hence the `k·F²/v²` this reduces to at
+ * speed, with `k` = {@link RESISTANCE.sideForce}.
+ *
+ * **Why it is not just that.** `F²/v²` runs away at low speed, and the runaway
+ * is not physics: a keel asked for more lift than it can carry stalls, and the
+ * boat answers by sliding sideways rather than by growing an unbounded drag.
+ * Worse for a model with no leeway, an unbounded drag at rest would push a boat
+ * with its sails sheeted *backwards* — TWA 20° from a standstill was a clear
+ * case — and, being a drag, it would reverse as soon as the boat did, leaving
+ * the speed chattering about zero.
+ *
+ * So the keel is given a stall. Writing `x` for how hard it is loaded relative
+ * to what it can carry, the drag is `k·F²/v²` scaled by `x²/(1 + x²)`: the
+ * unstalled foil at small loads, and a flat plate's `v²` at large ones, which
+ * goes to zero at rest as any water drag must. Gathering the algebra, with
+ * `S` the `v²` at which the keel is fully loaded,
+ *
+ * ```text
+ * D = k·F²·v² / (v⁴ + S²)
+ * ```
+ *
+ * even in `v` and smooth through zero. `S` is set from
+ * {@link RESISTANCE.keelStall}, which is where the two limbs cross and so the
+ * largest fraction of the side force this can ever charge as drag — a maximum
+ * drag angle, in the sense that a keel making `F` while dragging `0.2·F` is
+ * crabbing at about 11°.
+ */
+export function keelInducedDrag(speed: MetersPerSecond, sideForce: Newtons): Newtons {
+  const load = Math.abs(sideForce);
+  if (load === 0) return 0;
+
+  // Where the unstalled limb `k·F²/v²` and the stalled limb cross. The peak of
+  // the blend sits there, at exactly `keelStall · F`, which is what makes that
+  // constant readable as the largest drag the keel can charge.
+  const saturation = (RESISTANCE.sideForce * load) / (2 * RESISTANCE.keelStall);
+  const v2 = speed * speed;
+
+  return (
+    Math.sign(speed) *
+    ((RESISTANCE.sideForce * load * load * v2) / (v2 * v2 + saturation * saturation))
+  );
+}
+
+/**
  * The fraction of terminal speed that {@link ACCELERATION.timeToTerminal} is
  * quoted against: the standard `1 − 1/e` ≈ 63% of a first-order response.
  */
@@ -82,7 +148,7 @@ const TERMINAL_FRACTION = 1 - 1 / Math.E;
 
 /**
  * The mass the drive force actually has to shift: boat, crew, and the water
- * dragged along with them. ≈ 877 kg.
+ * dragged along with them. ≈ 1092 kg.
  *
  * **Derived from the lag, not stated.** Under a steady drive against pure
  * quadratic drag,
@@ -116,11 +182,24 @@ const TERMINAL_FRACTION = 1 - 1 / Math.E;
  * depends on the trim and the wind. The result is only as sharp as that choice,
  * which is to say within a few percent, and the lag is a feel knob anyway.
  *
- * Worth noting where it lands: ≈ 877 kg, against §3.5's independently reasoned
- * 880 kg for boat + two crew + ~15% added mass. Two different routes to the same
- * number is a good sign the resistance coefficient is in the right decade.
- * `hull.test.ts` holds it to a plausible range, so a careless tuning pass cannot
- * quietly produce a barge or a dinghy.
+ * Worth noting where it lands, and where it used to. Before pos-fo1.4 this came
+ * out at ≈ 877 kg against §3.5's independently reasoned 880 kg for boat + two
+ * crew + ~15% added mass, and the agreement was quoted as a check on both.
+ * Calibration raised {@link RESISTANCE.quadratic} by a quarter and carried the
+ * mass to ≈ 1092 kg with it, so the two routes now differ by 24%.
+ *
+ * That is the anchor stretching, not breaking, and it is worth being plain
+ * about which of the two numbers moved. The 880 kg is a real fact about a
+ * loaded Rhodes 19; this figure is what the ten-second lag *implies* given how
+ * draggy the boat turned out to be, at a reference speed the derivation admits
+ * is a scale rather than a claim. Read the gap either as the boat feeling a
+ * little heavier off the mark than its displacement argues for, or as the
+ * resistance sitting at the top of its plausible range — the calibration
+ * evidence does not distinguish them, and neither reading is worth trading the
+ * felt lag for. `hull.test.ts` holds the result to a plausible range, so a
+ * careless tuning pass cannot quietly produce a barge or a dinghy; there is
+ * about 10% of headroom left in that range, and a pass that needs more should
+ * argue about the band or shorten the lag, not widen the band in silence.
  */
 export const EFFECTIVE_MASS: Kilograms =
   (ACCELERATION.timeToTerminal * RESISTANCE.quadratic * HULL.hullSpeed) /

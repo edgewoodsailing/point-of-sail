@@ -8,12 +8,16 @@
  *   lift rises linearly with angle of attack and drag is profile drag plus the
  *   induced drag that lift costs.
  * - **The flat plate**, past the stall, where the sail is simply an obstruction:
- *   `Cl = 2 sinα cosα`, `Cd = Cd0 + 2 sin²α`.
+ *   a normal force `Cn = k·sinα` resolved into `Cl = k sinα cosα`,
+ *   `Cd = Cd0 + k sin²α`. The coefficient `k` is
+ *   {@link FOIL.plateNormalForce} — a tuning knob, because how much force a
+ *   soft sail makes when it has stopped being a foil is exactly the sort of
+ *   thing the calibration pass has to settle.
  *
  * The flat-plate limb is not a detail — it is what makes downwind sailing work
  * at all. On a dead run the sail sits square to the apparent wind at α = 90°,
- * where lift is zero and `Cd ≈ 2.0`: the boat is being pushed, not lifted, and
- * the model has to say so.
+ * where lift is zero and drag is the whole story: the boat is being pushed,
+ * not lifted, and the model has to say so.
  *
  * This module knows nothing about the Rhodes 19. Aspect ratio is a parameter,
  * so the curves can be exercised at any span and `sail.ts` supplies
@@ -66,8 +70,8 @@ export function foilCoefficients(angleOfAttack: Radians, aspectRatio: number): F
     FOIL.profileDrag + (attachedLift * attachedLift) / (Math.PI * aspectRatio * FOIL.spanEfficiency);
 
   const sinAlpha = sin(alpha);
-  const plateLift = 2 * sinAlpha * cos(alpha);
-  const plateDrag = FOIL.profileDrag + 2 * sinAlpha * sinAlpha;
+  const plateLift = FOIL.plateNormalForce * sinAlpha * cos(alpha);
+  const plateDrag = FOIL.profileDrag + FOIL.plateNormalForce * sinAlpha * sinAlpha;
 
   // Smoothstep rather than a linear ramp so the blended curve leaves the
   // attached limb at the stall with the attached limb's slope and joins the

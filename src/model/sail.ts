@@ -12,9 +12,11 @@
  * the rotation happened in `wind.ts` and there is nothing left to rotate: the
  * heading is simply bearing zero throughout this file.
  *
- * **The lateral component is discarded** and deliberately not exposed. There is
- * no leeway and no heel to spend it on (§7), induced drag is already inside
- * `Cd`, and a field on the return type would only invite someone to use it.
+ * **The lateral component is reported alongside the drive**, and one thing
+ * downstream spends it: the keel has to hold the boat on its heading against
+ * it, and §3.5 charges for that. There is still no leeway and no heel (§7) —
+ * the side force moves nothing sideways and lays nothing over — so `lateral` is
+ * a cost, not a motion, and `hull.ts` is the only module that reads it.
  *
  * The angle of attack works out to a strikingly simple identity,
  *
@@ -36,6 +38,7 @@ import type { MetersPerSecond, Newtons, Radians } from "./units.ts";
 import {
   add,
   angleBetween,
+  componentAcross,
   componentAlong,
   cos,
   oppositeAngle,
@@ -70,6 +73,11 @@ export interface SailForce {
   readonly luffFraction: number;
   /** The component along the heading. Negative when the sail is backed. */
   readonly driving: Newtons;
+  /**
+   * The component across the heading, positive to starboard: what the keel has
+   * to hold, and what §3.5's induced drag is charged on.
+   */
+  readonly lateral: Newtons;
 }
 
 /** What the two sails are doing, as the simulation holds it. */
@@ -86,6 +94,12 @@ export interface RigForce {
   readonly jib: SailForce | null;
   /** The sum. */
   readonly driving: Newtons;
+  /**
+   * The sum of the side forces, which is what the keel meets. Summed signed, so
+   * two sails pulling opposite ways — wing and wing on a run — cancel, which is
+   * exactly what the keel feels.
+   */
+  readonly lateral: Newtons;
 }
 
 /**
@@ -147,6 +161,7 @@ export function sailForce(sail: Sail, sailAngle: Radians, apparent: ApparentWind
     angleOfAttack: alpha,
     luffFraction: luffing,
     driving: componentAlong(force, AHEAD),
+    lateral: componentAcross(force, AHEAD),
   };
 }
 
@@ -155,7 +170,12 @@ export function rigForce(trim: RigTrim, apparent: ApparentWind): RigForce {
   const main = sailForce(MAIN, trim.mainAngle, apparent);
   const jib = trim.jibSet ? sailForce(JIB, trim.jibAngle, apparent) : null;
 
-  return { main, jib, driving: main.driving + (jib?.driving ?? 0) };
+  return {
+    main,
+    jib,
+    driving: main.driving + (jib?.driving ?? 0),
+    lateral: main.lateral + (jib?.lateral ?? 0),
+  };
 }
 
 // --- Optimal trim ----------------------------------------------------------
