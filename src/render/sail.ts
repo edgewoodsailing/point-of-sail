@@ -331,8 +331,8 @@ export function jibShape(jibAngle: Radians, apparent: ApparentWind): SailShape {
  * `sail.test.ts` sweeps a grid of trims at four wind speeds and pins the
  * quality to the same value at each.
  *
- * 0.05 is reached at an apparent wind angle of about 8°, deep inside the no-go
- * zone: the main's peak coefficient is 0.006 at AWA 5°, 0.05 at 8°, 0.21 at
+ * 0.05 is reached at an apparent wind angle of 8.2°, deep inside the no-go
+ * zone: the main's peak coefficient is 0.006 at AWA 5°, 0.047 at 8°, 0.21 at
  * 15°, 0.59 at 30° and 1.57 on a beam reach. So it binds only where the answer
  * is "bear away", and every point of sail a student can actually sail is
  * untouched by it — see {@link trimQuality} for what it does when it binds.
@@ -347,14 +347,19 @@ const MINIMUM_USEFUL_DRIVE_COEFFICIENT = 0.05;
  * 10° error would look equally bad everywhere if the scale were angular; keyed
  * to force the falloff is sharp where the physics is sharp and forgiving where
  * it is forgiving, because it *is* the physics. Measured on the main in 10 kt:
- * the trim error that drops the quality below 0.8 is 5.25° close hauled and 27°
- * on a run, and below 0.5 it is 8.75° against 45.75°. Nothing states that rule
+ * close hauled the quality falls below 0.8 within 5.25° of sheeting in past
+ * the optimum and 6.25° of easing past it, where on a run it survives 27°; the
+ * 0.5 contour is 8.75° and 12.25° against 45.75°. Nothing states that rule
  * anywhere; it falls out of the ratio.
  *
  * **The denominator is floored, and only where the optimum itself is vanishing.**
- * `optimalTrim` reports the honest in-irons answer — a non-positive best force,
- * exactly zero below AWA ≈ 4.3° where every trim luffs — and hands the ratio to
- * this side as §4.2's problem. Taken bare it is 0/0, and worse than undefined:
+ * `optimalTrim` reports the honest in-irons answer — a non-positive best
+ * force, and exactly zero below AWA ≈ 4.3°, where the best a sail can do is
+ * lie along the wind making nothing. (Not because everything luffs there:
+ * a boom right out at AWA 4° is fully attached and pulling 200 N *astern*.
+ * Every trim that holds its shape drives backwards, so the maximum lands on a
+ * luffing trim at exactly zero.) It hands the ratio to this side as §4.2's
+ * problem. Taken bare it is 0/0, and worse than undefined:
  * a sail sitting on the optimum at AWA 5° would read *fully green* while making
  * 1 N and going nowhere, then snap to red as the best force crossed zero. So
  * the denominator is `max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT · q · A)`.
@@ -410,9 +415,9 @@ export interface RigDrawing {
  * arrow's reference to it the same way.
  *
  * The quality is what makes it cost anything: `optimalTrim` sweeps the sail's
- * legal range, so a frame is some 60–150 sail-force evaluations per sail
- * against the handful the camber needs. That is the price §4.2 quotes and
- * accepts — around 30 µs a sail, nothing beside a frame of rendering — and it
+ * legal range, so a frame is the 60–150 sail-force evaluations its own docblock
+ * budgets for, against the handful the camber needs. Measured at 33 µs a sail,
+ * which is the price §4.2 accepts when it calls the search negligible — and it
  * is why the two halves are computed together here rather than separately by
  * two callers, which would double it.
  */

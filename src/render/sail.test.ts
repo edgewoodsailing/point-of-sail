@@ -19,6 +19,7 @@ import {
   knotsToMetersPerSecond,
   magnitude,
   oppositeAngle,
+  radiansToDegrees,
   scale,
   subtract,
   unitVector,
@@ -534,9 +535,14 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
    * is what "green at optimal trim" has to mean.
    */
   function mostDrivingTrim(sail: Sail, apparent: ApparentWind): Radians {
+    const steps = 1800;
     let bestAngle = deg(-90);
     let bestDriving = -Infinity;
-    for (let d = -90; d <= 90; d += 0.1) {
+    for (let i = 0; i <= steps; i += 1) {
+      // Off the index rather than accumulated, the way `optimalTrim`'s own
+      // sweep is: `d += 0.1` drifts and stops at 89.99999999999832, so +90°
+      // — which really is the optimum at AWA −120° and −180° — is never tried.
+      const d = -90 + (180 * i) / steps;
       const driving = sailForce(sail, deg(d), apparent).driving;
       if (driving > bestDriving) {
         bestAngle = deg(d);
@@ -562,13 +568,25 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     }
   });
 
-  it("reads highest at the most driving trim, and nowhere else", () => {
-    // The other half of "green at optimal": nothing else may read greener.
-    for (const awa of [30, 60, 90, 150, 180, -45, -120]) {
+  it("reads green *only* near the best trim, where the optimum is a real peak", () => {
+    // The converse of the criterion above, and the half that catches a ramp
+    // which has simply gone green everywhere. Asserting instead that nothing
+    // reads *higher* than the optimum would prove nothing: inside one apparent
+    // wind the denominator is a constant, so that is a statement about
+    // `sailForce`'s argmax and would hold for any positive denominator at all.
+    //
+    // Restricted to angles where the optimum is a single peak. On a dead run
+    // the two mirrored trims tie, so ±90° both read 1 and "near" has no
+    // meaning; from AWA 113° to 123° the peak has left the legal range and sits
+    // against the swing limit.
+    for (const awa of [30, 45, 60, 90, -30, -90]) {
       const apparent = wind(10, awa);
-      const peak = trimQuality(MAIN, mostDrivingTrim(MAIN, apparent), apparent);
-      for (const trim of trimSweep(1)) {
-        expect(trimQuality(MAIN, trim, apparent)).toBeLessThanOrEqual(peak + 1e-9);
+      const best = mostDrivingTrim(MAIN, apparent);
+      for (const trim of trimSweep(0.25)) {
+        if (trimQuality(MAIN, trim, apparent) < 0.99) continue;
+        // 1.4° at AWA 90 is the widest of these; 2° leaves room for the ramp
+        // without letting a degenerate implementation through.
+        expect(Math.abs(radiansToDegrees(trim - best))).toBeLessThan(2);
       }
     }
   });
@@ -578,10 +596,14 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     // luffing — and the drive collapses anyway. This is the case §4.2 exists
     // for: without it an overtrimmed sail would look identical to a good one.
     //
-    // "Red" is asked of the ramp's hue rather than of the exact end stop,
-    // because a couple of these land a thousandth above zero rather than on it.
-    // §4.4's stops run 30° → 52° → … → 145°, so a hue below 35° is the bottom
-    // twentieth of the ramp: red, by the ramp's own reckoning.
+    // Three of these are solidly negative (−0.51, −0.37, −0.15) and one lands
+    // 4e-17 above zero, so they format to the ramp's exact red end stop. The
+    // boom amidships on a broad reach is the one that does not: it reads
+    // 0.0166, a sixtieth of the way up. So "red" is asked of the ramp's *hue*
+    // as well as of the ratio — §4.4's stops run 30° → 52° → … → 145°, and a
+    // hue below 35° is the bottom thirteenth of the ramp. The hue assertion is
+    // implied by the ratio one against today's ramp; it is here so that the
+    // colour claim keeps being checked if the ramp is ever re-authored.
     for (const [awa, trim] of [
       [30, 20],
       [45, 20],
@@ -628,10 +650,11 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     }
 
     // And it widens steadily in between rather than jumping at one angle.
-    // Stated over the angles where the optimum is a real peak: from about
-    // AWA 100° the best trim is pinned to the swing limit — the sail wants to
+    // Stated over the angles where the optimum is a real peak: between AWA 113°
+    // and 123° the best trim is pinned to the swing limit — the sail wants to
     // be eased further than the shrouds allow — so the band there is a slice
-    // off the side of a peak that has left the range, and it narrows again.
+    // off the side of a peak that has left the range, and it narrows sharply,
+    // to 1.7% at AWA 120°, before opening out again past 125°.
     let previous = 0;
     for (const awa of [30, 45, 60, 90]) {
       const width = bandWidth(wind(10, awa), 0.8);
@@ -642,8 +665,8 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
   });
 
   it("says the same thing at every wind speed", () => {
-    // The ratio divides out dynamic pressure, and `MINIMUM_USEFUL_DRIVE` is a
-    // coefficient so that the floor divides out too. Without that the sails
+    // The ratio divides out dynamic pressure, and the floor is a coefficient —
+    // `MINIMUM_USEFUL_DRIVE_COEFFICIENT` — so that it divides out too. Without that the sails
     // would refuse to go green in light air — the ramp would be reporting the
     // wind rather than the trim.
     for (const awa of [5, 8, 30, 90, 180]) {
@@ -689,8 +712,9 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     // a twentieth of a degree is 0.017, and it is at 8.15° — where the floor
     // stops binding, which is a corner in the slope and not a jump.
     let previous: number | null = null;
-    for (let awa = 0; awa <= 14; awa += 0.05) {
-      const apparent = wind(10, awa);
+    for (let step = 0; step <= 280; step += 1) {
+      // Off the index, so the sweep ends on 14° rather than on 13.95°.
+      const apparent = wind(10, step / 20);
       const quality = trimQuality(MAIN, optimalTrim(MAIN, apparent).angle, apparent);
       if (previous !== null) expect(Math.abs(quality - previous)).toBeLessThan(0.05);
       previous = quality;

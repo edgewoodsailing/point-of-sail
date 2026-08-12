@@ -911,9 +911,9 @@ of it. The colors inherit the truth of the model instead of restating a rule.
 And it comes out that way. Measured on the main in 10 kt of apparent wind, the
 trims reading 0.8 or better span 6.2% of the sail's legal range close hauled
 against 30.0% dead downwind; at 0.5 or better, 11.5% against 50.8%. Put as a
-trim error, 0.8 is lost 5.25° from the optimum close hauled and 27° from it on a
-run. Getting on for five times more forgiving downwind, and nothing anywhere
-says so.
+trim error, close hauled loses 0.8 within 5.25° of sheeting in past the optimum
+and 6.25° of easing past it, against 27° on a run. Getting on for five times
+more forgiving downwind, and nothing anywhere says so.
 
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
@@ -923,9 +923,12 @@ undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
 The denominator needs a floor, because in the no-go zone it goes to zero. The
 optimal-trim search reports the honest in-irons answer — a non-positive best
 force, and *exactly* zero below an apparent wind angle of about 4.3°, where
-every trim luffs — so the bare ratio there is 0/0. Worse than undefined: a sail
-sitting on the optimum at 5° off the wind would read fully green while making
-1 N and going nowhere, then snap to red as the best force crossed zero.
+the best a sail can do is lie along the wind making nothing: every trim that
+holds its shape there drives *backwards* (a boom right out at 4° off the wind
+pulls 200 N astern), so the maximum lands on a luffing trim at exactly zero.
+The bare ratio there is 0/0. Worse than undefined: a sail sitting on the
+optimum at 5° off the wind would read fully green while making 1 N and going
+nowhere, then snap to red as the best force crossed zero.
 
 So the denominator is `max(F_drive(best), 0.05 · q · A)`. The floor is a drive
 *coefficient*, not a force, which is what keeps it from becoming a statement
@@ -934,11 +937,12 @@ floor in newtons would refuse to let a perfectly trimmed sail go green in light
 air. Divided out, 0.05 means the same thing at 2 kt as at 25 kt.
 
 It binds only where the answer is "bear away". The main's peak drive
-coefficient is 0.006 at 5° off the wind, 0.05 at 8°, 0.21 at 15°, 0.59 close
-hauled and 1.57 on a beam reach — so every point of sail a student can actually
-sail divides by the same number it always did, and inside the no-go zone the
-best trim fades from red rather than sitting green: 0.13 of the ramp at 5°,
-0.36 at 6°, 0.95 at 8°, and full green a fifth of a degree later. The fade is
+coefficient is 0.006 at 5° off the wind, 0.047 at 8°, 0.21 at 15°, 0.59 close
+hauled and 1.57 on a beam reach, first reaching the floor itself at 8.2° — so
+every point of sail a student can actually sail divides by the same number it
+always did, and inside the no-go zone the best trim fades from red rather than
+sitting green: 0.13 of the ramp at 5°, 0.36 at 6°, 0.95 at 8°, full green at
+8.2°. The fade is
 continuous *through* the boundary, which is the point of doing it this way
 rather than with a threshold.
 
