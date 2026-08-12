@@ -74,12 +74,12 @@ export const SCENE = {
    * LOA, exactly the same astern — so sternway is no longer the cramped case it
    * was when the boat turned about the mast.
    *
-   * A reservation, not a clamp. The speed indicator is not directly
-   * manipulable, so pos-qmk.3 may legitimately draw past this and let it pass
-   * behind the ring; overlapping the ring costs nothing as long as it cannot
-   * intercept a drag meant for it. That also leaves room for the indicator to
-   * become a wake at the stern rather than an arrow off the bow (§4.3), which
-   * the symmetric budget now supports either way.
+   * A reservation, not a clamp, and `render/speed.ts` took it up on exactly
+   * that: the arrow's tip lands on this radius at hull speed, and above hull
+   * speed it keeps growing and crosses the ring rather than pretending 5.6 kt
+   * and 8 kt are the same length. Overlapping the ring costs nothing as long as
+   * the arrow cannot intercept a drag meant for it — which is what
+   * `pointer-events: none` on `.pos-speed` guarantees, not the paint order.
    */
   contentRadius: 5.2,
 

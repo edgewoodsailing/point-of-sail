@@ -102,8 +102,8 @@ export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 /**
  * Below this drawn length there is no arrow at all.
  *
- * At 0.05 m — about 0.12 kt — the shape is smaller than its own stroke is wide.
- * Drawing it anyway would leave a dot at the stem in a flat calm, because the
+ * At 0.05 m — about 0.14 kt — the shape is smaller than its own stroke is wide.
+ * Drawing it anyway would leave a dot off the stem in a flat calm, because the
  * stroke is round-capped, and a mark that never goes away stops reading as
  * "moving". A boat this slow is not under way.
  */

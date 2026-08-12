@@ -26,7 +26,8 @@ const BEARING = 4;
  */
 const ARROW_LENGTH = 1.2;
 const TICK_LENGTH = 0.25;
-const TICK_COUNT = 7;
+/** Marks *drawn*: the eight points of sail less the one the arrow stands on. */
+const TICKS_DRAWN = 7;
 
 const deg = degreesToRadians;
 
@@ -127,7 +128,7 @@ describe("points-of-sail graduations", () => {
     const offsets = tickBearings(from)
       .map((bearing) => normalizeSigned(bearing - from))
       .sort((a, b) => a - b);
-    expect(offsets).toHaveLength(TICK_COUNT);
+    expect(offsets).toHaveLength(TICKS_DRAWN);
     // ±45 close-hauled, ±90 a beam reach, ±135 a broad reach, 180 a run — every
     // point of sail bar head to wind, which is where the arrow already stands.
     const expected = [-135, -90, -45, 45, 90, 135, 180].map(deg).sort((a, b) => a - b);
