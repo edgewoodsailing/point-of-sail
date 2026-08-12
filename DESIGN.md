@@ -606,9 +606,15 @@ sail together it is the only kind of term that can slow the boat in a gale
 without bending the polar. With it in place a beam reach settles at 6.34 kt in
 20 kt of wind and 6.36 in 30 — and the exponent above is free to go on being
 chosen for what it is actually good at, which is the shape of the polar in the
-wind the simulator opens in. Everything in the table above still holds; what has
-changed is that its right-hand columns are no longer the only thing standing
-between the model and a nine-knot Rhodes 19.
+wind the simulator opens in.
+
+**Read that table as a study of the wall by itself, because that is what it
+is.** Every figure in it was measured with §3.2's depowering off, which is the
+only way to see what the exponent alone does, and its two right-hand columns are
+no longer what the model delivers: at exponent 4 the boat now reaches 6.34 kt
+and 6.36 kt in 20 and 30 kt of wind, not 7.59 and 8.88. The comparison the table
+exists to make — that sharpening the wall buys a slower reach at the price of
+the pointing angle — is unaffected, since every row moves together.
 
 **Speed is integrated, not solved.** Each frame:
 
@@ -633,14 +639,26 @@ The boat still doesn't *translate*; only the speed number evolves.
 **One numerical wrinkle: the resistance is taken implicitly.** Written exactly as
 above, each step charges the resistance the boat felt at the *start* of the
 interval, and against a fourth power on top of a square that error compounds
-badly. Trimmed for the wind it's in, the boat stops settling at around 80 kt — a
-tenth-of-a-second step alternates between two speeds forever — and by 120 kt it
-diverges to `NaN`, permanently, since every later step adds to it. Nobody sails a
-Rhodes 19 in 120 kt, but the wind slider ([§5](#5-direct-manipulation)) still has
-no stated ceiling, and a model that quietly dies past one is a trap for whoever
-picks it. (Those thresholds were 55 kt and 85 kt while the
-wall was a sixth power; a gentler curve is a gentler thing to linearize.) So the
-step linearizes the resistance about the current speed:
+badly. Trimmed for the wind it was in, the boat used to stop settling at around
+80 kt — a tenth-of-a-second step alternating between two speeds forever — and by
+120 kt it diverged to `NaN`, permanently, since every later step adds to it.
+(Those thresholds were 55 kt and 85 kt while the wall was a sixth power; a
+gentler curve is a gentler thing to linearize.)
+
+**Since [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+depowering, no wind reaches that failure at all**, and it would be dishonest to
+leave the paragraph above reading as a live threat. The drive is capped at its
+13 kt value, so the boat settles at about 6.4 kt whether it is given 55 kt of
+wind or a thousand, and at those speeds the naive step and the implicit one
+agree to four decimal places with no overshoot between them. The step stays
+implicit anyway, for two reasons that have nothing to do with which winds are
+reachable today: it costs a single extra term, and what makes the failure
+unreachable is now a *tuning constant* — raise `DEPOWERING.fullPowerWind` far
+enough, or take the cap out to try something else, and the fourth power is
+waiting exactly where it was. The guard is cheap and the trap is one line of
+`tuning.ts` away, which is the wrong margin to run without one.
+
+So the step linearizes the resistance about the current speed:
 
 ```text
 v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
@@ -653,10 +671,13 @@ from a curve climbing faster than the step can see. The fixed point is still
 exactly `F_drive = R(v)` and doesn't depend on `dt`.
 
 It does *not* make overshoot impossible: the step follows a tangent to a convex
-curve, so it aims slightly beyond the balance point, and in a gale not slightly
-at all. What makes that harmless is that resistance grows faster than linearly,
-so a speed past the balance point meets a restoring step larger than the one
-that took it there, and overshoots decay instead of feeding themselves.
+curve, so it aims slightly beyond the balance point. What makes that harmless is
+that resistance grows faster than linearly, so a speed past the balance point
+meets a restoring step larger than the one that took it there, and overshoots
+decay instead of feeding themselves. This clause used to end "and in a gale not
+slightly at all", which was true of the boat that could reach 12 m/s in a gale
+and is not true of one whose drive is capped: from rest in 200 kt the first step
+is now 0.06 m/s against a balance of 3.29, and the approach is monotone.
 
 **`settle()` runs real frames, and that is not an oversight.** Long steps look
 free — where resistance dominates, the update becomes a Newton step and lands in
@@ -759,7 +780,7 @@ the sloop numbers too and so has to recalibrate against this table.
 stops — today's scaffolding offers 0–30 kt — so the three qualitative lessons
 have to survive a range the table says nothing about. `pos-lcz` narrowed the
 drift to where the same bounds hold across the whole opening range, and
-`pos-d7u`'s depowering then stopped it drifting at all above it:
+`pos-d7u`'s depowering then stopped the *pointing angle* drifting above it:
 
 ```text
 wind      4     6     8    10    12    14    16    20    30    45
@@ -776,6 +797,15 @@ has taken a tenth of a percent; from 14 kt the rig stops collecting force and
 the boat stops accelerating. The closest useful angle stays inside 40–50° at
 every wind from 4 kt to 45 — the same band the 10 kt test pins — where before
 `pos-lcz` it ran to 39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
+
+**The run/beam row still drifts, and it is worth being clear that depowering was
+never going to stop it.** A uniform factor scales a run and a beam reach by the
+same number, so it cannot move their ratio at any one wind; what moves the ratio
+across winds is that the boat's speed is now pinned while the wind keeps
+rising, so the apparent wind draws further aft at any given point of sail and
+the run gains on the reach. 0.87 at 45 kt is a real boat in a real gale, and the
+lesson the tests pin — a run under 75% of a beam reach — holds across the whole
+opening range, which is where §2.1 puts the student.
 
 **The 14 kt knife edge is gone, and it is the clearest thing depowering
 bought.** This section used to warn that the figure landed on 40° against a

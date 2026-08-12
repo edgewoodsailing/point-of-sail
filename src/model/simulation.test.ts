@@ -294,13 +294,24 @@ describe("step size", () => {
 
   it("holds together in a wind nobody would sail in", () => {
     // §2.1 randomises 6–14 kt, but §5 does not say where its wind slider stops,
-    // and the resistance curve is a fourth power on top of a square:
-    // taken at the speed the step starts from, it stops settling at around
-    // 80 kt of wind and diverges to NaN by 120 — permanently, since every later
-    // step adds to a NaN. `advance` takes the resistance implicitly precisely
-    // so that whoever raises that ceiling is choosing a lesson, not avoiding a
-    // trap. (Those thresholds were 55 and 85 before pos-lcz softened the wall
-    // exponent; the winds swept below still clear both comfortably.)
+    // and the resistance curve is a fourth power on top of a square: taken at
+    // the speed the step starts from, it used to stop settling at around 80 kt
+    // of wind and diverge to NaN by 120 — permanently, since every later step
+    // adds to a NaN. (Those thresholds were 55 and 85 before pos-lcz softened
+    // the wall exponent.)
+    //
+    // **pos-d7u's depowering put that failure out of reach**, and this test is
+    // no longer the thing that would catch it. The drive is capped at its 13 kt
+    // value, so every wind below settles around 6.4 kt instead of climbing, and
+    // the naive integrator converges just as cleanly here as the implicit one —
+    // checked at 55, 60, 80, 100, 120, 200, 500 and 1000 kt, tails identical.
+    //
+    // It is kept, and kept sweeping absurd winds, because what makes the
+    // failure unreachable is now a tuning constant rather than a property of
+    // the physics: `DEPOWERING.fullPowerWind` raised far enough, or taken out
+    // to try something else, puts the fourth power back within reach. This
+    // asserts the boat stays finite and stops moving whatever the wind, which
+    // is the claim §5 actually needs and the one that survives either regime.
     for (const wind of [55, 60, 100, 200]) {
       const trimmed = wellTrimmed(deg(90));
       const gale: SimState = { ...trimmed, wind: { ...trimmed.wind, speed: kt(wind) } };
@@ -314,14 +325,16 @@ describe("step size", () => {
       // settled speed. Ringing is what this rules out, and ringing is what the
       // old integrator did here — two speeds, alternating, forever.
       //
-      // Not asserted as monotone, unlike the temperate cases. The step follows
-      // a tangent to a convex curve, so its target lies a little past the true
-      // balance point, and in a gale "a little" is not little: the first step
-      // from rest at 200 kt lands at 12.03 m/s against a balance of 6.34. What
-      // matters is that the overshoot decays — resistance climbing faster than
-      // linearly sees to that — which is exactly what the tail assertion below
-      // measures. Overshooting once and converging is a different animal from
-      // ringing.
+      // Not asserted as monotone, unlike the temperate cases, and that is now
+      // headroom rather than necessity. It used to be necessity: the step
+      // follows a tangent to a convex curve, so its target lies past the true
+      // balance point, and in a gale not slightly — the first step from rest at
+      // 200 kt landed at 12.03 m/s against a balance of 6.34. Under pos-d7u's
+      // capped drive the same step lands at 0.0635 m/s against a balance of
+      // 3.2929 and the approach is monotone at every wind swept here. The
+      // assertion stays the weaker one, because what it is really for is that
+      // the overshoot *decays* if there is one, which is the property that
+      // separates converging from ringing and does not depend on the cap.
       let current = gale;
       const speeds: MetersPerSecond[] = [];
       for (let elapsed = 0; elapsed < 300; elapsed += 0.1) {
