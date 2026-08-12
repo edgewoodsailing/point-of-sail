@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, SWING_LIMIT } from "./boat.ts";
 import { hullResistance, keelInducedDrag } from "./hull.ts";
-import { optimalTrim, rigForce } from "./sail.ts";
+import { depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle, step } from "./simulation.ts";
 import type { MetersPerSecond, Radians, Seconds } from "./units.ts";
@@ -441,13 +441,22 @@ describe("state handling", () => {
       const settled = settle(state);
       const apparent = apparentWind(settled.wind, settled.motion);
       const forces = rigForce(settled.trim, apparent);
+
+      // §3.2's depowering, which `rigForce` deliberately does not apply — see
+      // `depoweringFactor` for why it lives at the integrator's seam instead.
+      // Two of the cases below are above the wind it starts biting in, and one
+      // is at 80 kt where it is worth a factor of forty, so leaving it out here
+      // would not be a rounding error: it would assert a balance the boat is
+      // not in.
+      const carried = depoweringFactor(settled.wind.speed);
+
       // All three terms of §3.5's balance, the keel's included — leaving it out
       // would let this pass on a settle that had converged to the wrong speed
       // by exactly the induced drag, which upwind is over a hundred newtons.
       const unbalanced =
-        forces.driving -
+        forces.driving * carried -
         hullResistance(settled.motion.speed) -
-        keelInducedDrag(settled.motion.speed, forces.lateral);
+        keelInducedDrag(settled.motion.speed, forces.lateral * carried);
 
       // A tenth of a newton is a hundredth of what the boat feels drifting in a
       // calm, and four orders below the failures above.

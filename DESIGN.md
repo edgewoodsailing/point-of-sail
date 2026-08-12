@@ -271,6 +271,80 @@ Sum both sails, rotate into the boat frame, and take the component along the
 heading as **driving force**. The lateral component is *not* discarded — see
 [§3.5](#35-hull-resistance-and-integration), where the keel is charged for it.
 
+#### Depowering: the rig stops collecting force in a breeze
+
+Everything above scales with the square of the wind, and a rig that did only
+that would sail a Rhodes 19 at nine knots in a gale. A real one stops
+collecting force well before that. It heels, so the sail plan leans out of the
+horizontal and presents less of itself square to the wind; the sail twists off
+at the head; and the crew ease, feather, flatten and reef. So the whole rig
+force is multiplied by
+
+```text
+k(W) = (1 + r^16)^(−1/16)        r = (W_true / 13 kt)²
+```
+
+which is `min(1, q_full/q)` with the corner rounded off: full sail up to 13 kt,
+and above it `k` falls as `1/q`, so **the force stops growing and holds at what
+it reached there**. [§7](#7-deliberately-out-of-scope) declines to model heel,
+so this is heel's *effect* standing in for heel, exactly as
+[§3.5](#35-hull-resistance-and-integration)'s `sideForce` is four times a bare
+keel's induced drag because it stands in for heel, leeway and rudder angle
+together.
+
+**Why a term of this shape was the only one that could work.** Every force in
+the model is homogeneous of degree two in speed, so
+[§3.5](#the-wall-exponent-is-the-models-only-wind-scale)'s wall was the sole
+source of wind-dependence in the polar — and it is a function of *speed* when
+the problem is a function of the *wind*. It therefore bites hardest where the
+boat is fastest, clipping a reach harder than close hauled and sliding the
+upwind optimum lower as the breeze fills in. A factor on the drive has no such
+problem: at any one wind it multiplies every point of sail by the same number,
+which is precisely what slows the boat without bending the polar.
+
+**It is keyed to the true wind, and that is a decision rather than a
+convenience.** [§3.1](#31-apparent-wind) says sail forces come from the
+apparent wind and never from the true wind, and this does not break that rule:
+`k` is not an aerodynamic coefficient but *how much sail is being carried*,
+which a crew choose for the wind of the day rather than for the flow over the
+cloth at this instant. The alternative was measured and is worse. Keyed to the
+apparent wind, a run — which has the lowest apparent wind of any point of sail
+— is depowered *least*, so the run/beam ratio at 14 kt runs from 0.74 to
+between 0.75 and 0.79, breaking [§3.6](#36-calibration-targets)'s "a run is
+notably slower than a reach" at exactly the wind
+[§2.1](#21-initial-state-a-random-solvable-problem) opens in, and the fastest
+point of sail slides from TWA 95° to 110–115°.
+
+The mechanism this stands in for was measured too, and it is also worse.
+Driving `k` from the side force — the honest reading of "it heels", since
+heeling moment is what runs a crew out of righting moment — puts run/beam at
+30 kt between 0.97 and 1.09, a run as fast as a beam reach, and barely touches
+the top speed at all: 8.82–8.86 kt against 8.91 undepowered, because the
+fastest angles make little side force and escape the cap. **Heel is the right
+cause; its effect has to be spread evenly to be any use.**
+
+**The knee is sharp because the calibration table is tight.** The 10 kt broad
+reach sits at 4.73 kt against a 4.68 floor — about a tenth of the 10% tolerance
+[§3.6](#36-calibration-targets) quotes — so a knee soft enough to reach back
+into 10 kt breaks the table outright. At an exponent of 4 it does; at 16 the
+whole 4–10 kt range is unchanged to five decimal places and only 12 kt onward
+moves at all. The sharpness buys the separation between the range that is
+calibrated and the range this term is for.
+
+**Where it is applied matters, and it is not inside the force assembly.**
+`sail.ts` computes `k` and `simulation.ts` applies it, so `rigForce` reports the
+rig at full power and nothing in [§4.2](#42-the-traffic-light)'s trim-quality
+ratio ever sees it. That is deliberate. The colour divides this trim's drive by
+the best trim's, and a factor common to both cancels — except against the
+*floored* denominator `max(best, 0.05·q·A)`, which carries no such factor.
+Scaling the forces upstream would leave that floor binding further out as the
+breeze filled in: measured, the apparent wind angle below which it binds would
+run from 8.2° at 10 kt to 11.5° at 20, 17.3° at 30 and 30.3° at 45, creeping the
+near-no-go fade across a third of the upwind quarter in a gale. Applied at the
+integrator's seam, §4.2 is left exactly as it was designed. The price is that
+`rigForce` returns a force that is not the one accelerating the boat, which the
+naming in `sail.ts` carries.
+
 ### 3.3 Luffing
 
 Luffing is a *separate concept from trim quality* and must not be conflated with
@@ -406,8 +480,12 @@ R(v) = A·v² + B·v²·(v / v_hull)⁴        v_hull = 2.91 m/s (5.65 kt)
 ```
 
 The fourth-power term is a shape, not a theory — it produces the wall a
-displacement hull hits, so no amount of sail area gets a Rhodes 19 to 9 knots
-in the wind it is actually sailed in. It was a sixth power until `pos-lcz`;
+displacement hull hits, the one that makes the last half knot cost far more
+than the one before it. What it does *not* do on its own is keep a Rhodes 19
+off nine knots in a gale; that promise was made here for a long time and is
+actually kept by [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze),
+for reasons the subsection below works through. It was a sixth power until
+`pos-lcz`;
 [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) below is
 the decision that moved it, and it is the one place in this section where a
 number was chosen against something other than the 10 kt polar.
@@ -494,7 +572,10 @@ opposite of what a keelboat does. Measured, holding the 10 kt beam reach at
 | 20 | 4.53 5.55 5.13 3.87 | 49° → 37° | 0.88 | 6.08 | 6.34 |
 
 There is no row that keeps a beam reach at hull speed in a breeze *and* holds
-the pointing angle, because there is only the one knob. Holding a beam reach at
+the pointing angle, because within this term there is only the one knob — which
+is the measurement that sent the problem to
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze). Holding a beam
+reach at
 or under hull speed at 30 kt while [§3.6](#36-calibration-targets)'s table
 survives needs an exponent of about 126 — a speed clamp, not a wall — and the
 pointing is long gone well before that. Pulling the 10 kt beam reach down to
@@ -503,20 +584,31 @@ configuration, being far enough below the wall to be untouched by it, so a
 slower beam reach simply breaks "a run is notably slower than a reach".
 
 Four is that trade taken deliberately toward the range the simulator opens in.
-It costs speed discipline at the top of the wind range — a beam reach reaches
-7.59 kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and
-a Rhodes 19 does neither — and it costs the broad reach two more points of the
-shortfall [§3.6](#36-calibration-targets) already calls structural. What it buys
-is that the three lessons the model exists to teach hold their shape across the
-6–14 kt [§2.1](#21-initial-state-a-random-solvable-problem) actually opens on.
-`calibration.test.ts` asserts both halves, the gain and the cost.
+It costs the broad reach two more points of the shortfall
+[§3.6](#36-calibration-targets) already calls structural. What it buys is that
+the three lessons the model exists to teach hold their shape across the 6–14 kt
+[§2.1](#21-initial-state-a-random-solvable-problem) actually opens on.
 
-The honest reading is that the wall is being asked to do a job it is the wrong
-shape for. What holds a real Rhodes 19 down in a breeze is not extra water drag
-but the rig giving up: it heels, the sail twists off, and the crew eases and
-feathers. That caps the *drive* rather than clipping the *speed*, and because it
-acts on every point of sail together it is the only kind of term that can slow
-the boat in a gale without bending the polar. `pos-d7u` is the bead for it.
+The honest reading is that the wall was being asked to do a job it is the wrong
+shape for, and for a while it was left doing it badly: a beam reach reached
+7.59 kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and a
+Rhodes 19 does neither. `calibration.test.ts` pinned that as an accepted cost
+rather than a target, so that it could not drift quietly in either direction
+while the term that could fix it was still a bead.
+
+That term is now
+[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze),
+and it settles the question this whole subsection is about. What holds a real
+Rhodes 19 down in a breeze is not extra water drag but the rig giving up: it
+heels, the sail twists off, and the crew eases and feathers. That caps the
+*drive* rather than clipping the *speed*, and because it acts on every point of
+sail together it is the only kind of term that can slow the boat in a gale
+without bending the polar. With it in place a beam reach settles at 6.34 kt in
+20 kt of wind and 6.36 in 30 — and the exponent above is free to go on being
+chosen for what it is actually good at, which is the shape of the polar in the
+wind the simulator opens in. Everything in the table above still holds; what has
+changed is that its right-hand columns are no longer the only thing standing
+between the model and a nine-knot Rhodes 19.
 
 **Speed is integrated, not solved.** Each frame:
 
@@ -636,9 +728,21 @@ power this figure was 7% light and at a twentieth it is 1% — but
 the wall is the model's only wind-scale, so steepening it to buy the broad reach
 sends the pointing angle through the floor as the breeze fills in. `pos-lcz`
 went the other way and spent two points of this figure to hold the pointing,
-leaving about one point of margin against the tolerance. What is actually wanted
-is not a different resistance curve but a term acting on the *drive* — see
-`pos-d7u`.
+leaving about one point of margin against the tolerance.
+
+It then used to read that what was wanted was a term acting on the *drive*, and
+that `pos-d7u` would be it. That has landed, and it did **not** buy this figure
+back — which is worth recording rather than quietly deleting, because it was a
+reasonable guess and it was wrong.
+[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze) is
+exactly such a term and it cannot help here, for the same reason it is useful
+everywhere else: it is a single factor multiplying the whole rig, so at any one
+wind it scales a broad reach and a beam reach by precisely the same amount and
+their *ratio* does not move at all. It also sits at 1.000 in 10 kt by
+construction, so it is not even present in this table. Closing this gap needs
+something that changes the *shape* of the force curve rather than its scale —
+the sails' own coefficients, or a resistance curve steeper than §3.5 can
+afford — and until something does, 9% light is where the broad reach stays.
 
 The **closest useful angle is read as the peak of upwind VMG**, which is what a
 sailor means by it and what a test can check. It came out at 30–35° before
@@ -653,33 +757,47 @@ the sloop numbers too and so has to recalibrate against this table.
 [§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
 [§5](#5-direct-manipulation) gives the wind a slider without saying where it
 stops — today's scaffolding offers 0–30 kt — so the three qualitative lessons
-have to survive a range the table says nothing about. They still weaken as the
-breeze fills in, but `pos-lcz` narrowed it to where the same bounds hold across
-the whole opening range:
+have to survive a range the table says nothing about. `pos-lcz` narrowed the
+drift to where the same bounds hold across the whole opening range, and
+`pos-d7u`'s depowering then stopped it drifting at all above it:
 
 ```text
-wind      4     6     8    10    12    14    16    20    30
-angle    51°   49°   47°   44°   41°   40°   38°   36°   33°
-run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.77  0.80  0.85
-beam kt  2.91  4.05  4.90  5.55  6.08  6.53  6.92  7.59  8.88
+wind      4     6     8    10    12    14    16    20    30    45
+angle    51°   49°   47°   44°   41°   41°   41°   41°   42°   42°
+run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.76  0.79  0.84  0.87
+beam kt  2.91  4.05  4.90  5.55  6.07  6.31  6.33  6.34  6.36  6.37
+k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
 ```
 
-The closest useful angle now stays inside 40–50° for every wind in 6–14 kt — the
-same band the 10 kt test pins — where before it ran to 39° by 14 kt, and the run
-stays under 75% of a beam reach across the range rather than reaching 78%.
-`calibration.test.ts` asserts exactly that, at the real bound: the 14 kt figure
-lands on 40° with *no margin*, and buying a degree back by nudging the keel's
-stall ceiling was available, considered, and declined, because it would move the
-boat to make a test comfortable while the drift underneath stayed put.
+The bottom row is [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+depowering factor, and the shape of the table is its doing. Through 10 kt it is
+1 to five decimal places and every figure is the undepowered one; at 12 kt it
+has taken a tenth of a percent; from 14 kt the rig stops collecting force and
+the boat stops accelerating. The closest useful angle stays inside 40–50° at
+every wind from 4 kt to 45 — the same band the 10 kt test pins — where before
+`pos-lcz` it ran to 39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
 
-**What this does not fix is the beam reach in a lot of wind**, and that is now a
-recorded limit rather than an open question. At 20 kt it is 7.59 kt and at 30 kt
-8.88 kt, against a 5.65 kt hull speed — 34% and 57% over, where before `pos-lcz`
-it was 25% and 41%. That got *worse*, deliberately:
-[§3.5](#the-wall-exponent-is-the-models-only-wind-scale) shows the two are the
-same knob pulling opposite ways, and the pointing angle across the range anyone
-actually sails in was judged the more valuable of the two. No setting of the wall
-exponent satisfies both, and the term that could is `pos-d7u`.
+**The 14 kt knife edge is gone, and it is the clearest thing depowering
+bought.** This section used to warn that the figure landed on 40° against a
+bound of 40° with no margin, and that buying a degree back by nudging the keel's
+stall ceiling had been considered and declined because it would move the boat to
+make a test comfortable. The peak is a discrete argmax over a very flat maximum
+— the winning degree beats its runner-up by between 0.01% and 0.09% across the
+opening range — so at 14 kt a rounding difference could flip the answer to 39°
+and turn the suite red with nothing having changed. It is now 41°, winning from
+40°, so both are inside the bound, as they already were at every other wind.
+The flatness is unchanged; what moved is where the pair sits.
+
+**The beam reach in a lot of wind is fixed, and that was `pos-d7u`'s whole
+point.** It reads 6.34 kt at 20 kt of wind and 6.36 at 30, against a 5.65 kt
+hull speed — 12% and 13% over, where before it was 34% and 57%, and where before
+`pos-lcz` it was 25% and 41%. Not *at* hull speed, and deliberately not: a beam
+reach is the one point of sail a displacement boat holds a little past it, and
+this section's own 10 kt figure is already 5.55 kt against a 5.65 kt hull speed,
+so there was never room to cap much harder without taking this table with it.
+The honest cost is on the last row of the table above — above about 13 kt the
+wind slider stops making the boat faster, because that is what a capped rig
+means.
 
 The last row matters as much as the speeds. Main-only falls off *hardest close
 hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
@@ -1554,7 +1672,15 @@ one. Several are worth revisiting *after* v1 works.
   accurately, in a second visual language. Revisit only if the colour ramp turns
   out to want corroborating.
 - Heel, which top-down can only hint at symbolically — and which, like leeway,
-  is paid for without being shown
+  is paid for without being shown. It is paid for *twice*, and the second one is
+  worth knowing about: `RESISTANCE.sideForce` charges the drag heel produces,
+  and [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+  depowering is the force heel *costs the rig*, which is a much larger effect
+  and the one that decides how fast the boat goes in a breeze. Neither models
+  heel; both are its consequences, applied without an angle ever being computed.
+  Note that the second is deliberately **not** driven by the heeling force,
+  which would be the obvious way to do it — §3.2 has the measurement showing
+  why that version makes a worse boat
 
 **Telltales in the rigging are a different instrument, and are planned rather
 than declined** (pos-32n). An earlier draft of this section listed "telltales"
