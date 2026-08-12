@@ -57,10 +57,11 @@
  *
  * **What it does still buy is depth against incidence**, which turns out to be
  * worth more than the knife edges were. Measured on the main, whose full draft
- * is 0.473 m: with `sin α` the drawn camber is 0.058 m at α = 7°, 0.122 m at 15°
- * and 0.473 m at 90°; with only the sign it is 0.473 m at all three — full
- * camber on a sail 7° off luffing, and a close-hauled sail indistinguishable
- * from one on a beam reach. A close-hauled sail reading distinctly flatter than
+ * is `foot · MAX_DRAFT_FRACTION` = 0.473 m, at saturated pressure — the pressure
+ * factor is common to both columns and cancels: with `sin α` the drawn camber is
+ * 0.058 m at α = 7°, 0.122 m at 15° and 0.473 m at 90°; with only the sign it is
+ * 0.473 m at all three — full camber on a sail 7° off luffing, and a close-hauled
+ * sail indistinguishable from one on a beam reach. A close-hauled sail reading distinctly flatter than
  * a reaching one is §4.1's deliberate visible consequence and is true on the
  * water, so `sin α` stays whole.
  *
