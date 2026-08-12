@@ -177,8 +177,11 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     // pixels rather than metres (§4.5). Worked through that section's own
     // arithmetic the overhang is at worst 0.030 m, on a 320 px phone.
     const worstHalfStroke = 0.03;
-    const furthest = SPEED_LIMIT + (SCENE.contentRadius - SPEED_REACH);
-    expect(furthest + worstHalfStroke).toBeLessThan(SCENE.shortRadius);
+    // The module keeps this private, so it is recovered the only way the
+    // exports allow: the tail radius is what `contentRadius` has left over once
+    // the arrow's own hull-speed reach is taken out of it.
+    const tailRadius = SCENE.contentRadius - SPEED_REACH;
+    expect(SPEED_LIMIT + tailRadius + worstHalfStroke).toBeLessThan(SCENE.shortRadius);
   });
 
   it("is bounded by its limit at every speed there is, finite or not", () => {
