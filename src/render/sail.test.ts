@@ -851,6 +851,39 @@ describe("the luffing flutter (pos-dmg.2, DESIGN.md §4.1)", () => {
     }
   });
 
+  /**
+   * The invariant the closed-form normaliser stands or falls on. Dividing by a
+   * peak that is not the real peak would let the envelope climb past 1, and the
+   * ripple would then be drawn deeper than the amplitude constant allows —
+   * silently, since nothing else bounds it. Swept over both sails, every
+   * collapse either side of the fold, and the whole chord.
+   */
+  it("never leaves 0..1, which is what says the normaliser found the real peak", () => {
+    // Reduced to two assertions rather than one per sample: the sweep is
+    // 1.4 million points, and `expect` at every one of them is what makes a
+    // test like this time out instead of run.
+    let lowest = Infinity;
+    let highest = -Infinity;
+    let highestAt = "";
+    for (const make of [mainShape, jibShape]) {
+      for (let alpha = 0; alpha <= 180; alpha += 0.05) {
+        const shape = make(0, wind(10, alpha));
+        for (let i = 0; i <= 200; i += 1) {
+          const value = flutterEnvelope(shape, i / 200);
+          lowest = Math.min(lowest, value);
+          if (value > highest) {
+            highest = value;
+            highestAt = `${alpha.toFixed(2)}° at s=${i / 200}`;
+          }
+        }
+      }
+    }
+    expect(lowest).toBeGreaterThanOrEqual(0);
+    expect(highest, highestAt).toBeLessThanOrEqual(1);
+    // And it does reach the top, so this is a bound the sweep actually visits.
+    expect(highest).toBeGreaterThan(0.9);
+  });
+
   it("changes nothing at all on the leech-first limb, where collapseAt already is s", () => {
     const flogging = shapeAtAlpha(180);
     expect(flogging.collapseFrom).toBe("leech");

@@ -1010,7 +1010,7 @@ leech when the wind is coming over the back of the sail. A sail that is *just*
 starting to break shows a small ripple at that edge only, which is exactly what a
 student should learn to spot.
 
-The ripple is three waves across the chord at 3 Hz, peaking at 4% of the chord —
+The ripple is three waves across the chord at 3 Hz, scaled to 4% of the chord —
 a quarter of full camber, so a shaking sail can never be read as a drawing one.
 Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
 shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
