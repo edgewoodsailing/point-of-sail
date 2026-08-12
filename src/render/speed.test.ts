@@ -9,7 +9,7 @@ import {
   rotateVector,
   subtract,
 } from "../model/units.ts";
-import { SCENE, sceneExtent } from "./scene.ts";
+import { SCENE, SHORT_SPAN, sceneExtent } from "./scene.ts";
 import {
   SPEED_FULL_SCALE,
   SPEED_KNEE,
@@ -172,16 +172,58 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     }
   });
 
+  /**
+   * Half the drawn stroke, in metres — the bit that overhangs the tip, because
+   * `.pos-speed-mark` is round-capped.
+   *
+   * Derived rather than asserted from memory, since it is the number that
+   * justifies `EDGE_KEEP_OUT` and it is not obvious. Two different lengths are
+   * in play and they are *not* the same one:
+   *
+   * - The stroke is `clamp(1.6px, 0.45vmin, 4px)`, and `vmin` is the
+   *   **viewport's** short side.
+   * - Metres per pixel is `SHORT_SPAN / surfaceShort`, and `surfaceShort` is
+   *   the **drawing surface's** short side.
+   *
+   * §6.2 stacks the control strip *below* the surface, so in landscape the
+   * strip comes off the short axis and the surface is shorter than the
+   * viewport. Assuming the two were equal — as this test first did — understates
+   * the overhang by up to a factor of two.
+   */
+  const halfStrokeMeters = (viewport: [number, number], stripPx: number): Meters => {
+    const [width, height] = viewport;
+    const surfaceShort = Math.min(width, height - stripPx);
+    const vmin = Math.min(width, height);
+    const strokePx = Math.min(4, Math.max(1.6, (0.45 * vmin) / 100));
+    return (strokePx / 2) * (SHORT_SPAN / surfaceShort);
+  };
+
   it("leaves room for the stroke, which overhangs the tip it is drawn on", () => {
-    // The round cap puts half a stroke past the tip, and the stroke is in CSS
-    // pixels rather than metres (§4.5). Worked through that section's own
-    // arithmetic the overhang is at worst 0.030 m, on a 320 px phone.
-    const worstHalfStroke = 0.03;
-    // The module keeps this private, so it is recovered the only way the
-    // exports allow: the tail radius is what `contentRadius` has left over once
-    // the arrow's own hull-speed reach is taken out of it.
+    // The module keeps the tail radius private, so it is recovered the only way
+    // the exports allow: it is what `contentRadius` has left over once the
+    // arrow's own hull-speed reach is taken out of it.
     const tailRadius = SCENE.contentRadius - SPEED_REACH;
-    expect(SPEED_LIMIT + tailRadius + worstHalfStroke).toBeLessThan(SCENE.shortRadius);
+    const viewports: [number, number][] = [
+      [320, 568],
+      [568, 320],
+      [390, 844],
+      [844, 390],
+      [768, 1024],
+      [1024, 768],
+      [1440, 900],
+      [2560, 1080],
+    ];
+    // 160 px is the *current* scaffolding strip — seven rows of controls — and
+    // so more than §5's eventual strip will ever want. Worst case across all of
+    // it is 0.060 m, on a 568x320 landscape phone, where the strip leaves only
+    // 160 px of surface. Portrait never exceeds 0.030 m.
+    for (const viewport of viewports) {
+      for (const stripPx of [0, 100, 160]) {
+        const overhang = halfStrokeMeters(viewport, stripPx);
+        expect(overhang).toBeLessThan(0.07);
+        expect(SPEED_LIMIT + tailRadius + overhang).toBeLessThan(SCENE.shortRadius);
+      }
+    }
   });
 
   it("is bounded by its limit at every speed there is, finite or not", () => {

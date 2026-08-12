@@ -1122,7 +1122,17 @@ part of the drawing nothing else uses — the ring's graduations are drawn
 clipped by the viewport reads as a rendering fault. Bending at hull speed
 instead would have shortened the arrow across 5.6–8 kt, where the boat actually
 sails, and pushed the ring crossing out to 7.6 kt — moving the one landmark a
-student can see the arrow cross, since `contentRadius` is not drawn.
+student can see the arrow cross, since `contentRadius` is a budget rather than a
+drawn circle.
+
+One consequence to record before someone finds this and thinks it is dead
+weight. Depowering the rig in a breeze (pos-d7u) drops the fastest reachable
+speed to about 6.4 kt, which is *below* the 6.87 kt ring crossing — so in normal
+use the knee never engages and the arrow is linear across the whole range the
+boat can reach. It stays anyway, for the same reason it was not tuned to a measured
+top speed to begin with: nothing guarantees a future model, a retuned constant
+or a raised wind control stays under the ring. The drawing declines to depend on
+the model's range at all. Measure the invariant, not the reachable speeds.
 
 What the bend guarantees, and why it is a curve rather than a clamp: the length
 is **bounded** at every speed there is, including ones no boat reaches, so no

@@ -55,8 +55,23 @@
  * short of the edge: a mark clipped by the viewport reads as a rendering fault.
  * Bending at hull speed instead would have shortened the arrow across 5.6–8 kt,
  * which is where the boat actually sails, and pushed the ring crossing out to
- * 7.6 kt — moving the one landmark a student can actually see, since 5.2 m is
- * not drawn.
+ * 7.6 kt. That crossing is the one landmark a student can actually see the
+ * arrow pass: `contentRadius` is a budget, not a drawn circle, so "she is past
+ * hull speed" is read off the ring at 5.65 m and nothing else. Moving it would
+ * have been the only perceptible regression on offer, and this avoids it.
+ *
+ * ## Why this stays, once nothing can reach the clip
+ *
+ * pos-d7u depowers the rig in a breeze and drops the fastest reachable speed
+ * from 8.9 kt to about 6.4 — *below* the 6.87 kt ring crossing. So once it
+ * lands the knee never engages in normal use and the arrow is linear over the
+ * whole reachable range, which can make this look like dead weight. It is not,
+ * and the reason is the same one that made it wrong to clamp at a measured top
+ * speed in the first place: nothing guarantees a future model, a retuned
+ * constant, or a raised wind slider stays under the ring, and the 30 kt ceiling
+ * is scaffolding pos-bwd.1 deletes. This is the drawing refusing to depend on
+ * the model's range at all. Do not delete it on the grounds that the range no
+ * longer reaches it — measure the invariant, not the reachable speeds.
  *
  * Three properties, and they are the point:
  *
@@ -157,15 +172,23 @@ export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
  *
  * It has to cover the stroke, which is the one dimension here that is not in
  * metres: `--pos-rule-speed` is `clamp(1.6px, 0.45vmin, 4px)`, round-capped, so
- * half of it overhangs the tip. Worked through §4.5's own arithmetic — metres
- * per pixel is `SHORT_SPAN / shortSide`, and `vmin` is that same short side —
- * the overhang is 0.027 m flat wherever the middle term of the clamp is
- * governing, and worst at the narrow end: 0.030 m on the 320 px phone that
- * section names.
+ * half of it overhangs the tip. Two lengths go into that and they are easy to
+ * conflate — the clamp's `vmin` is the **viewport's** short side, while metres
+ * per pixel is `SHORT_SPAN / surfaceShort`, the **surface's**. §6.2 stacks the
+ * control strip below the surface, so in landscape the strip comes off the
+ * short axis and the two part company.
  *
- * 0.1 m is a little over three times that, and the surplus is not slack. A tip
+ * Portrait is the easy case and holds at 0.027–0.030 m. Landscape is the one
+ * that binds: with the current seven-row scaffolding strip a 568×320 phone
+ * leaves only 160 px of surface, and the overhang reaches 0.060 m.
+ *
+ * 0.1 m covers even that with 40% to spare, and the surplus is not slack. A tip
  * hard against the edge reads as a clipped mark whether or not it is one, which
  * is exactly why `wind.ts` runs its graduations inward instead of outward.
+ * `speed.test.ts` derives the figure from the clamp's own terms across a table
+ * of viewports and strip heights rather than restating it, because the first
+ * version of this comment quietly assumed the two short sides were the same and
+ * was wrong by a factor of two.
  */
 const EDGE_KEEP_OUT: Meters = 0.1;
 
