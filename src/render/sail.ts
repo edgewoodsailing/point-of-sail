@@ -356,12 +356,13 @@ const MINIMUM_USEFUL_DRIVE_COEFFICIENT = 0.05;
  * this side as §4.2's problem. Taken bare it is 0/0, and worse than undefined:
  * a sail sitting on the optimum at AWA 5° would read *fully green* while making
  * 1 N and going nowhere, then snap to red as the best force crossed zero. So
- * the denominator is `max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT · q · A)`. Above the floor
- * — every point of sail — this is §4.2's ratio unchanged. Below it the best
- * trim can no longer read green but fades with what is actually available:
- * ≈ 0.13 of the ramp at AWA 5°, 0.36 at 6°, 1.0 by 8°. "No trim can save this"
- * is the true lesson in the no-go zone, and the fade is continuous through the
- * boundary rather than a threshold pretending to be one.
+ * the denominator is `max(best, MINIMUM_USEFUL_DRIVE_COEFFICIENT · q · A)`.
+ * Above the floor — every point of sail — this is §4.2's ratio unchanged.
+ * Below it the best trim can no longer read green but fades with what is
+ * actually available: on the main, 0.13 of the ramp at AWA 5°, 0.36 at 6°,
+ * 0.95 at 8°, full green at 8.2°. "No trim can save this" is the true lesson
+ * in the no-go zone, and the fade is continuous through the boundary rather
+ * than a threshold pretending to be one.
  *
  * **A flat calm is the one case with no answer at all**, since every trim ties
  * at zero force, so it returns 0 and paints red. Guarding on `q·A` rather than

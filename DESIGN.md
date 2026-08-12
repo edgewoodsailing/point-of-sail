@@ -937,9 +937,10 @@ It binds only where the answer is "bear away". The main's peak drive
 coefficient is 0.006 at 5° off the wind, 0.05 at 8°, 0.21 at 15°, 0.59 close
 hauled and 1.57 on a beam reach — so every point of sail a student can actually
 sail divides by the same number it always did, and inside the no-go zone the
-best trim fades from red rather than sitting green: ≈ 0.13 of the ramp at 5°,
-0.36 at 6°, full green by 8°. The fade is continuous *through* the boundary,
-which is the point of doing it this way rather than with a threshold.
+best trim fades from red rather than sitting green: 0.13 of the ramp at 5°,
+0.36 at 6°, 0.95 at 8°, and full green a fifth of a degree later. The fade is
+continuous *through* the boundary, which is the point of doing it this way
+rather than with a threshold.
 
 A flat calm is the one case with no answer at all — every trim ties at zero
 force — and it paints red.
