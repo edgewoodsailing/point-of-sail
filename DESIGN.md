@@ -925,6 +925,17 @@ more forgiving downwind, and nothing anywhere says so.
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
 
+One qualification, and it comes from the physics rather than from the ramp:
+**you cannot badly oversheet close hauled.** The best trim there is already
+nearly on the centreline — 9° off it at an apparent wind angle of 30°, and
+exactly on it at 20° — so the boom hauled all the way in is a small error, and
+reads amber. Sheeted to the centreline, the quality first reaches amber at 28°
+and red at 35°. Past the centreline is not oversheeting at all but *backing*
+the sail ([§3.4](#34-backing-a-sail)), which is red for a different reason: it
+drives the boat astern. So overtrimming is a reaching and running mistake,
+which is where it is a mistake on the water too, and the error available close
+hauled is easing too far — which luffs, and reads red the other way.
+
 #### Where the best trim is itself worth nothing
 
 The denominator needs a floor, because in the no-go zone it goes to zero. The
@@ -952,9 +963,8 @@ hauled and 1.57 on a beam reach, first reaching the floor itself at 8.2° — so
 every point of sail a student can actually sail divides by the same number it
 always did, and inside the no-go zone the best trim fades from red rather than
 sitting green: 0.13 of the ramp at 5°, 0.36 at 6°, 0.95 at 8°, full green at
-8.2°. The fade is
-continuous *through* the boundary, which is the point of doing it this way
-rather than with a threshold.
+8.2°. The fade is continuous *through* the boundary, which is the point of
+doing it this way rather than with a threshold.
 
 A flat calm is the one case with no answer at all — every trim ties at zero
 force — and it paints red.

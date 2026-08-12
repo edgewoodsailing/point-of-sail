@@ -591,39 +591,73 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     }
   });
 
-  it("goes red overtrimmed, with the cloth dead still", () => {
-    // Sheeted in hard: the flow stays attached to the cloth — nothing is
-    // luffing — and the drive collapses anyway. This is the case §4.2 exists
-    // for: without it an overtrimmed sail would look identical to a good one.
-    //
-    // Three of these are solidly negative (−0.51, −0.37, −0.15) and one lands
-    // 4e-17 above zero, so they format to the ramp's exact red end stop. The
-    // boom amidships on a broad reach is the one that does not: it reads
-    // 0.0166, a sixtieth of the way up. So "red" is asked of the ramp's *hue*
-    // as well as of the ratio — §4.4's stops run 30° → 52° → … → 145°, and a
-    // hue below 35° is the bottom thirteenth of the ramp. The hue assertion is
-    // implied by the ratio one against today's ramp; it is here so that the
-    // colour claim keeps being checked if the ramp is ever re-authored.
+  /**
+   * "Red" asked of the ramp's *hue* rather than of the exact end stop, because
+   * some of these land a little above zero rather than on it. §4.4's stops run
+   * 30° → 52° → … → 145°, so a hue below 35° is the bottom thirteenth of the
+   * ramp — red by the ramp's own reckoning. Kept alongside the ratio bound so
+   * the *colour* claim keeps being checked if the ramp is ever re-authored.
+   */
+  const isRed = (quality: number): boolean => trimQualityStop(quality).hue < 35;
+
+  it("goes red oversheeted, with the cloth dead still", () => {
+    // Oversheeted means hauled in *past* the optimum, and the boom on the
+    // centreline is as far in as the sheet goes — anything beyond it is on the
+    // other side of the boat and is a backed sail, not an overtrimmed one.
+    // This is the case §4.2 exists for: the flow stays attached the whole way,
+    // so without the ramp an oversheeted sail looks exactly like a good one.
+    for (const awa of [40, 60, 90, 150]) {
+      const apparent = wind(10, awa);
+      expect(isRed(trimQuality(MAIN, 0, apparent))).toBe(true);
+      expect(isRed(trimQuality(JIB, 0, apparent))).toBe(true);
+      expect(luffFraction(angleOfAttack(0, apparent))).toBe(0);
+    }
+
+    // Dead downwind is the one place the cloth is *not* still, and the model is
+    // right to insist on it: a boom hauled flat amidships on a run meets the
+    // wind at its *leech* (α = 180°), and a real one slats. Red, and honestly
+    // luffing — a statement about that trim, not about oversheeting.
+    const run = wind(10, 180);
+    expect(isRed(trimQuality(MAIN, 0, run))).toBe(true);
+    expect(luffFraction(angleOfAttack(0, run))).toBe(1);
+  });
+
+  it("cannot be badly oversheeted close hauled, because the physics says so", () => {
+    // The qualification §4.2 now carries, pinned rather than left implicit. The
+    // best trim close hauled is already nearly on the centreline — 9.1° off it
+    // at AWA 30°, and exactly on it at 20° — so there is barely any room to
+    // sheet in past it, and hauling the boom all the way in reads amber rather
+    // than red. Sheeted to the centreline, the quality first reaches amber at
+    // AWA 28.2° and red at 35.0°: oversheeting is a reaching and running
+    // mistake, which is where it is a mistake on the water too.
+    expect(radiansToDegrees(mostDrivingTrim(MAIN, wind(10, 20)))).toBeCloseTo(0, 6);
+    expect(trimQuality(MAIN, 0, wind(10, 20))).toBeCloseTo(1, 3);
+
+    const closeHauled = trimQuality(MAIN, 0, wind(10, 30));
+    expect(closeHauled).toBeGreaterThan(0.4);
+    expect(isRed(closeHauled)).toBe(false);
+
+    expect(isRed(trimQuality(MAIN, 0, wind(10, 34.9)))).toBe(false);
+    expect(isRed(trimQuality(MAIN, 0, wind(10, 35.1)))).toBe(true);
+  });
+
+  it("goes red with a backed sail, which is a different mistake (§3.4)", () => {
+    // Sheeted past the centreline onto the windward side. These read −0.51,
+    // −0.37 and −0.15 — *negative*, which is the tell that separates them from
+    // oversheeting: an oversheeted sail drives forward less, a backed one
+    // drives the boat astern. Red for both reasons, and not luffing either.
     for (const [awa, trim] of [
       [30, 20],
       [45, 20],
       [60, 10],
-      [90, 0],
-      [150, 0],
     ] as const) {
       const apparent = wind(10, awa);
-      expect(trimQuality(MAIN, deg(trim), apparent)).toBeLessThan(0.05);
-      expect(trimQualityStop(trimQuality(MAIN, deg(trim), apparent)).hue).toBeLessThan(35);
+      const quality = trimQuality(MAIN, deg(trim), apparent);
+      expect(deg(trim)).toBeGreaterThan(mostDrivingTrim(MAIN, apparent));
+      expect(quality).toBeLessThan(0);
+      expect(isRed(quality)).toBe(true);
       expect(luffFraction(angleOfAttack(deg(trim), apparent))).toBe(0);
     }
-
-    // Dead downwind is the one exception, and the model is right to insist on
-    // it: a boom hauled flat amidships on a run is edge-on to the wind at its
-    // *leech* (α = 180°), and a real one slats. Red, and honestly luffing —
-    // which is a statement about that trim, not about overtrimming.
-    const run = wind(10, 180);
-    expect(trimQualityStop(trimQuality(MAIN, 0, run)).hue).toBeLessThan(35);
-    expect(luffFraction(angleOfAttack(0, run))).toBe(1);
   });
 
   it("goes red undertrimmed too, and that one *is* fluttering", () => {

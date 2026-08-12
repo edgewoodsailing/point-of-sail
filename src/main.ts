@@ -325,7 +325,14 @@ interface SailReport {
   luffFraction: number;
   camber: Meters;
   driving: Newtons;
-  /** §4.2's traffic light as the number behind it: 1 is green, 0 is red. */
+  /**
+   * §4.2's traffic light as the number behind it — the **raw** driving-force
+   * ratio, deliberately unclamped, because a diagnostic that folded it would
+   * hide the two things worth diagnosing. Back the main and this reads −0.51,
+   * not 0; sit a hair off the sampled optimum and it can read just over 1.
+   * `render/palette.ts` does the folding onto the ramp, so 1 is green and
+   * anything at or below 0 is red.
+   */
   quality: number;
 }
 
