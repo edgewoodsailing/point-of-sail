@@ -33,8 +33,8 @@
 
 import type { SimState } from "../model/simulation.ts";
 import type { Scene } from "../render/scene.ts";
-import type { Grab, GrabTarget } from "./gestures.ts";
-import { beginGrab, DEAD_ZONE_PX, dragTo, touchScale } from "./gestures.ts";
+import type { GrabTarget, Held } from "./gestures.ts";
+import { beginGrab, DEAD_ZONE_PX, dragTo, reapply, touchScale } from "./gestures.ts";
 
 /** The state the gestures read and write. `main.ts` supplies both halves. */
 export interface StateAccess {
@@ -63,12 +63,21 @@ export function bindPointers(
   scene: PointerScene,
   state: StateAccess,
 ): PointerBinding {
-  /** Live pointers, by `pointerId`. Its values are also the set of claimed targets. */
-  const active = new Map<number, Grab>();
+  /**
+   * Live pointers, by `pointerId`: what each has hold of and where it last was.
+   *
+   * The position is kept because a finger holding still sends no
+   * `pointermove`, and {@link reapply} needs somewhere to read it from. It is
+   * stored in **world metres** rather than client pixels, which is what makes
+   * it survive: `toWorld` depends on the layout and the viewBox, neither of
+   * which a gesture changes, so a stored world point stays the point that
+   * finger is on however far the boat turns under it.
+   */
+  const active = new Map<number, Held>();
 
   function taken(): ReadonlySet<GrabTarget> {
     const targets = new Set<GrabTarget>();
-    for (const grab of active.values()) targets.add(grab.target);
+    for (const held of active.values()) targets.add(held.grab.target);
     return targets;
   }
 
@@ -82,7 +91,7 @@ export function bindPointers(
     // untouched is what keeps it available to pos-bwd.2's wind ring.
     if (grab === null) return;
 
-    active.set(event.pointerId, grab);
+    active.set(event.pointerId, { grab, at: world });
     surface.setPointerCapture(event.pointerId);
     // Suppresses the text selection a mouse drag would otherwise start, and the
     // synthesised mouse events a touch would. `touch-action: none` in the
@@ -91,21 +100,31 @@ export function bindPointers(
   }
 
   function onPointerMove(event: PointerEvent): void {
-    const grab = active.get(event.pointerId);
-    if (grab === undefined) return;
-
-    const current = state.read();
-    const result = dragTo(
-      current,
-      grab,
-      scene.toWorld(event.clientX, event.clientY),
-      scene.pixelsToMeters(DEAD_ZONE_PX),
-    );
-    active.set(event.pointerId, result.grab);
-    // Identity, not deep equality: `dragTo` returns the state it was given when
-    // a move asks for no change, so this is exact rather than approximate.
-    if (result.state !== current) state.write(result.state);
+    const held = active.get(event.pointerId);
+    if (held === undefined) return;
     event.preventDefault();
+
+    const deadZone = scene.pixelsToMeters(DEAD_ZONE_PX);
+    const current = state.read();
+    const world = scene.toWorld(event.clientX, event.clientY);
+
+    const moved = dragTo(current, held.grab, world, deadZone);
+    active.set(event.pointerId, { grab: moved.grab, at: world });
+    // Identity, not deep equality: `dragTo` returns the state it was given when
+    // a move asks for no change, so this is exact rather than approximate — and
+    // a move that changed nothing cannot have changed anything for the other
+    // fingers either.
+    if (moved.state === current) return;
+
+    // The other fingers have not moved, but the world under them may have.
+    const others = [...active].filter(([id]) => id !== event.pointerId);
+    const again = reapply(
+      moved.state,
+      others.map(([, other]) => other),
+      deadZone,
+    );
+    others.forEach(([id], index) => active.set(id, again.held[index]));
+    state.write(again.state);
   }
 
   /**

@@ -2037,6 +2037,22 @@ holding a clew, the clew stays under its finger while the boat turns beneath it,
 so the trim changes. That is exactly what happens on the water when you hold a
 sheet through a turn.
 
+**It does not fall out of the event model, though, and that is the trap.** A
+finger holding still sends no `pointermove`, so the only gesture a frame
+recomputes is the one whose finger moved — which is fine for two sails, whose
+inputs are independent, and wrong the moment the hull is one of them. So every
+pointer's last position is kept in **world metres**, and the ones that did not
+move are re-applied after one that did. World metres rather than client pixels
+because the screen→world map depends on the layout and the viewBox, neither of
+which a gesture changes: a stored world point stays the point that finger is on
+however far the boat turns under it.
+
+One pass suffices, and that is a property rather than optimism: each gesture is
+idempotent in the state it does not write, so no re-application can invalidate
+one already done. Without it, a held clew would sit where the *boat* put it and
+then jump the whole accumulated rotation the instant its finger twitched — both
+halves worse than tracking.
+
 Listeners go on `.pos-sim .surface`, **not on the `<svg>`**. An SVG with no
 painted background receives events only over painted geometry, so a drag that
 began on the boat and continued over open water would stop being delivered. The

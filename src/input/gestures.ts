@@ -409,3 +409,42 @@ export function dragTo(
   }
   return { state: axis.apply(state, axis.fromBearing(bearing) + grab.offset), grab };
 }
+
+/** A live pointer: what it has hold of, and the last place it was seen. */
+export interface Held {
+  readonly grab: Grab;
+  readonly at: Vec2;
+}
+
+/**
+ * Re-applies the pointers that did **not** move, after one that did changed the
+ * world underneath them.
+ *
+ * A finger that is holding still sends no `pointermove`, so without this the
+ * only gesture recomputed on a frame is the one whose finger moved. That is
+ * fine for two sails, whose inputs are independent — and wrong the moment the
+ * hull is one of them, because a sail's bearing is taken in the boat frame at
+ * the live heading. One student turning the boat while another holds a clew
+ * would leave that clew where the *boat* put it rather than where the finger
+ * is, and the sail would then jump the whole accumulated rotation the instant
+ * that finger twitched. Both halves are worse than tracking.
+ *
+ * One pass is enough, and that is a property rather than an optimism. Each
+ * gesture is idempotent in the state it does not write: re-applying a sail
+ * reads the heading and its own world point, neither of which another sail can
+ * touch; re-applying the hull reads its world point and nothing else. So no
+ * re-application can invalidate one already done.
+ */
+export function reapply(
+  state: SimState,
+  held: readonly Held[],
+  deadZone: Meters,
+): { readonly state: SimState; readonly held: readonly Held[] } {
+  let next = state;
+  const updated = held.map((one) => {
+    const result = dragTo(next, one.grab, one.at, deadZone);
+    next = result.state;
+    return { grab: result.grab, at: one.at };
+  });
+  return { state: next, held: updated };
+}

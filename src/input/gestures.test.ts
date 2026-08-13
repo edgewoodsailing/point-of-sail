@@ -28,6 +28,7 @@ import {
   dragTo,
   GRAB_RADIUS_PX,
   insideHull,
+  reapply,
   toBoatPoint,
   touchScale,
 } from "./gestures.ts";
@@ -620,6 +621,67 @@ describe("two pointers at once (DESIGN.md §5)", () => {
 
     expect(radiansToDegrees(state.trim.mainAngle)).toBeCloseTo(70, ANGLE_PRECISION);
     expect(radiansToDegrees(state.trim.jibAngle)).toBeCloseTo(-30, ANGLE_PRECISION);
+  });
+
+  /**
+   * The stationary finger, which is the one the event model does not report.
+   *
+   * A finger holding still sends no `pointermove`, so the only gesture a frame
+   * recomputes is the one whose finger moved. That is harmless for two sails
+   * and wrong for a sail plus the hull, so `reapply` re-runs the others from
+   * where they still are.
+   */
+  it("re-applies a held clew when the other finger turned the boat under it", () => {
+    const state = stateWith({ heading: 0, mainAngle: 0, jibSet: false });
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const heldAt = worldPoint(mainClewPosition(0), 0);
+
+    const mainGrab = beginGrab(state, heldAt, scale, new Set())!;
+    const hullGrab = beginGrab(
+      state,
+      worldPoint({ x: 0, y: STATIONS.pivot.y - 1.5 }, 0),
+      scale,
+      new Set<GrabTarget>(["main"]),
+    )!;
+    expect(hullGrab.target).toBe("hull");
+
+    // The hull finger moves; the clew finger does not.
+    const turned = dragTo(state, hullGrab, { x: 3, y: 0 }, scale.deadZone).state;
+    expect(radiansToDegrees(turned.motion.heading)).toBeCloseTo(90, ANGLE_PRECISION);
+
+    // Without the re-application the trim would still read 0 here, and would
+    // then jump the whole 90° the moment the held finger twitched.
+    expect(radiansToDegrees(turned.trim.mainAngle)).toBeCloseTo(0, ANGLE_PRECISION);
+
+    const after = reapply(turned, [{ grab: mainGrab, at: heldAt }], scale.deadZone);
+    expect(radiansToDegrees(after.state.trim.mainAngle)).toBeCloseTo(70.05, 2);
+
+    // And the clew really is back under the finger: same bearing from the mast.
+    const mastAt = worldPoint(STATIONS.mast, after.state.motion.heading);
+    const clewAt = worldPoint(
+      mainClewPosition(after.state.trim.mainAngle),
+      after.state.motion.heading,
+    );
+    expect(angleOfVector(subtract(clewAt, mastAt))).toBeCloseTo(
+      angleOfVector(subtract(heldAt, mastAt)),
+      9,
+    );
+  });
+
+  it("leaves a re-applied pointer alone when nothing under it moved", () => {
+    // The other direction: `reapply` is not a free-running recompute. Two sails
+    // are independent, so re-running the jib after the main moved must land on
+    // exactly the trim it already had.
+    const state = stateWith({ heading: deg(20), mainAngle: deg(-30), jibAngle: deg(-25) });
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const jibAt = worldPoint(jibClewPosition(state.trim.jibAngle), state.motion.heading);
+    const jibGrab = beginGrab(state, jibAt, scale, new Set<GrabTarget>(["main"]))!;
+    expect(jibGrab.target).toBe("jib");
+
+    const after = reapply(state, [{ grab: jibGrab, at: jibAt }], scale.deadZone);
+    expect(after.state.trim.jibAngle).toBeCloseTo(state.trim.jibAngle, 12);
+    expect(after.state.motion.heading).toBe(state.motion.heading);
+    expect(after.state.trim.mainAngle).toBe(state.trim.mainAngle);
   });
 
   it("carries a clew with the boat when the other finger turns the hull", () => {
