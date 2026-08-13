@@ -356,9 +356,12 @@ describe("touchdown arbitration (DESIGN.md §5)", () => {
     const state = stateWith({ jibSet: false });
     const clew = jibClewPosition(state.trim.jibAngle);
     expect(clewGap(state)).toBeNull();
-    // The struck jib's clew station is on the foredeck, so the hull takes it —
-    // the point being that nothing reaches a sail that is not there.
-    expect(grabAt(state, clew)).not.toBe("jib");
+    // The struck jib's clew station is on the foredeck, so the hull takes it.
+    // Asserted as `toBe("hull")` rather than `not.toBe("jib")`: the negative
+    // form passes on `null` too, which is the one answer this comment rules out
+    // and the one a struck-jib bug would most plausibly produce.
+    expect(insideHull(clew)).toBe(true);
+    expect(grabAt(state, clew)).toBe("hull");
   });
 
   /**
@@ -417,24 +420,86 @@ describe("dragging a clew (DESIGN.md §5)", () => {
     expect(radiansToDegrees(next.trim.mainAngle)).toBeCloseTo(75, ANGLE_PRECISION);
   });
 
+  /**
+   * Three implementations, three different numbers, and this pins the right one.
+   *
+   * **It has to name the number.** An earlier version asserted only
+   * `not.toBeCloseTo(45, 1)` — that the sail had not snapped to the finger —
+   * and both the shipped code and an offset-ignoring one clear 45° by about
+   * six degrees, so deleting `+ grab.offset` from `dragTo` left the whole suite
+   * green. §5's "a drag preserves where you grabbed" and the module docblock
+   * arguing for it could both have been deleted with nothing going red.
+   *
+   * Touch down 0.5 m to starboard of the clew — inside the disc but well off
+   * centre — and move by exactly that same offset from the 45° clew. Then:
+   *
+   * | Implementation | Trim |
+   * | --- | --- |
+   * | Grab offset preserved (shipped) | **41.498°** |
+   * | Grab offset ignored | 51.097° |
+   * | Snapped to the finger's own clew | 45° |
+   *
+   * The middle row is what the mutation produces and the reason the old
+   * assertion was worthless; the bottom row is the jump the whole mechanism
+   * exists to avoid.
+   */
   it("preserves where you grabbed, so the sail does not jump to meet a finger", () => {
     const state = stateWith({ mainAngle: 0 });
     const clew = mainClewPosition(0);
-    // Touch down 0.5 m to starboard of the clew — inside the disc, but well off
-    // centre — and move by exactly the same offset from the 45° clew.
     const offset = { x: 0.5, y: 0 };
     const from: Vec2 = { x: clew.x + offset.x, y: clew.y + offset.y };
     const target = mainClewPosition(deg(45));
     const next = drag(state, from, { x: target.x + offset.x, y: target.y + offset.y });
 
-    // Not 45° — the finger kept its offset, and that is the point. What the
-    // grab must not do is snap: an offset-ignoring drag would land on the
-    // bearing of the moved *finger*, which is a different number again.
-    expect(radiansToDegrees(next.trim.mainAngle)).not.toBeCloseTo(45, 1);
+    expect(radiansToDegrees(next.trim.mainAngle)).toBeCloseTo(41.498, 3);
 
     // Landing on the clew itself, however, is exact: no offset, no correction.
+    // Which is also why every *other* drag test in this file is blind to the
+    // offset — they all touch down precisely on a clew, where it is zero.
     const exact = drag(state, clew, target);
     expect(radiansToDegrees(exact.trim.mainAngle)).toBeCloseTo(45, ANGLE_PRECISION);
+  });
+
+  /**
+   * The offset's **sign**, which pinning one number does not cover.
+   *
+   * Grab to starboard of the clew and the sail must end up *short* of where a
+   * finger landing on the clew would have put it; grab to port and it must
+   * overshoot. Both a dropped offset term and a negated one flip that ordering
+   * — dropped gives 51.097°/37.265° against the 45° zero-offset answer, on the
+   * wrong sides — so this catches the same mutation from a second direction and
+   * one it cannot.
+   *
+   * **The two are deliberately not asserted equal and opposite**, which is what
+   * they look like they should be and what a first draft of this claimed. The
+   * grab offsets themselves are exactly symmetric — ±9.5988°, since 0.5 m
+   * across is perpendicular to a clew lying dead aft — but the results are not,
+   * because at the 45° target that same 0.5 m is no longer perpendicular. The
+   * corrections come out 3.502° and 1.864°.
+   */
+  it("carries the grab offset into the trim, on the side it was taken", () => {
+    const state = stateWith({ mainAngle: 0 });
+    const clew = mainClewPosition(0);
+    const target = mainClewPosition(deg(45));
+
+    const draggedWith = (dx: number): number =>
+      radiansToDegrees(
+        drag(state, { x: clew.x + dx, y: clew.y }, { x: target.x + dx, y: target.y }).trim
+          .mainAngle,
+      );
+
+    const onTheClew = radiansToDegrees(drag(state, clew, target).trim.mainAngle);
+    const toStarboard = draggedWith(0.5);
+    const toPort = draggedWith(-0.5);
+
+    expect(onTheClew).toBeCloseTo(45, ANGLE_PRECISION);
+    expect(toStarboard).toBeLessThan(onTheClew);
+    expect(toPort).toBeGreaterThan(onTheClew);
+    // And there is something to measure on both sides: whole degrees, not a
+    // rounding difference that the two orderings above would also be satisfied
+    // by. 3.502° and 1.864°.
+    expect(onTheClew - toStarboard).toBeGreaterThan(3);
+    expect(toPort - onTheClew).toBeGreaterThan(1.5);
   });
 
   it("drives the jib from its own tack, not the mast", () => {
@@ -553,11 +618,16 @@ describe("the dead zone about a rotation's centre", () => {
   });
 
   it("would have spun the boat without it, which is why it is there", () => {
-    // The same two points, referenced from outside the dead zone: 0.07 m of
-    // finger movement about the pivot is 135° of heading. That is the motion
-    // the guard suppresses, measured rather than asserted to be large.
+    // The same two points, referenced from outside the dead zone. The finger
+    // travels 0.1118 m — the straight-line distance between them, not the
+    // 0.0707 m radius of either, which an earlier version of this comment
+    // quoted by mistake — and the heading swings **exactly 135°**. That is the
+    // motion the guard suppresses, and the number is asserted rather than
+    // bounded, since a bound is what let the wrong figure sit here.
     const near: Vec2 = { x: STATIONS.pivot.x + 0.05, y: STATIONS.pivot.y };
     const nudged: Vec2 = { x: STATIONS.pivot.x - 0.05, y: STATIONS.pivot.y + 0.05 };
+    expect(magnitude(subtract(nudged, near))).toBeCloseTo(0.1118, 4);
+
     const noDeadZone = 0;
     const grab = beginGrab(state, worldPoint(near, state.motion.heading), scale, new Set())!;
     const referenced = dragTo(
@@ -575,7 +645,13 @@ describe("the dead zone about a rotation's centre", () => {
     const swing = Math.abs(
       radiansToDegrees(spun.motion.heading) - radiansToDegrees(state.motion.heading),
     );
-    expect(swing).toBeGreaterThan(90);
+    expect(swing).toBeCloseTo(135, 6);
+
+    // Both points are inside the dead zone the shipped code uses, so the guard
+    // really does cover the motion just measured rather than merely a motion.
+    for (const point of [near, nudged]) {
+      expect(magnitude(subtract(point, STATIONS.pivot))).toBeLessThan(scale.deadZone);
+    }
   });
 });
 

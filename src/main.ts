@@ -43,7 +43,7 @@ if (surface === null) {
  *   now than it did, since the jib switch went with the scaffolding and
  *   pos-740.3 owns the one that replaces it.
  * - **The trim is on the leeward side.** This wind and heading give an apparent
- *   wind 156° off the starboard bow — a broad reach — where a `mainAngle: +25°`
+ *   wind 156.5° off the starboard bow — a broad reach — where a `mainAngle: +25°`
  *   would put the boom to *windward* at an angle of attack of 180°: flow
  *   arriving at the leech, no force, and a sail that correctly draws dead flat.
  *   A fine state, a useless first paint. Eased to port both sails sit near
@@ -52,7 +52,9 @@ if (surface === null) {
  * The speed is not written down, because it is not an input. {@link settle}
  * supplies it, so the boat opens at the speed this trim really reaches rather
  * than from rest — a student cannot tell a short speed arrow from one that has
- * not got going yet. On this heading at this trim that is 3.79 kt.
+ * not got going yet. On this heading at this trim that is **3.709 kt** — a
+ * figure this docblock carried as 3.79 for several beads, so it is worth saying
+ * that it is measured against the current calibration rather than remembered.
  */
 let state: SimState = settle({
   wind: { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },

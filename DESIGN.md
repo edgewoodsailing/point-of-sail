@@ -2010,8 +2010,10 @@ the finger nears the centre — and the pivot sits inside the hull silhouette,
 about a foot abaft the mast, so a student can and will put a finger on it. Inside
 24 px the bearing is treated as absent: the angle is held, and the offset is
 taken afresh on the way out, so leaving the dead zone resumes the drag rather
-than snapping the boat to wherever the finger reappeared. Measured without it, a
-7 cm slide across the pivot swings the boat more than 135°.
+than snapping the boat to wherever the finger reappeared. Measured without it,
+an 11.2 cm slide across the pivot swings the boat **exactly 135°** — the two
+points sit 7.07 cm from the pivot on bearings 225° apart, and quoting that
+radius as the distance travelled is the error this sentence used to contain.
 
 ### Multi-touch
 
