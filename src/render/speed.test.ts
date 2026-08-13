@@ -131,11 +131,20 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     // metre per m/s. The arrow gets that less the clear water it leaves at the
     // stem, and what this pins is that the gap stays a trim off the end rather
     // than growing into a real share of the drawing.
+    // **The dependency reversed.** `SPEED_REACH` used to be what was left of
+    // `contentRadius` after the bow and the gap; it is now `VELOCITY_SCALE ×
+    // hull speed`, because both arrows are drawn on one scale (pos-bwd.5) and
+    // the ring's radius is solved so that hull speed lands exactly on it. So
+    // this reads the identity the other way round, and the equality below is
+    // the whole of what makes the two arrows comparable.
     const band = SCENE.contentRadius - magnitude(subtract(STATIONS.bow, STATIONS.pivot));
     expect(SPEED_REACH).toBeCloseTo(band - HULL_GAP, 9);
-    expect(SPEED_REACH / HULL.hullSpeed).toBeGreaterThan(0.7);
-    expect(SPEED_REACH).toBeGreaterThan(2);
-    expect(HULL_GAP / band).toBeLessThan(0.1);
+    // The arrow is 1.30x shorter per knot than it was, and that is the point:
+    // the boat really is several times slower than the top of the wind range,
+    // and the proportions being true is what the shared scale bought.
+    expect(SPEED_REACH / HULL.hullSpeed).toBeGreaterThan(0.35);
+    expect(SPEED_REACH).toBeGreaterThan(1.0);
+    expect(HULL_GAP / band).toBeLessThan(0.15);
   });
 
   it("is linear in speed everywhere out to the wind ring", () => {
@@ -153,12 +162,19 @@ describe("speed arrow scale (DESIGN.md §4.1, §4.3)", () => {
     // What pos-w4v's knee placement buys, asserted rather than claimed: the
     // bend is in the band past `windRingRadius` and nowhere else, so every
     // speed the boat sails at draws exactly what it drew before.
+    // **The knee now lands exactly on hull speed**, which is a consequence of
+    // the derivation rather than a choice: `SPEED_KNEE` is the length whose tip
+    // reaches the ring, and the ring is solved so that hull speed's tip reaches
+    // it too. So the two are the same number and the linear band runs out at
+    // hull speed instead of past it. `render/speed.ts` argues against bending
+    // there; that argument is now overruled by the shared scale, and this test
+    // records which way it went rather than pretending the band is still wide.
     const linear = (speed: number): number => (SPEED_REACH * Math.abs(speed)) / SPEED_FULL_SCALE;
-    for (let knots = 0; knots <= 6.8; knots += 0.05) {
-      expect(speedArrowLength(kt(knots))).toBeCloseTo(linear(kt(knots)), 12);
+    for (let speed = 0; speed < SPEED_FULL_SCALE; speed += SPEED_FULL_SCALE / 120) {
+      expect(speedArrowLength(speed)).toBeCloseTo(linear(speed), 12);
     }
     expect(SPEED_KNEE).toBeCloseTo(SCENE.windRingRadius - (SCENE.contentRadius - SPEED_REACH), 12);
-    expect(SPEED_KNEE).toBeGreaterThan(SPEED_REACH);
+    expect(SPEED_KNEE).toBeCloseTo(SPEED_REACH, 12);
   });
 
   it("leaves the linear law tangentially, with no corner at the knee", () => {
@@ -456,7 +472,10 @@ describe("speed arrow head", () => {
     // The shrinking only bites below ~2.3 kt; above that the head is a constant
     // size in metres, which is what keeps the *length* the thing that encodes
     // speed rather than the whole shape scaling together.
-    for (const knots of [3, 4, 5.6, 8]) {
+    // The threshold moved with the scale: the arrow is 1.30x shorter per knot,
+    // so the speed at which it is long enough to carry a full-size head is
+    // 1.30x higher. Above ~3 kt it is constant, which is the property.
+    for (const knots of [4, 5.6, 8]) {
       const [, tip, barb] = pathPoints(speedArrowPathData(kt(knots)));
       expect(magnitude(subtract(barb!, tip!))).toBeCloseTo(ARROW_BARB, 3);
     }
