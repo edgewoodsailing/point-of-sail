@@ -20,6 +20,7 @@ import { createDevicePicker, createGeometryOverlay, createWindKnobs } from "./re
 import { createSailLayer, rigDrawing } from "./render/sail.ts";
 import { createScene } from "./render/scene.ts";
 import { createSpeedLayer } from "./render/speed.ts";
+import { createTelltaleLayer } from "./render/telltale.ts";
 import { createWindLayer } from "./render/wind.ts";
 
 // Shell bootstrap. Every drawn layer mounts through the scene, onto the named
@@ -89,6 +90,13 @@ scene.layers.sails.append(sails.element);
 
 const clews = createClewLayer();
 scene.layers.handles.append(clews.element);
+
+// The telltale goes on `handles` rather than `sails` so an eased sail cannot
+// bury the one mark on the boat that reports the wind the sails are answering.
+// It is not hardware, which is what that layer nominally holds — pos-793 owns
+// the question of what the layer list should really be.
+const telltale = createTelltaleLayer();
+scene.layers.handles.append(telltale.element);
 
 // --- The geometry overlay (prototyping only) --------------------------------
 //
@@ -218,6 +226,7 @@ function draw(next: SimState): void {
   speed.update?.(next);
   sails.update?.(next);
   clews.update?.(next);
+  telltale.update?.(next);
   geometry.update(next);
   windSpeed(next);
 }

@@ -273,6 +273,15 @@ export function sheerHalfBeamAt(y: Meters, outline: HullOutline = HULL_OUTLINE):
 export interface StayStation {
   readonly name: string;
   readonly at: Vec2;
+  /**
+   * Whether the school ties yarn to it: the two uppers and the backstay, and
+   * not the headstay or the lowers.
+   *
+   * A property of the station rather than a list kept somewhere else, because
+   * the alternative is `render/telltale.ts` matching on names — which works
+   * until someone renames one and the telltale quietly stops being drawn.
+   */
+  readonly carriesTelltale: boolean;
 }
 
 /**
@@ -289,18 +298,19 @@ export interface StayStation {
  * saying so once means the jib's tack sits *on* its dot however either moves.
  */
 export function stayStations(): readonly StayStation[] {
-  const shroud = (name: string, y: Meters, side: number): StayStation => ({
+  const shroud = (name: string, y: Meters, side: number, carriesTelltale: boolean): StayStation => ({
     name,
     at: { x: side * (sheerHalfBeamAt(y) - DECK_INSET), y },
+    carriesTelltale,
   });
 
   return [
-    { name: "headstay", at: STATIONS.jibTack },
-    shroud("starboard upper", CHAINPLATES.upper, 1),
-    shroud("port upper", CHAINPLATES.upper, -1),
-    shroud("starboard lower", CHAINPLATES.lower, 1),
-    shroud("port lower", CHAINPLATES.lower, -1),
-    { name: "backstay", at: { x: 0, y: STATIONS.stern.y - DECK_INSET } },
+    { name: "headstay", at: STATIONS.jibTack, carriesTelltale: false },
+    shroud("starboard upper", CHAINPLATES.upper, 1, true),
+    shroud("port upper", CHAINPLATES.upper, -1, true),
+    shroud("starboard lower", CHAINPLATES.lower, 1, false),
+    shroud("port lower", CHAINPLATES.lower, -1, false),
+    { name: "backstay", at: { x: 0, y: STATIONS.stern.y - DECK_INSET }, carriesTelltale: true },
   ];
 }
 
