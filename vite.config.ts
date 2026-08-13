@@ -39,5 +39,18 @@ export default defineConfig({
     // the whole blast radius; the `node` environment means nothing is injected
     // into a document either way.
     css: true,
+
+    // Vitest's 5 s default is a budget set by whichever machine happens to run
+    // the suite, and this one is full of tests that settle a boat at every trim
+    // on every angle. On a developer machine the slowest bare test is ~1.5 s; on
+    // the Pages runner the same test took 5.076 s and failed the deploy while
+    // `npm test` was green locally — the model was fine and the clock was not.
+    //
+    // 30 s is the same budget `fold.test.ts` already states explicitly for its
+    // own settling sweeps, and it is a hang detector rather than a performance
+    // assertion: nothing here should take a second on any machine. Tests with a
+    // genuine reason to run longer still say so at the call, which is where a
+    // reader can see the reason.
+    testTimeout: 30_000,
   },
 });

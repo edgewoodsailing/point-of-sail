@@ -602,5 +602,10 @@ describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
 
       expect(speedAt(twa), `TWA ${twa}°`).toBeGreaterThan(fastest - 0.03);
     }
-  });
+    // Settles a boat at every sampled trim on every angle, so it runs about
+    // 1.5 s here and timed out at vitest's 5 s default on CI, where the shared
+    // runner is some 3.4× slower. The same convention `fold.test.ts` uses for
+    // its own settling sweeps: state a budget the slowest plausible machine
+    // clears, rather than leaving the default to decide on the day.
+  }, 30_000);
 });
