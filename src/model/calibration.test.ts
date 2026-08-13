@@ -595,11 +595,12 @@ describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
     // student — sheeting to the green light would be leaving speed behind.
     for (const twa of [30, 45, 60, 90, 135, 180]) {
       let fastest = -Infinity;
+      const base = boat(deg(twa), true);
+      const atRest = apparentWind(base.wind, base.motion);
       for (let angle = -90; angle <= 90; angle += 1) {
-        const swept = settle({
-          ...boat(deg(twa), true),
-          trim: { mainAngle: deg(angle), jibAngle: deg(angle), jibSet: true },
-        });
+        // Cleated at the angle being swept, so the sweep measures the trim it
+        // names rather than one the first step has already eased away from.
+        const swept = settle({ ...base, trim: cleatedAt(deg(angle), deg(angle), true, atRest) });
         fastest = Math.max(fastest, metersPerSecondToKnots(swept.motion.speed));
       }
 

@@ -357,11 +357,14 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
             state = {
               ...state,
               motion: settled.motion,
-              trim: {
-                ...state.trim,
-                mainAngle: optimalTrim(MAIN, apparent).angle,
-                jibAngle: optimalTrim(JIB, apparent).angle,
-              },
+              // Cleated: an angle without a sheet to hold it is eased straight
+              // back out by the next step (`cleatedAt`).
+              trim: cleatedAt(
+                optimalTrim(MAIN, apparent).angle,
+                optimalTrim(JIB, apparent).angle,
+                state.trim.jibSet,
+                apparent,
+              ),
             };
           }
 

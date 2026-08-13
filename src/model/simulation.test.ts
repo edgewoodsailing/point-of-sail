@@ -67,11 +67,14 @@ function wellTrimmed(twa: Radians): SimState {
     const apparent = apparentWind(state.wind, settle(state).motion);
     state = {
       ...state,
-      trim: {
-        ...state.trim,
-        mainAngle: optimalTrim(MAIN, apparent).angle,
-        jibAngle: optimalTrim(JIB, apparent).angle,
-      },
+      // Cleated: an angle without a sheet to hold it is eased straight back out
+      // by the next step (`cleatedAt`).
+      trim: cleatedAt(
+        optimalTrim(MAIN, apparent).angle,
+        optimalTrim(JIB, apparent).angle,
+        state.trim.jibSet,
+        apparent,
+      ),
     };
   }
 
@@ -168,9 +171,18 @@ describe("integration (DESIGN.md §3.5)", () => {
     let sternmost = Infinity;
 
     for (let angle = -SWING_LIMIT; angle <= SWING_LIMIT; angle += SWING_LIMIT / 18) {
+      // **Held**, because head to wind a released sail simply weathervanes to
+      // the centreline: the sheet limit is symmetric and the weathervane is
+      // dead ahead, so every trim in this sweep would collapse to zero and the
+      // sweep would test nothing. §3.4 already says a backed sail is "a state a
+      // hand is holding" — this is that sentence made executable, and it is the
+      // reason the mooring departure needs a finger on the boom.
       const settled = settle({
         ...boat(0),
-        trim: { mainAngle: angle, jibAngle: angle, jibSet: true },
+        trim: { ...cleatedAt(angle, angle, true, apparentWind(boat(0).wind, boat(0).motion)),
+                mainAngle: angle, jibAngle: angle },
+        mainHeld: true,
+        jibHeld: true,
       }).motion.speed;
 
       fastest = Math.max(fastest, settled);
@@ -211,11 +223,12 @@ describe("integration (DESIGN.md §3.5)", () => {
       sailed = step(
         {
           ...sailed,
-          trim: {
-            ...sailed.trim,
-            mainAngle: optimalTrim(MAIN, apparent).angle,
-            jibAngle: optimalTrim(JIB, apparent).angle,
-          },
+          trim: cleatedAt(
+            optimalTrim(MAIN, apparent).angle,
+            optimalTrim(JIB, apparent).angle,
+            sailed.trim.jibSet,
+            apparent,
+          ),
         },
         FRAME,
       );
@@ -402,11 +415,19 @@ describe("state handling", () => {
     expect(next.motion.speed).toBeGreaterThan(0);
   });
 
-  it("moves nothing but the speed", () => {
+  it("moves the speed and the sails, and nothing else", () => {
+    // **The sails are no longer inputs.** A sheet is a limit and the wind picks
+    // the angle inside it, so `step` moves the boom and the jib's clew as well
+    // as the speed — that is what makes a boat tack its own mainsail. What must
+    // still hold is that nothing *else* moves: the wind, the heading and the
+    // held flags are the input layer's, and the integrator does not touch them.
     const next = settle(beamReach);
 
     expect(next.wind).toEqual(beamReach.wind);
-    expect(next.trim).toEqual(beamReach.trim);
+    expect(next.trim.jibSet).toBe(beamReach.trim.jibSet);
+    expect(next.trim.mainSheet).toBe(beamReach.trim.mainSheet);
+    expect(next.trim.jibSheet).toBe(beamReach.trim.jibSheet);
+    expect(next.trim.jibSheetSide).toBe(beamReach.trim.jibSheetSide);
     expect(radiansToDegrees(next.motion.heading)).toBe(0);
     expect(next.mainHeld).toBe(false);
     expect(next.jibHeld).toBe(false);

@@ -625,10 +625,19 @@ export function jibSheetFor(clewAngle: Radians, side: number, chord: Meters = JI
  * step eases the boom back to wherever the wind and the sheet agree, so an angle
  * without a sheet to hold it is a wish rather than a trim.
  *
- * **The sign is the wind's, not the caller's.** A sheet has no side, so the
- * magnitude of each angle becomes the limit and the wind decides which side it
- * is reached on. Ask for a windward angle and you will get its mirror, which is
- * exactly what letting go of a backed sail does.
+ * **The sign is the wind's, not the caller's**, and that goes for the jib too.
+ * A sheet has no side: the magnitude of each angle becomes the limit and the
+ * wind decides which side it is reached on. Ask for a windward angle and you get
+ * its mirror, which is exactly what letting go of a backed sail does.
+ *
+ * The jib's *car* follows the same rule, and getting that wrong is worth
+ * recording because it looked right: taking the side from `sign(jibAngle)`
+ * cleats to whichever car the caller happened to name, which is the **windward**
+ * one half the time. A jib sheeted to windward is a backed jib, so asking for
+ * −35° in a wind on the port bow returned +9.8° — the far root of the sheet's
+ * own circle, correctly computed and not at all what was asked. Every polar
+ * sweep that named a leeward-signed angle was measuring a backed jib on one
+ * tack.
  *
  * Used by the opening state, by the console, and by every test that means "the
  * boat is sailing at this trim" — which is most of them, and which is why this
@@ -640,13 +649,16 @@ export function cleatedAt(
   jibSet: boolean,
   apparent: ApparentWind,
 ): RigTrim {
-  const side = Math.sign(jibAngle) || 1;
+  // Leeward, from the wind, exactly as `naturalMainAngle` picks the boom's side.
+  const lee = Math.sign(-apparent.angle) || 1;
+  const main = lee * Math.abs(mainAngle);
+  const jib = lee * Math.abs(jibAngle);
   return {
-    mainAngle,
+    mainAngle: main,
     mainSheet: Math.abs(mainAngle),
-    jibAngle,
-    jibSheetSide: side,
-    jibSheet: jibSheetFor(jibAngle, side, jibChord(jibAngle, apparent)),
+    jibAngle: jib,
+    jibSheetSide: lee,
+    jibSheet: jibSheetFor(jib, lee, jibChord(jib, apparent)),
     jibSet,
   };
 }
