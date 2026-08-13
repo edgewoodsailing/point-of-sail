@@ -1402,14 +1402,32 @@ the **main** it remains purely visual — a boom is a spar and holds its chord a
 `E` whatever the cloth does — so this section's reasoning is unchanged for the
 sail it was written about, and load-bearing for the other one.
 
-One consequence worth flagging rather than leaving to be discovered: `sin α`
-makes the sail flattest at the *small* angles of attack it sees upwind — about
-4.6% camber close hauled. That was a defensible drawing choice when nothing read
-it; it is a questionable *physical* one now, because a real jib's camber comes
-from its cut and its sheet tension rather than from its incidence, and a
-close-hauled jib is cut full. Changing it would move the whole force model and
-wants recalibrating against [§3.6](#36-calibration-targets), so it has not been
-touched.
+**There is no crew in this shape, and that is the thing to know about it.** A
+real sail's camber is set by its cut and by the controls a crew works — outhaul,
+halyard, backstay, car — none of which are modelled. What is modelled is an
+*untended* sail: `sin α` supplies the incidence and `pressureFactor` inflates the
+cloth as the wind builds.
+
+That gets the point of sail right, and by no accident: α is small close hauled
+and large off the wind, so the drawing flattens upwind and fills downwind, which
+is what a sailor sees and what the school teaches. **Where it parts company is
+with the wind strength.** Holding a flat close-hauled trim, the model draws 2.3%
+camber in 3 kt of apparent wind and 4.6% in 20 — fuller as it breezes up. For an
+untended sail that is correct: cloth hangs limp in a drifter and inflates in a
+breeze. For a *trimmed* one it is backwards, because a crew powers up in light
+air and flattens to depower when it blows.
+
+The interesting part is that the crew's response to a breeze is already in the
+model — [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+depowering *is* the crew shedding force — so the drawn **shape** and the modelled
+**force** currently disagree about what the crew is doing above about 13 kt. Worth
+reconciling, and not urgent: the disagreement is a couple of percent of chord, it
+moves the jib's chord by under an inch, and closing it means touching the force
+model and recalibrating against [§3.6](#36-calibration-targets).
+
+Separately, the absolute figures are on the flat side — a working jib is usually
+reckoned at 8–12% draft, against 2–5% here. Also a calibration question rather
+than a structural one.
 
 The offset from the chord runs along `perpendicular(chordDirection)` — 90°
 clockwise of tack→clew — scaled by a signed depth:
