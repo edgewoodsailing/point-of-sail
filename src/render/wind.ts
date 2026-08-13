@@ -155,13 +155,18 @@ export const ARROW_REACH: Meters = 0;
 /**
  * How far each graduation reaches in from the ring.
  *
- * Inward rather than outward on purpose. Outward there are only 0.35 m to the
- * short-axis edge — about 11 px on a 390 px phone — and a tick clipped by the
- * viewport reads as a rendering fault. Inward it stops at 5.40 m, still outside
- * `contentRadius`, so the graduations never intrude on the speed indicator's
- * band either.
+ * Inward rather than outward on purpose. Outward there is only the edge margin
+ * to the short-axis edge — about 11 px on a 390 px phone — and a tick clipped by
+ * the viewport reads as a rendering fault.
+ *
+ * **A fraction of the ring, not a length.** It was 0.25 m against a ring of
+ * 5.65, and both of those were declared. The ring is solved now (`SCENE`), so a
+ * fixed 0.25 m grew from 4.4% of the radius to 5.7% and reached inside
+ * `contentRadius` — the graduations began intruding on the speed arrow's band
+ * without anybody changing them. Held at the proportion it always had, it
+ * follows the ring wherever the derivation puts it.
  */
-const TICK_LENGTH: Meters = 0.25;
+const TICK_LENGTH: Meters = SCENE.windRingRadius * (0.25 / 5.65);
 
 /** The points of sail: eight 45° marks, less the one the arrow stands on. */
 const TICK_COUNT = 8;

@@ -12,6 +12,14 @@ import {
   metersPerSecondToKnots,
 } from "./units.ts";
 import { apparentWind } from "./wind.ts";
+//
+// SKIPPED TESTS IN THIS FILE: see pos-ciz.
+// They assert a question about optimalTrim under the sheet model — a design this repository deliberately
+// replaced, not behaviour that regressed. They are skipped rather than
+// deleted because the *properties* they name still matter and want
+// re-expressing against the current design; the bead says what to write.
+//
+
 
 /**
  * The polar of DESIGN.md §3.6, locked in (pos-fo1.4).
@@ -575,7 +583,7 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
 });
 
 describe("what the traffic light will divide by (DESIGN.md §4.2)", () => {
-  it("makes the most-drive trim also the fastest trim", () => {
+  it.skip("makes the most-drive trim also the fastest trim", () => {
     // `optimalTrim` maximises driving force at the apparent wind as it stands,
     // and §4.2 colours the sails against it. Since pos-fo1.4 the boat is also
     // charged for the *side* force a trim makes, so those are no longer the

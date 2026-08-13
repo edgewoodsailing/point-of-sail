@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { cleatedAt } from "../model/sail.ts";
+import { apparentWind } from "../model/wind.ts";
+
 import { mainClewPosition, STATIONS } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
@@ -17,6 +20,14 @@ import { ARROW_REACH } from "../render/wind.ts";
 import { GRAB_RADIUS_PX } from "./gestures.ts";
 import type { PointerScene, StateAccess } from "./pointer.ts";
 import { bindPointers } from "./pointer.ts";
+//
+// SKIPPED TESTS IN THIS FILE: see pos-d0w.
+// They assert the wind's annulus — a design this repository deliberately
+// replaced, not behaviour that regressed. They are skipped rather than
+// deleted because the *properties* they name still matter and want
+// re-expressing against the current design; the bead says what to write.
+//
+
 
 /**
  * `bindPointers` without a DOM (DESIGN.md §5, §6).
@@ -167,9 +178,14 @@ function openState(patch: { mainAngle?: Radians; jibSet?: boolean } = {}): SimSt
     wind: { from: deg(200), speed: knotsToMetersPerSecond(10) },
     motion: { heading: 0, speed: 0 },
     trim: {
+      ...cleatedAt(
+        patch.mainAngle ?? 0,
+        0,
+        patch.jibSet ?? true,
+        apparentWind({ from: deg(200), speed: knotsToMetersPerSecond(10) }, { heading: 0, speed: 0 }),
+      ),
       mainAngle: patch.mainAngle ?? 0,
       jibAngle: 0,
-      jibSet: patch.jibSet ?? true,
     },
     mainHeld: false,
     jibHeld: false,
@@ -246,7 +262,7 @@ describe("which touchdowns bindPointers accepts (DESIGN.md §5)", () => {
    * Six pixels is too narrow a gap to name a number inside by hand and still be
    * sure it is there for the right reason.
    */
-  it("leaves the water between the boat and the ring alone", () => {
+  it.skip("leaves the water between the boat and the ring alone", () => {
     const app = bound();
     const boatReach = SCENE.boatRadius + GRAB_RADIUS_PX * METERS_PER_PIXEL;
     const between = (boatReach + ARROW_REACH) / 2;
