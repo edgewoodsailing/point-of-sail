@@ -296,6 +296,47 @@ describe("touchdown arbitration (DESIGN.md §5)", () => {
     expect(beginGrab(state, world, scale, new Set<GrabTarget>(["main"]))).toBeNull();
   });
 
+  /**
+   * The case the test above cannot see, because it chose a clew over water.
+   *
+   * At ordinary trim **both** clews lie over the deck, so "skip the taken sail"
+   * and "then try the hull" compose into handing a second finger the heading
+   * from a touch that landed on the sail someone else is holding. Turning the
+   * boat then drags that student's own sail around under their stationary
+   * finger, which is a genuinely baffling thing to have happen.
+   */
+  it("does not turn a held clew into a hull grab, though the clew is on the deck", () => {
+    const state = stateWith({ mainAngle: 0, jibAngle: 0 });
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const cases: readonly (readonly [GrabTarget, Vec2])[] = [
+      ["main", mainClewPosition(state.trim.mainAngle)],
+      ["jib", jibClewPosition(state.trim.jibAngle)],
+    ];
+
+    for (const [target, clew] of cases) {
+      // The premise: this clew really is over the deck, so the fall-through had
+      // something to fall through to.
+      expect(insideHull(clew)).toBe(true);
+
+      const world = worldPoint(clew, 0);
+      expect(beginGrab(state, world, scale, new Set())?.target).toBe(target);
+      expect(beginGrab(state, world, scale, new Set<GrabTarget>([target]))).toBeNull();
+    }
+  });
+
+  it("still gives the deck to the hull a whisker outside a held clew's disc", () => {
+    // The other direction, so the block above is a reservation of the disc
+    // rather than a blanket refusal whenever a sail is held.
+    const state = stateWith({ mainAngle: 0, jibAngle: 0 });
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const clew = mainClewPosition(state.trim.mainAngle);
+    const justOutside: Vec2 = { x: clew.x, y: clew.y - scale.grab - 0.01 };
+    expect(insideHull(justOutside)).toBe(true);
+    expect(
+      beginGrab(state, worldPoint(justOutside, 0), scale, new Set<GrabTarget>(["main"]))?.target,
+    ).toBe("hull");
+  });
+
   it("does not offer the hull to a second pointer either", () => {
     const state = stateWith({});
     // Amidships and outboard of the centreline: deck, and clear of both discs.

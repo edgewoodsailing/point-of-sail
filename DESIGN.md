@@ -2019,9 +2019,17 @@ once and each keeps being delivered to it wherever it wanders — which is what
 makes hit-testing a touchdown-only concern.
 
 **A target belongs to one pointer at a time.** A second finger landing on a sail
-another finger already holds is given nothing, rather than a shared claim or a
-fall-through to the hull underneath; the same goes for the hull, since two
-fingers fighting over one heading is a tug of war rather than a gesture.
+another finger already holds is given nothing, rather than a shared claim; the
+same goes for the hull, since two fingers fighting over one heading is a tug of
+war rather than a gesture.
+
+**And a clew's disc is reserved whether or not its sail is available**, which is
+the part that is easy to get wrong, because at ordinary trim *both* clews lie
+over the deck. "Skip the taken sail" and "then try the hull" compose into handing
+the second finger the *heading* from a touch that landed squarely on the sail
+someone else is holding — and turning the boat then drags that student's sail
+around under their own stationary finger, by the live-heading rule below. So a
+touchdown inside any clew disc either gets that sail or gets nothing.
 
 One case falls out of measuring a sail's bearing against the *live* heading, and
 it is worth having on purpose: with one student turning the hull and another

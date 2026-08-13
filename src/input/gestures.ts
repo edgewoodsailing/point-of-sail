@@ -325,7 +325,9 @@ function reference(grab: Grab, state: SimState, world: Vec2, deadZone: Meters): 
  * The order is §5's, and both of its rules are here:
  *
  * 1. **The clews first, nearer one wins.** A disc that another pointer already
- *    owns is not a candidate, so two fingers can never land on one sail.
+ *    owns is not a candidate, so two fingers can never land on one sail — and
+ *    it does not become hull either, for the reason given at the fall-through
+ *    below.
  * 2. **Then the hull silhouette**, which is everything else the boat is.
  *
  * Anything else — open water, the wind ring, a sail's cloth away from its clew
@@ -355,18 +357,32 @@ export function beginGrab(
 
   let nearest: GrabTarget | null = null;
   let nearestDistance = Infinity;
+  /** Whether the touchdown landed in *any* clew's disc, available or not. */
+  let reserved = false;
   for (const [target, clew] of clews) {
-    if (taken.has(target)) continue;
     const distance = magnitude(subtract(point, clew));
-    if (distance <= scale.grab && distance < nearestDistance) {
+    if (distance > scale.grab) continue;
+    reserved = true;
+    if (taken.has(target)) continue;
+    if (distance < nearestDistance) {
       nearest = target;
       nearestDistance = distance;
     }
   }
 
-  const target = nearest ?? (!taken.has("hull") && insideHull(point) ? "hull" : null);
-  if (target === null) return null;
-  return reference({ target, offset: null }, state, world, scale.deadZone);
+  if (nearest !== null) {
+    return reference({ target: nearest, offset: null }, state, world, scale.deadZone);
+  }
+
+  // **A disc belongs to its sail whether or not that sail is available.** Both
+  // clews lie over the deck at ordinary trim, so without this a second finger
+  // landing on a clew someone else is holding would fall through and get the
+  // *heading* — and by the live-heading rule above, turning the boat would then
+  // drag the first student's sail around under their own stationary finger.
+  // Blocking is the quiet answer: the finger that landed on a held sail does
+  // nothing, and moves a centimetre.
+  if (reserved || taken.has("hull") || !insideHull(point)) return null;
+  return reference({ target: "hull", offset: null }, state, world, scale.deadZone);
 }
 
 /**
