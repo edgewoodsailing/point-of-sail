@@ -21,13 +21,6 @@
 
 /* --- Regions a pointer can claim ------------------------------------------ */
 
-/* The wind's annulus, in the wind's own hue. Drawn as a fat stroke in user
-   units, so the band scales with the drawing exactly as the target does. */
-.pos-sim .pos-geo-band {
-  fill: none;
-  stroke: oklch(62% 0.13 235deg / 14%);
-}
-
 /* The hull silhouette — the whole deck is the target, not the sheer line. */
 .pos-sim .pos-geo-hull {
   fill: oklch(62% 0.14 155deg / 16%);
@@ -191,10 +184,6 @@
 
 /* Swatches, at the alpha the region is actually painted with — over white, so
    the legend shows the wash rather than the hue it was mixed from. */
-.pos-sim .pos-geo-swatch-band {
-  background: oklch(62% 0.13 235deg / 14%);
-}
-
 .pos-sim .pos-geo-swatch-hull {
   background: oklch(62% 0.14 155deg / 16%);
 }
@@ -216,7 +205,8 @@
 }
 
 .pos-sim .pos-geo-swatch-ring,
-.pos-sim .pos-geo-swatch-short {
+.pos-sim .pos-geo-swatch-short,
+.pos-sim .pos-geo-swatch-band {
   background: none;
   border-style: dashed;
 }

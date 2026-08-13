@@ -234,6 +234,58 @@ export const STATIONS: {
   pivot: { x: 0, y: feetToMeters(LOA_FT / 2 - MAST_STATION_FT) },
 };
 
+// --- Chainplates -------------------------------------------------------------
+
+/**
+ * How far aft of the headstay's attachment the forward chainplate sits, in
+ * inches. `RB 20.05`: *"no more than 83 from the center of the headstay
+ * attachment point"* — a maximum, taken as the figure, since a boat rigged to
+ * the rule is rigged to its limit.
+ *
+ * The headstay lands at the stemhead, which is {@link STATIONS.bow} to within
+ * an inch, so this is measured from the bow. It puts the forward chainplate
+ * one inch *forward* of the mast at 7 ft — which is the right answer and a
+ * slightly surprising one: the uppers land almost exactly abeam the mast, which
+ * is what makes the spreader bisect their angle.
+ */
+const FORWARD_CHAINPLATE_IN = 83;
+
+/**
+ * How far the aft chainplate sits abaft the forward one, in inches. `RB 20.06`
+ * gives a range of 13–15; this is its midpoint.
+ */
+const AFT_CHAINPLATE_OFFSET_IN = 14;
+
+/**
+ * Where the shrouds land on deck, fore and aft, as boat-frame *y* in metres.
+ *
+ * Only the longitudinal station is a fact about the boat. How far outboard the
+ * chainplate sits is a fact about the sheer at that station, which is the drawn
+ * hull's business — `render/hull.ts` measures it off the outline rather than
+ * having a second number here that could disagree with the curve.
+ *
+ * `RB 17.00` gives the rig as **one pair of upper shrouds, one pair of lower
+ * shrouds, single spreaders, one headstay and one backstay** — six stays, four
+ * of which land on these two stations and two on the centreline.
+ *
+ * **Which pair goes to which chainplate is an assumption**, and one worth
+ * flagging rather than burying: the rules describe two chainplates per side
+ * without saying which shroud each takes. The uppers are put on the forward one
+ * because that is what makes the single spreader bisect the upper's angle, and
+ * the lowers aft, where they resist the mast bending forward under headstay
+ * load. Fourteen inches apart, so being wrong about it moves a dot by about a
+ * quarter of the hull's beam-wise dot spacing and nothing else.
+ */
+export const CHAINPLATES: {
+  /** The uppers. One inch forward of the mast. */
+  readonly upper: Meters;
+  /** The lowers, 14 inches abaft the uppers. */
+  readonly lower: Meters;
+} = {
+  upper: STATIONS.bow.y + feetToMeters(FORWARD_CHAINPLATE_IN / 12),
+  lower: STATIONS.bow.y + feetToMeters((FORWARD_CHAINPLATE_IN + AFT_CHAINPLATE_OFFSET_IN) / 12),
+};
+
 // --- Rig geometry ----------------------------------------------------------
 
 /**

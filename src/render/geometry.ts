@@ -227,9 +227,6 @@ export function createGeometryOverlay(
 
   const world = svgElement("g", { class: "pos-geo-world" });
 
-  /** The wind's annulus: everything a touchdown can give to `wind.from`. */
-  const band = svgElement("circle", { class: "pos-geo-band", cx: 0, cy: 0 });
-
   /**
    * The water no gesture claims: from the furthest a clew disc can reach out to
    * the band's inner edge. §5 says this is 6 px on a phone and much wider on an
@@ -270,7 +267,10 @@ export function createGeometryOverlay(
     "vector-effect": "non-scaling-stroke",
   });
 
-  world.append(band, gap, sweep, dead, contentRule, handleRule, ringRule, shortRule, ruler);
+  // No fill for the wind's region. It is the whole surface now, so shading it
+  // shaded everything and said nothing — the useful marks are the ones that
+  // bound something.
+  world.append(gap, sweep, dead, contentRule, handleRule, ringRule, shortRule, ruler);
 
   // --- Boat frame -----------------------------------------------------------
 
@@ -365,7 +365,6 @@ export function createGeometryOverlay(
 
       boat.setAttribute("transform", boatTransform(state.motion.heading));
 
-      setAnnulus(band, scale.windRing.inner, scale.windRing.outer);
       setAnnulus(gap, SCENE.boatRadius + scale.grab, scale.windRing.inner);
       dead.setAttribute("r", formatNumber(scale.deadZone));
 
