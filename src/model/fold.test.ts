@@ -453,7 +453,7 @@ describe("what is left, and where it lives", () => {
  * ten-thousandth of a knot reads 1.46e-5 N at the *shallowest* drive slope
  * anywhere a fold is found — 0.283 N/(m/s), at the half-knot bottom of
  * {@link BOUND_WINDS}, since the slope scales with the wind. Seven orders of
- * margin at the worst case and nine at the 15.95 N/(m/s) top of the range.
+ * margin at the worst case and nine at the 15.94 N/(m/s) top of the range.
  */
 const REST_PROBE_KNOTS = 1e-4;
 
@@ -519,7 +519,7 @@ const BOUND_WINDS: number[] = Array.from({ length: 296 }, (_, i) => 0.5 + i * 0.
  * thing left being sampled.
  *
  * The net force at rest *is* the drive at rest: {@link hullResistance} and
- * {@link keelInducedDrag} are both even and quadratic in speed, so both vanish
+ * {@link keelInducedDrag} both vanish at least as fast as `v²`, so both vanish
  * at zero. `charges nothing for the water at rest` below pins that, because it
  * is the fact the whole mechanism turns on.
  *
@@ -530,7 +530,8 @@ const BOUND_WINDS: number[] = Array.from({ length: 296 }, (_, i) => 0.5 + i * 0.
  * of where the scan lands, which is why nothing below asserts on how many
  * boundaries were found. Nothing hides there either: root-counting across signed
  * speeds at all 36,984 grid cells where the drive from rest is exactly zero —
- * every trim, both rigs, six winds — finds no case with two settled speeds.
+ * every trim, both rigs, and the six winds that check was run at — finds no
+ * case with two settled speeds.
  *
  * **These angles do not depend on the wind, and that is what makes a fine wind
  * grid affordable.** At rest the apparent wind *is* the true wind, so the drive
@@ -690,10 +691,10 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    *
    * **It is structural, so this bounds it rather than forbidding it.** §3.5 has
    * the argument and the rejected alternatives; the short form is that both
-   * water drags are quadratic, so they contribute no slope at rest at all, and
-   * the sign of the drive's own slope is left to decide the stability of rest
-   * unopposed. At the upwind boundary that slope is positive at every wind and
-   * both rigs — 0.283 N/(m/s) at the bottom of the wind sweep up to 15.95 at the
+   * water drags vanish at least as fast as `v²`, so they contribute no slope at
+   * rest at all, and the sign of the drive's own slope is left to decide the
+   * stability of rest unopposed. At the upwind boundary that slope is positive at
+   * every wind and both rigs — 0.283 N/(m/s) at the bottom of the sweep up to 15.94 at the
    * 13 kt knee, scaling with the wind below it and falling away above.
    *
    * **What is defended is that nothing sailing has two answers.** Across §5's
@@ -708,12 +709,15 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * sweeps above use is the reason {@link BOUND_WINDS} exists; the first version
    * of this test sampled six winds, straddled the knee, and reported 6% low.
    *
-   * **Only two trims on this side of the centreline fold at all**, and it is
-   * worth naming them because "sheeted flat" undersells how flat: trim 0, and
-   * trim −0.25° at a slightly wider angle (TWA 66.25°) and a smaller branch
-   * (0.337 kt on the sloop). Half a degree of ease is clean at every wind on the
-   * grid. So the band is a quarter-degree sliver of trim as well as half a degree
-   * of TWA, which is why the sweeps above meet it only at their very first trim.
+   * **Only two trims on the grid fold at all**, and it is worth naming them
+   * because "sheeted flat" undersells how flat: trim 0, and trim −0.25° at a
+   * slightly wider angle (TWA 66.25°) and a smaller branch (0.337 kt on the
+   * sloop). Swept continuously rather than on the grid the band reaches trim
+   * −0.41° on both rigs and is gone by −0.45°, so 0.25° is not resolving it
+   * finely — it is landing on the two cells of a sliver about four tenths of a
+   * degree deep. That is why the sweeps above meet it only at their first trim,
+   * and it is the reason the maximum sits at the trim-0 endpoint rather than
+   * anywhere a finer grid would find.
    *
    * **The windward side of the centreline is out of scope, and is worse.**
    * Every sweep in this file runs trim 0 to −90°, the side the sheet holds a sail
@@ -759,20 +763,40 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * `depoweringFactor` already does, and is fine only because it is also a
    * positive factor. Something keyed to the wind that was not would break this
    * silently, and the search would then be reusing boundaries that had moved.
+   *
+   * **Two things this has to avoid being.** It compares *equality of two lists*,
+   * so it passes on two empty ones — and `noGoBoundaries` returning nothing is
+   * exactly the failure that would make {@link worstAstrideRest} vacuous too, so
+   * a guard that agreed with it silently would be worth nothing. Hence the count
+   * below. And it walks the same trim grid the hoist reuses boundaries at, not a
+   * coarser one, because agreement at every fifteenth trim is not agreement at
+   * the trims the saving is actually spent on. The two winds are the ends of
+   * {@link BOUND_WINDS}, which is the widest the property is ever leaned on.
    */
   it("locates the same boundaries at every wind", () => {
+    const light = BOUND_WINDS[0];
+    const heavy = BOUND_WINDS[BOUND_WINDS.length - 1];
+    let compared = 0;
+
     for (const jibSet of [false, true]) {
-      for (let trim = 0; trim >= -90; trim -= 15) {
-        const light = noGoBoundaries(jibSet, deg(trim), kt(4));
-        const heavy = noGoBoundaries(jibSet, deg(trim), kt(30));
+      for (let trim = 0; trim >= -90; trim -= TRIM_STEP_DEGREES) {
+        const inLight = noGoBoundaries(jibSet, deg(trim), kt(light));
+        const inHeavy = noGoBoundaries(jibSet, deg(trim), kt(heavy));
         const where = `${jibSet ? "sloop" : "main only"}, trim ${trim}°`;
 
-        expect(heavy.length, `boundary count moved with the wind at ${where}`).toBe(light.length);
-        for (let i = 0; i < light.length; i += 1) {
-          expect(heavy[i], `boundary moved with the wind at ${where}`).toBeCloseTo(light[i], 9);
+        expect(inHeavy.length, `boundary count moved with the wind at ${where}`).toBe(
+          inLight.length,
+        );
+        for (let i = 0; i < inLight.length; i += 1) {
+          expect(inHeavy[i], `boundary moved with the wind at ${where}`).toBeCloseTo(inLight[i], 9);
         }
+        compared += inLight.length;
       }
     }
+
+    // That there was anything to agree about: 748 boundaries over the 722
+    // rig-and-trim settings the hoist covers, which is a shade over one apiece.
+    expect(compared, "no boundaries were compared at all").toBeGreaterThan(700);
   });
 
   /**
@@ -832,7 +856,7 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
 
   /**
    * **The fact the whole mechanism turns on, pinned where it can be broken.**
-   * Both of §3.5's water charges are even and quadratic in speed, so the water
+   * Both of §3.5's water charges vanish at least as fast as `v²`, so the water
    * offers no *slope* at rest, only curvature. That is what leaves the rig's own
    * slope to decide whether rest is stable, and it is why no resistance constant
    * can be turned to remove the fold: `RESISTANCE.quadratic` and the wall both

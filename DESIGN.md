@@ -871,7 +871,7 @@ of the no-go zone — rest is a balance point. Whether it is a *stable* one is
 decided by the drive's own slope, unopposed, since the water contributes none.
 That slope is positive: the moment the boat has way on, the apparent wind hauls
 forward, the angle of attack comes down off the stall, and the sail makes more.
-Measured at that boundary it runs 0.28 to 15.95 N/(m/s) across the 0.5–30 kt the
+Measured at that boundary it runs 0.28 to 15.94 N/(m/s) across the 0.5–30 kt the
 tests sweep, on both rigs — scaling with the wind up to the 13 kt depowering
 knee and falling away above it. So rest there is **unstable**, and the boat runs
 away from it — astern if
@@ -901,8 +901,9 @@ and holds those two figures.
 
 - *Move the stall blend.* It is a real lever, in the opposite direction from the
   obvious one: narrowing drops the band to a smaller angle and widens the split
-  (20° → TWA 36°, 1.59 kt), widening pushes it up and shrinks it (70° → TWA 87°,
-  0.265 kt) and 80° removes it. It costs nothing against
+  (20° → TWA 35.9°, 1.639 kt), widening pushes it up and shrinks it (70° →
+  TWA 86.9°, 0.275 kt) and 80° removes it — all measured on the same sweep as the
+  0.699 kt above, rather than beside it on a coarser one. It costs nothing against
   [§3.6](#36-calibration-targets) — the polar at optimal trim moves under 0.02 kt
   out to 80°. It is spent entirely out of
   [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
