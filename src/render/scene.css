@@ -10,8 +10,8 @@
  * 2. Line weights are in CSS pixels and scale with the *viewport*, while the
  *    drawing itself is in metres and scales with the *boat*. What lets the two
  *    coexist is `vector-effect: non-scaling-stroke`, which takes stroke width
- *    out of user space. Without it, `1.4px` inside a metre-valued viewBox would
- *    be read as 1.4 metres — so it is set as an *attribute* in `hull.ts` rather
+ *    out of user space. Without it, `1.9px` inside a metre-valued viewBox would
+ *    be read as 1.9 metres — so it is set as an *attribute* in `hull.ts` rather
  *    than relying on CSS support for the property. That failure mode is loud
  *    enough to be worth the belt as well as the braces.
  */
@@ -60,15 +60,39 @@
    *
    * `vmin` is the viewport, not this element. §6.2 gives the simulator the
    * whole viewport, so the two differ only by the control strip's height —
-   * measured across real layouts, `0.4vmin` holds at ~0.88% of the drawn boat's
-   * length from a 320 px phone to a 1440 px desktop. `cqmin` would make it
-   * exact, but it starts at Safari 16, above the §4.4 floor.
+   * measured across real layouts, `0.54vmin` holds at ~0.85% of the drawn
+   * boat's length from a 320 px phone to a ~1300 px desktop. `cqmin` would make
+   * it exact, but it starts at Safari 16, above the §4.4 floor.
+   *
+   * **The ceiling was doing the opposite of its job and is now set where it
+   * cannot** (pos-8pu). Reported as lines looking thinner on retina displays,
+   * and that is not what it was: measured in Chrome at DPR 2, a 4 CSS px
+   * non-scaling stroke paints 8 device pixels, exactly like a plain user-unit
+   * stroke, so nothing here is being resolved in device pixels. What was
+   * happening is that the old `0.4vmin` reached its 4px cap at **vmin 1000** —
+   * below every desktop — and past that the drawing goes on growing while the
+   * line does not. As a fraction of the drawn hull the weight fell away: 0.63%
+   * on the slope, 0.57% at vmin 1104, 0.44% at 1440, 0.35% at 1800. A cap meant
+   * to stop the boat cartooning on a big screen was instead making it *fainter*
+   * there, which is the §4.5 failure from the other end.
+   *
+   * So the ceilings below sit at roughly 13 × the slope's own vmin — reached
+   * around vmin 1300 rather than 1000 — and every weight is up about a third,
+   * which is the customer's eye rather than a calculation.
+   *
+   * One thing worth knowing before touching these again: a CSS pixel is only
+   * *nominally* 1/96", and real displays run about 90–140 CSS px per physical
+   * inch, dense panels at the top. A 14" MacBook is ~126 and a 24" 1080p
+   * monitor ~92, so the same weight is around a third physically thinner on the
+   * laptop. That is real, it is not something CSS can express away — `mm` and
+   * `in` are defined off the same nominal pixel — and it is the honest sense in
+   * which this was ever a retina problem.
    */
-  --pos-rule-hull: clamp(1.4px, 0.4vmin, 4px);
+  --pos-rule-hull: clamp(1.9px, 0.54vmin, 7px);
 
   /* A spar, so it carries the hull's weight — it is a reference line, not the
      subject. */
-  --pos-rule-boom: clamp(1.4px, 0.4vmin, 4px);
+  --pos-rule-boom: clamp(1.9px, 0.54vmin, 7px);
 
   /*
    * The heaviest line in the drawing, and the only one that is heavy on
@@ -81,7 +105,7 @@
    * still, and is disqualified: the lens has zero area exactly when the sail is
    * fully luffing, which is exactly when the light is red.
    */
-  --pos-rule-sail: clamp(2.2px, 0.7vmin, 6px);
+  --pos-rule-sail: clamp(3px, 0.95vmin, 10.5px);
 
   /*
    * The wind ring's track and its graduations: the lightest lines in the
@@ -90,7 +114,7 @@
    * — a hull-weight circle around the whole scene would frame the drawing like a
    * border and pull the eye outward, away from the sails.
    */
-  --pos-rule-wind: clamp(1px, 0.28vmin, 2.6px);
+  --pos-rule-wind: clamp(1.4px, 0.38vmin, 4.5px);
 
   /*
    * The wind arrow, which carries the hull's weight because it is the one thing
@@ -98,7 +122,7 @@
    * answers "where is the wind" at a glance from across a table, so it has to
    * survive the same viewing angle the sails do.
    */
-  --pos-rule-wind-arrow: clamp(1.6px, 0.45vmin, 4px);
+  --pos-rule-wind-arrow: clamp(2.2px, 0.6vmin, 7px);
 
   /*
    * The speed arrow. Heavier than the wind's track and lighter than the sails:
@@ -106,7 +130,7 @@
    * §4.2 ramp, so it needs enough width to carry a colour but not enough to
    * compete with the cloth for attention.
    */
-  --pos-rule-speed: clamp(1.6px, 0.45vmin, 4px);
+  --pos-rule-speed: clamp(2.2px, 0.6vmin, 7px);
 
   /*
    * The telltale. The lightest *object* on the boat — lighter than the hull's
@@ -114,7 +138,7 @@
    * a spar. It carries its weight through motion instead, which is what a real
    * telltale does across a crowded foredeck.
    */
-  --pos-rule-telltale: clamp(1.2px, 0.35vmin, 3px);
+  --pos-rule-telltale: clamp(1.6px, 0.47vmin, 5.2px);
   --pos-ink: oklch(38% 0.03 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
 }

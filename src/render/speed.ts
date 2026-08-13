@@ -205,18 +205,20 @@ export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
  * How much clear water the tip leaves inside the short-axis edge.
  *
  * It has to cover the stroke, which is the one dimension here that is not in
- * metres: `--pos-rule-speed` is `clamp(1.6px, 0.45vmin, 4px)`, round-capped, so
+ * metres: `--pos-rule-speed` is `clamp(2.2px, 0.6vmin, 7px)`, round-capped, so
  * half of it overhangs the tip. Two lengths go into that and they are easy to
  * conflate — the clamp's `vmin` is the **viewport's** short side, while metres
  * per pixel is `SHORT_SPAN / surfaceShort`, the **surface's**. §6.2 stacks the
  * control strip below the surface, so in landscape the strip comes off the
  * short axis and the two part company.
  *
- * Portrait is the easy case and holds at 0.027–0.030 m. Landscape is the one
+ * Portrait is the easy case and holds at 0.028–0.032 m. Landscape is the one
  * that binds: with the current seven-row scaffolding strip a 568×320 phone
- * leaves only 160 px of surface, and the overhang reaches 0.060 m.
+ * leaves only 160 px of surface, and the overhang reaches 0.0635 m — where the
+ * stroke sits on its 2.2px *floor*, so it is the floor rather than the ceiling
+ * that sets this number.
  *
- * 0.1 m covers even that with 40% to spare, and the surplus is not slack. A tip
+ * 0.1 m covers even that with 36% to spare, and the surplus is not slack. A tip
  * hard against the edge reads as a clipped mark whether or not it is one, which
  * is exactly why `wind.ts` runs its graduations inward instead of outward.
  * `speed.test.ts` derives the figure across a table of viewports and strip
