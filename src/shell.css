@@ -50,42 +50,31 @@ body {
   min-height: 0;
   touch-action: none;
   background: oklch(97% 0.01 250deg);
+
+  /*
+   * A mouse drag across the drawing would otherwise start a text selection,
+   * which paints a highlight over the boat and swallows the rest of the
+   * gesture. `input/pointer.ts` calls `preventDefault` on a touchdown it
+   * claims, which handles the drags that begin a gesture; this covers the ones
+   * that do not — on open water, which pos-bwd.2 will claim and this bead
+   * deliberately leaves alone.
+   *
+   * Prefixed as well as standard, which is the one place in this stylesheet a
+   * prefix earns its keep: unprefixed `user-select` begins at Safari 17, well
+   * above §4.4's 15.4 floor, so on a school iPad the prefix is the only one of
+   * the two that does anything. `property-no-vendor-prefix` is right about
+   * every other property here and wrong about this one, so it is turned off
+   * for the declaration rather than for the file.
+   */
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-/* Minimal control strip (§5) — empty until the settings bead fills it. */
+/* Minimal control strip (§5) — empty until pos-740.3 fills it with the
+   apparent-wind and jib switches. Everything a student manipulates is on the
+   boat itself (§5), so nothing else is ever coming here. */
 .pos-sim .controls {
   flex: 0 0 auto;
   padding: 0.5rem 1rem;
-}
-
-/*
- * SCAFFOLDING — remove with the controls in main.ts when pos-bwd.1 lands hull
- * and clew dragging. Here only so heading, both trims and the jib switch can be
- * swept by hand.
- */
-.pos-sim .scaffold-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  font: 0.8rem/1.6 system-ui, sans-serif;
-}
-
-.pos-sim .scaffold-row > span {
-  flex: 0 0 4rem;
-}
-
-.pos-sim .scaffold-row > input[type="range"] {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* A readout, not a control: speed is settled, never set. */
-.pos-sim .scaffold-row > input:disabled {
-  opacity: 0.55;
-}
-
-.pos-sim .scaffold-value {
-  flex: 0 0 4.5rem;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }

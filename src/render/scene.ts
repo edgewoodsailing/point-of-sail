@@ -227,6 +227,22 @@ export interface SceneLayers {
   readonly speed: SVGGElement;
   /** Boat frame, **above** the hull, so the boom reads as lying on the deck. */
   readonly sails: SVGGElement;
+  /**
+   * Boat frame, above the cloth. The clew fittings §5 draws so the grab points
+   * announce themselves.
+   *
+   * A layer of its own rather than a pair of circles inside `sails`, because a
+   * fitting is hardware and the cloth is the subject: it takes the hull's ink
+   * rather than §4.2's trim colour, and it has to sit above a sail that may be
+   * eased across it. A later bead that wants the fitting to carry the sail's
+   * colour after all would move it into the per-sail group, where
+   * `--pos-sail-ink` already inherits.
+   *
+   * It is transparent to the pointer (`scene.css`), which costs nothing and
+   * says the true thing: hit-testing is geometric (`input/gestures.ts`) and
+   * never reads an event's target, so no drawn mark is ever a target.
+   */
+  readonly handles: SVGGElement;
   /** World frame, on top. The apparent-wind overlay (§3.1). */
   readonly apparent: SVGGElement;
 }
@@ -267,9 +283,10 @@ export interface Scene {
  *
  * Group order is document order is paint order, and it is deliberate: the speed
  * arrow sits below the hull so a stern arrow can never paint over the boom, the
- * sails sit above it so the boom reads as lying on the deck, and the wind ring
- * sits above the whole boat so the speed arrow passes behind it when it overruns
- * `contentRadius`. See {@link SceneLayers}.
+ * sails sit above it so the boom reads as lying on the deck, the clew fittings
+ * sit above the cloth so an eased sail cannot bury its own grab point, and the
+ * wind ring sits above the whole boat so the speed arrow passes behind it when
+ * it overruns `contentRadius`. See {@link SceneLayers}.
  */
 export function createScene(host: HTMLElement): Scene {
   const element = svgElement("svg", { class: "pos-scene" });
@@ -282,10 +299,11 @@ export function createScene(host: HTMLElement): Scene {
     wind: svgElement("g", { class: "pos-wind" }),
     speed: svgElement("g", { class: "pos-speed" }),
     sails: svgElement("g", { class: "pos-sails" }),
+    handles: svgElement("g", { class: "pos-handles" }),
     apparent: svgElement("g", { class: "pos-apparent" }),
   };
 
-  boat.append(layers.speed, createHullLayer(), layers.sails);
+  boat.append(layers.speed, createHullLayer(), layers.sails, layers.handles);
   world.append(boat, layers.wind, layers.apparent);
   element.append(title, world);
   host.append(element);
