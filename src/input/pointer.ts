@@ -83,6 +83,16 @@ export function bindPointers(
 
   function onPointerDown(event: PointerEvent): void {
     if (active.has(event.pointerId)) return;
+    // Contact only. A touch or a pen touching down reports button 0, as does a
+    // left mouse button; a right or middle button reports 2 or 1, and without
+    // this a right-button drag would steer the boat — with the context menu
+    // opening over the drawing partway through, since `preventDefault` on a
+    // pointerdown does not suppress `contextmenu`.
+    //
+    // **Not `isPrimary`**, which looks like the same check and is the opposite
+    // of what multi-touch needs: the second finger down is by definition not
+    // primary, and it is the whole point of §5's two students.
+    if (event.button !== 0) return;
 
     const current = state.read();
     const world = scene.toWorld(event.clientX, event.clientY);
@@ -91,8 +101,13 @@ export function bindPointers(
     // untouched is what keeps it available to pos-bwd.2's wind ring.
     if (grab === null) return;
 
-    active.set(event.pointerId, { grab, at: world });
+    // Capture *then* claim, not the other way round. The two lines look
+    // interchangeable and are not: if `setPointerCapture` ever threw, claiming
+    // first would leave the target held for the life of the page with no
+    // pointer able to release it, whereas this way the touchdown simply does
+    // not take.
     surface.setPointerCapture(event.pointerId);
+    active.set(event.pointerId, { grab, at: world });
     // Suppresses the text selection a mouse drag would otherwise start, and the
     // synthesised mouse events a touch would. `touch-action: none` in the
     // stylesheet is what handles scrolling and zooming, not this.

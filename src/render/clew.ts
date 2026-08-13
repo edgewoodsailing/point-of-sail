@@ -27,8 +27,13 @@ import { formatNumber, svgElement } from "./svg.ts";
  * Sized against the mast dot (0.11 m in `hull.ts`), which is the only other
  * piece of drawn hardware, so the two read as the same kind of thing — and
  * drawn as a ring rather than a filled dot so they are still told apart at a
- * glance. In pixels that is a 6.9 px circle on a 390 px phone and 15.8 px on a
- * desktop, against a hull-weight stroke of 1.4 px and 4 px respectively.
+ * glance. In pixels that is a 6.8 px circle on a 390 px phone, 14.6 px on an
+ * iPad and 15.8 px on a desktop, against a hull-weight stroke of 1.4 px to 4 px
+ * laid on top of it.
+ *
+ * **Diameter, not inked extent.** The stroke straddles the path, so a bounding
+ * box reads about 2 px wider on a phone; quoting one of those as the mark's
+ * size is what put a wrong number in DESIGN §5 once already.
  */
 const FITTING_RADIUS: Meters = 0.105;
 

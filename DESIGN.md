@@ -1961,9 +1961,15 @@ touching.
 
 The drawn fitting and the invisible disc are **independent sizes**, and they
 scale with different things. The fitting is a dimension *of the boat*, so it is
-in metres and shrinks with the drawing — 9.5 px across on a 390 px phone, 15.8 px
-on a desktop. The disc is a touch target, so it is in CSS pixels and does not
-shrink at all. On a phone the target is more than four times the mark.
+in metres and shrinks with the drawing: at a 0.105 m radius its ring is 6.8 px
+across on a 390 px phone, 14.6 px on an iPad and 15.8 px on a desktop. The disc
+is a touch target, so it is in CSS pixels and does not shrink at all. On a phone
+the target is six and a half times the mark, and on a desktop under three.
+
+Those are the ring's **diameter**, not its inked extent — the stroke is another
+1.4–4 px on top, centred on the path — and the distinction is recorded because
+quoting a bounding box here once put 9.5 px in this paragraph against the
+6.8 px the geometry actually gives.
 
 One consequence for [§3.4](#34-backing-a-sail): backing the main means dragging
 the clew forward rather than shoving the boom amidships as you would on the

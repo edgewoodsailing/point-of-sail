@@ -630,6 +630,13 @@ describe("two pointers at once (DESIGN.md §5)", () => {
    * recomputes is the one whose finger moved. That is harmless for two sails
    * and wrong for a sail plus the hull, so `reapply` re-runs the others from
    * where they still are.
+   *
+   * **The clew finger issues no second gesture here, and that is the test.** An
+   * earlier version of this dragged the main again after the hull drag and
+   * passed on the strength of it — supplying by hand exactly the `pointermove`
+   * a browser will never send for a finger that has not moved, so it went green
+   * against code where the behaviour did not exist. The only call after the
+   * hull drag is the one `input/pointer.ts` makes on its own.
    */
   it("re-applies a held clew when the other finger turned the boat under it", () => {
     const state = stateWith({ heading: 0, mainAngle: 0, jibSet: false });
@@ -684,39 +691,4 @@ describe("two pointers at once (DESIGN.md §5)", () => {
     expect(after.state.trim.mainAngle).toBe(state.trim.mainAngle);
   });
 
-  it("carries a clew with the boat when the other finger turns the hull", () => {
-    // Two students, one on each gesture: the sail's bearing is measured against
-    // the *live* heading, so a clew held still on screen while the boat turns
-    // beneath it changes the trim — which is what happens on the water when you
-    // hold a sheet through a turn.
-    let state = stateWith({ heading: 0, mainAngle: 0, jibSet: false });
-    const scale = scaleOn(state, phonePixelsToMeters);
-    const held = worldPoint(mainClewPosition(0), 0);
-
-    const mainGrab = beginGrab(state, held, scale, new Set())!;
-    expect(mainGrab.target).toBe("main");
-    const hullGrab = beginGrab(
-      state,
-      worldPoint({ x: 0, y: STATIONS.pivot.y - 1.5 }, 0),
-      scale,
-      new Set<GrabTarget>([mainGrab.target]),
-    )!;
-    expect(hullGrab.target).toBe("hull");
-
-    state = dragTo(state, hullGrab, { x: 3, y: 0 }, scale.deadZone).state;
-    expect(radiansToDegrees(state.motion.heading)).toBeCloseTo(90, ANGLE_PRECISION);
-
-    // The finger has not moved; the boat has. The trim that was 0 is now 70.0°,
-    // and the check is the observable one rather than that number: the clew is
-    // still on the bearing from the mast that the finger is on.
-    state = dragTo(state, mainGrab, held, scale.deadZone).state;
-    expect(radiansToDegrees(state.trim.mainAngle)).toBeCloseTo(70.05, 2);
-
-    const mastAt = worldPoint(STATIONS.mast, state.motion.heading);
-    const clewAt = worldPoint(mainClewPosition(state.trim.mainAngle), state.motion.heading);
-    expect(angleOfVector(subtract(clewAt, mastAt))).toBeCloseTo(
-      angleOfVector(subtract(held, mastAt)),
-      9,
-    );
-  });
 });
