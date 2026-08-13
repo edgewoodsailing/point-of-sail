@@ -111,6 +111,19 @@ const TWA_STEP_DEGREES = 10;
  */
 const SPEED_STEP_KNOTS = 0.1;
 
+/**
+ * Filled in by `settles to the same speed from rest as from speed` and asserted
+ * by `leaves only cases where the boat is stopped on one of the branches`. The
+ * two are one sweep — settling is what this file spends its time on, and asking
+ * the same grid two questions costs one pass rather than two.
+ */
+const residual = {
+  worstGap: 0,
+  worstGapAt: "none",
+  fastestSlowBranch: 0,
+  fastestSlowBranchAt: "none",
+};
+
 function boat(twa: number, jibSet: boolean, trim: Radians, wind: MetersPerSecond): SimState {
   return {
     wind: { from: deg(twa), speed: wind },
@@ -239,29 +252,46 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
    * same speed however it got there". Settling is what a student experiences,
    * and it is an independent route to the answer — a few hundred integration
    * steps rather than a root count.
+   *
+   * **It carries the residual as well, in one pass over one grid**, because the
+   * two questions are the same sweep asked twice and settling is the expensive
+   * part of this file. What survives is described in
+   * `leaves only cases where the boat is stopped on one of the branches` below,
+   * which reads the numbers this collects.
    */
   it("settles to the same speed from rest as from speed", () => {
-    for (const wind of [6, 10]) {
+    for (const wind of [6, 10, 14]) {
       for (const jibSet of [false, true]) {
-        for (let twa = 10; twa <= 180; twa += 15) {
+        // From 5°, not 10°: the residual this also collects lives at TWA 65°,
+        // and a grid of 10 + 15k steps straight over it. That is not a
+        // hypothetical — merging these two sweeps into one pass did exactly
+        // that, and the bound below went on passing against a set that no
+        // longer contained the case its own docblock describes.
+        for (let twa = 5; twa <= 180; twa += 15) {
           for (let trim = 0; trim >= -90; trim -= 2) {
             const state = boat(twa, jibSet, deg(trim), kt(wind));
-            const fromRest = settle(state);
-            const fromSpeed = settle({
-              ...state,
-              motion: { heading: 0, speed: kt(wind * 1.2) },
-            });
+            const fromRest = metersPerSecondToKnots(settle(state).motion.speed);
+            const fromSpeed = metersPerSecondToKnots(
+              settle({ ...state, motion: { heading: 0, speed: kt(wind * 1.2) } }).motion.speed,
+            );
+
+            const where = `${wind} kt, ${jibSet ? "sloop" : "main only"}, TWA ${twa}°, trim ${trim}°`;
+            const gap = Math.abs(fromRest - fromSpeed);
+            const slower = Math.min(fromRest, fromSpeed);
+
+            // Collected for the residual test below, which is the same sweep.
+            if (gap > 0.01) {
+              if (gap > residual.worstGap) residual.worstGap = gap, (residual.worstGapAt = where);
+              if (slower > residual.fastestSlowBranch)
+                residual.fastestSlowBranch = slower, (residual.fastestSlowBranchAt = where);
+            }
 
             // Both branches under way. A boat in irons with its sheets pinned
             // flat can sit astern or creep ahead depending on where it started,
-            // which is §3.4's sternway rather than §3.2's stall; `stalled
-            // hysteresis` below draws that line and measures what is left.
-            if (fromRest.motion.speed < kt(0.5) || fromSpeed.motion.speed < kt(0.5)) continue;
+            // which is §3.4's sternway rather than §3.2's stall.
+            if (fromRest < 0.5 || fromSpeed < 0.5) continue;
 
-            expect(
-              metersPerSecondToKnots(fromRest.motion.speed),
-              `${wind} kt, ${jibSet ? "sloop" : "main only"}, TWA ${twa}°, trim ${trim}°`,
-            ).toBeCloseTo(metersPerSecondToKnots(fromSpeed.motion.speed), 4);
+            expect(fromRest, where).toBeCloseTo(fromSpeed, 4);
           }
         }
       }
@@ -340,72 +370,50 @@ describe("what is left, and where it lives", () => {
    * **The claim above is "one settled speed per trim"; this is the fine print,
    * and pos-i4o introduced half of it.** Two kinds of path-dependence survive,
    * and both share one property: *the boat is stopped on at least one of the two
-   * branches*. Measured across 4–14 kt, both rigs, every angle and every trim,
-   * the fastest a slow branch ever gets is **0.061 kt**. Nothing that is
-   * actually sailing has two answers.
+   * branches*. Across 6–14 kt, both rigs, every angle and every trim, the
+   * fastest a slow branch ever gets is **0.061 kt**. Nothing that is actually
+   * sailing has two answers.
    *
-   * **Sheets pinned flat, close hauled** — no ease at all, so α is the whole
-   * apparent wind angle. At TWA 65° the boat either drifts astern or creeps
-   * ahead depending on where it started: −0.233 kt against +0.404 kt in 14 kt of
+   * **Sheeted flat, close hauled** — no ease at all, so α is the whole apparent
+   * wind angle. At TWA 65° the boat either drifts astern or creeps ahead
+   * depending on where it started: −0.233 kt against +0.404 kt in 14 kt of
    * wind, the widest case anywhere. This one is new. Before pos-i4o it settled
    * astern from both directions (−0.327 kt), and it is the price of the wider
    * blend — a sail at 65° of incidence now makes just enough lift to sustain
-   * way, where before it made none worth having. Left rather than fixed: both
-   * branches are under half a knot, the boat is in irons on either, §4.2 paints
-   * the sail red at this trim either way, and moving the blend does not remove
-   * it (at 40° it shifts to TWA 55° and grows to 0.77 kt).
+   * way, where before it made none worth having. Left rather than fixed, and
+   * tracked as `pos-rem`: both branches are under half a knot, the boat is in
+   * irons on either, §4.2 paints the sail red at this trim either way, and
+   * moving the blend does not remove it (at 40° it shifts to TWA 55° and grows
+   * to 0.77 kt).
    *
-   * **Deep inside the no-go zone** — 0.000 kt against 0.042 kt. Not a fold at
-   * all but `settle`'s iteration budget running out, which `simulation.ts`
-   * documents: with no wind to balance against, a coasting boat approaches rest
-   * like `1/t` and there is no finite time at which it has arrived. Pre-existing
-   * and unrelated to this bead.
+   * **A boat coasting to rest** — 0.000 kt against 0.042 kt. Not a fold at all
+   * but `settle`'s iteration budget running out, which `simulation.ts`
+   * documents: with no drive to balance against, a coasting boat approaches rest
+   * like `1/t` and there is no finite time at which it has arrived. Root-counting
+   * tells the two apart where settling cannot — at TWA 50° in 6 kt under main
+   * alone at trim −48°, which reads as a 0.0405 kt split, the net force has *no*
+   * downward crossing above zero, so the balance is rest and the boat is still
+   * on its way there. Pre-existing and unrelated to this bead.
    *
    * Bounded here so neither can grow quietly, and so that what the rest of this
    * file claims is exactly true rather than nearly true.
    */
   it("leaves only cases where the boat is stopped on one of the branches", () => {
-    let worstGap = 0;
-    let worstGapAt = "none";
-    let fastestSlowBranch = 0;
-    let fastestSlowBranchAt = "none";
-
-    for (const wind of [6, 14]) {
-      for (const jibSet of [false, true]) {
-        for (let twa = 5; twa <= 180; twa += 15) {
-          for (let trim = 0; trim >= -90; trim -= 2) {
-            const state = boat(twa, jibSet, deg(trim), kt(wind));
-            const fromRest = metersPerSecondToKnots(settle(state).motion.speed);
-            const fromSpeed = metersPerSecondToKnots(
-              settle({ ...state, motion: { heading: 0, speed: kt(wind * 1.2) } }).motion.speed,
-            );
-
-            const gap = Math.abs(fromRest - fromSpeed);
-            // Below `settle`'s own convergence floor there is nothing to see.
-            if (gap < 0.01) continue;
-
-            const where = `${wind} kt, ${jibSet ? "sloop" : "main only"}, TWA ${twa}°, trim ${trim}°`;
-            if (gap > worstGap) {
-              worstGap = gap;
-              worstGapAt = where;
-            }
-
-            const slower = Math.min(fromRest, fromSpeed);
-            if (slower > fastestSlowBranch) {
-              fastestSlowBranch = slower;
-              fastestSlowBranchAt = where;
-            }
-          }
-        }
-      }
-    }
+    // **That the sweep ran, and found something.** Everything below is an upper
+    // bound, and an upper bound over an empty set is vacuous — which is how this
+    // test would read if the sweep above were skipped, filtered out by a `-t`,
+    // or quietly stopped sampling the angles where the residual lives.
+    expect(residual.worstGap, "the sweep found no residual at all").toBeGreaterThan(0.1);
 
     // The property that makes the residual tolerable, and the one to defend: a
     // boat that is *moving* never has two answers. This is what would fail if a
-    // fold came back somewhere the main sweep's grid happens to step over.
-    expect(fastestSlowBranch, `slow branch under way at ${fastestSlowBranchAt}`).toBeLessThan(0.1);
+    // fold came back somewhere the root-counting grid steps over.
+    expect(
+      residual.fastestSlowBranch,
+      `slow branch under way at ${residual.fastestSlowBranchAt}`,
+    ).toBeLessThan(0.1);
 
     // And the widest fork stays the one described above rather than growing.
-    expect(worstGap, `worst at ${worstGapAt}`).toBeLessThan(1);
-  }, 60_000);
+    expect(residual.worstGap, `worst at ${residual.worstGapAt}`).toBeLessThan(1);
+  });
 });
