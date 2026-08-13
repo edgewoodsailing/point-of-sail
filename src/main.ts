@@ -4,7 +4,7 @@ import { bindPointers } from "./input/pointer.ts";
 import { knotsFromWindSpeed, WIND_SPEED_KT, windSpeedFromKnots } from "./input/windSpeed.ts";
 import { clampTrim } from "./model/boat.ts";
 import type { CollapseEdge } from "./model/sail.ts";
-import { rigForce } from "./model/sail.ts";
+import { jibSheetFor, rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle, step } from "./model/simulation.ts";
 import type { Degrees, Meters, Newtons, Radians, Seconds } from "./model/units.ts";
@@ -74,6 +74,10 @@ let state: SimState = settle({
     // in this wind rather than where the angle above was written.
     mainSheet: degreesToRadians(75),
     jibAngle: degreesToRadians(-70),
+    // A length, not an angle: how far the clew is from the working car. Derived
+    // from the angle above rather than written down, so the two cannot disagree.
+    jibSheet: jibSheetFor(degreesToRadians(-70), -1),
+    jibSheetSide: -1,
     jibSet: true,
   },
   mainHeld: false,

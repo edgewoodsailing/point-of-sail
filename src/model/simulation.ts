@@ -14,7 +14,13 @@ import {
   keelInducedDrag,
 } from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
-import { depoweringFactor, easeMainAngle, rigForce } from "./sail.ts";
+import {
+  depoweringFactor,
+  easeSailAngle,
+  naturalJibAngle,
+  naturalMainAngle,
+  rigForce,
+} from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
 import type { BoatMotion, TrueWind } from "./wind.ts";
 import { apparentWind } from "./wind.ts";
@@ -212,12 +218,27 @@ function advance(state: SimState, dt: Seconds): SimState {
     // Note this rides inside `advance`, so `settle` gets it for free: settle
     // steps repeatedly, so it converges the boom and the speed together —
     // which matters, since each depends on the other through the apparent wind.
-    trim: state.mainHeld
-      ? state.trim
-      : {
-          ...state.trim,
-          mainAngle: easeMainAngle(state.trim.mainAngle, state.trim.mainSheet, apparent, dt),
-        },
+    trim: {
+      ...state.trim,
+      mainAngle: state.mainHeld
+        ? state.trim.mainAngle
+        : easeSailAngle(
+            state.trim.mainAngle,
+            naturalMainAngle(state.trim.mainSheet, apparent),
+            dt,
+          ),
+      // The jib runs on the same clock and the same rule, with the interval its
+      // two-circle geometry gives instead of the boom's symmetric one. Struck,
+      // it is left alone: there is no cloth to blow anywhere.
+      jibAngle:
+        state.jibHeld || !state.trim.jibSet
+          ? state.trim.jibAngle
+          : easeSailAngle(
+              state.trim.jibAngle,
+              naturalJibAngle(state.trim.jibSheet, state.trim.jibSheetSide, apparent),
+              dt,
+            ),
+    },
   };
 }
 

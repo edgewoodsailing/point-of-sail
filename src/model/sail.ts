@@ -33,14 +33,27 @@
  */
 
 import type { Sail } from "./boat.ts";
-import { clampTrim, JIB, MAIN, sailChordBearing, SWING_LIMIT } from "./boat.ts";
+import {
+  clampTrim,
+  JIB,
+  JIB_CAR,
+  jibClewPosition,
+  MAIN,
+  sailChordBearing,
+  STATIONS,
+  SWING_LIMIT,
+} from "./boat.ts";
 import { foilCoefficients, liftCurveSlope } from "./foil.ts";
 import { DEPOWERING, FOIL, LUFF } from "./tuning.ts";
 import type { ApparentWind } from "./wind.ts";
-import type { MetersPerSecond, Newtons, Radians, Seconds } from "./units.ts";
+import type { Meters, MetersPerSecond, Newtons, Radians, Seconds } from "./units.ts";
 import {
+  acos,
   add,
   angleBetween,
+  angleOfVector,
+  magnitude,
+  subtract,
   componentAcross,
   componentAlong,
   cos,
@@ -123,7 +136,27 @@ export interface RigTrim {
    * the one thing a real boom conspicuously does not do.
    */
   readonly mainSheet: Radians;
+  /** Where the jib's clew **is**, as a bearing from its tack. Evolves, like the boom. */
   readonly jibAngle: Radians;
+  /**
+   * How much jib sheet is out: the distance from the working car to the clew, in
+   * metres.
+   *
+   * A length rather than an angle, because that is what the student holds. See
+   * {@link naturalJibAngle} for how it becomes an angle — the map is the two-
+   * circle geometry, and it is not linear.
+   */
+  readonly jibSheet: Meters;
+  /**
+   * Which car the working sheet leads to: `+1` starboard, `−1` port.
+   *
+   * **State, and set only by a hand letting go.** Deriving it from where the
+   * clew happens to be oscillates: past about 0.52 m of sheet the clew can cross
+   * the centreline, which is an ordinary trim, and then "whichever car the clew
+   * is nearest" flips every frame. On the water the crew choose a sheet and it
+   * stays chosen until they choose again, and so does this.
+   */
+  readonly jibSheetSide: number;
   /** False when the jib is struck — §3.7's sailing under main alone. */
   readonly jibSet: boolean;
 }
@@ -233,24 +266,119 @@ export function naturalMainAngle(sheet: Radians, apparent: ApparentWind): Radian
 export const BOOM_RESPONSE: Seconds = 0.13;
 
 /**
- * The boom's angle after `dt`, easing toward wherever the wind and sheet put it.
+ * A sail's angle after `dt`, easing toward wherever the wind and its sheet put
+ * it.
  *
  * Exponential rather than a constant rate, so it cannot overshoot at any step
  * length — `step` clamps `dt` to a tenth of a second but `settle` is free to
  * take longer strides, and a rate-limited swing would ring at those.
  */
-export function easeMainAngle(
-  current: Radians,
-  sheet: Radians,
-  apparent: ApparentWind,
-  dt: Seconds,
-): Radians {
-  const target = naturalMainAngle(sheet, apparent);
+export function easeSailAngle(current: Radians, target: Radians, dt: Seconds): Radians {
   if (!(dt > 0)) return current;
-  // Shortest way round, so a gybe crosses through 180° rather than unwinding
-  // the long way through head to wind.
+  // Shortest way round, so a gybe crosses through the centreline rather than
+  // unwinding the long way through head to wind.
   const gap = normalizeSigned(target - current);
   return normalizeSigned(current + gap * (1 - Math.exp(-dt / BOOM_RESPONSE)));
+}
+
+/**
+ * Where the jib's clew goes on its own — **the same sentence as the main, with a
+ * differently shaped stop.**
+ *
+ * ## Why it is not simply the main again
+ *
+ * A boom pivots on the mast, so its sheet limits an *angle*. A jib's clew is a
+ * corner of cloth on the end of a rope: it can be anywhere the foot allows —
+ * a circle of radius `JIB.foot` about the tack — and anywhere the sheet allows,
+ * a circle of radius `sheet` about the car. It sits where those two circles
+ * cross, and the wind picks which crossing.
+ *
+ * ## And why it collapses back into the main anyway
+ *
+ * Write the sheet constraint out and it turns into an interval on the same
+ * angle the model already uses. With `w = car − tack`, `d = |w|`, and the clew
+ * at chord bearing `b`:
+ *
+ * ```text
+ *   |clew − car|² = foot² + d² − 2·foot·d·cos(b − β)   where β = bearing of w
+ *   sheet² = that   ⟹   cos(b − β) = (foot² + d² − sheet²) / (2·foot·d)
+ * ```
+ *
+ * So the two crossings are `β ± acos(C)`, and in sail-angle terms they are
+ * **symmetric about the bearing to the car**:
+ *
+ * ```text
+ *   natural jib angle = clamp(−awa, a₀ − h, a₀ + h)
+ *       a₀ = the angle whose clew lies nearest the car (12.6° to the car's side)
+ *       h  = acos(C), how far the sheet lets it swing either way from there
+ * ```
+ *
+ * That is {@link naturalMainAngle} with the interval shifted off centre. The
+ * main is the special case where the car is on the centreline, so `a₀ = 0` and
+ * the interval is symmetric — which is exactly why a boom tacks itself.
+ *
+ * ## The asymmetry that falls out, and it is the real one
+ *
+ * Because the jib's interval is **not** centred on zero, tacking the boat does
+ * not tack the jib. Sheeted to starboard at 1.0 m the clew may lie anywhere in
+ * −12.2°…+37.4°; put the wind on the starboard bow and the weathervane wants
+ * the far side, so it clamps at −12.2° and stops there — to windward, aback.
+ * The main meanwhile has crossed on its own. **The main tacks itself and the jib
+ * has to be tacked**, which is the fact of the boat, arrived at from geometry
+ * rather than asserted.
+ *
+ * It also hands pos-bql.1 the backed jib with no mechanism of its own, the way
+ * the sheet model handed pos-bql.2 the swing-back.
+ *
+ * ## Which side the sheet is on is *state*, not a derivation
+ *
+ * Deriving it from where the clew currently is oscillates, and not in a corner:
+ * past about 0.52 m of sheet the clew can cross the centreline, which is an
+ * ordinary trim, and then "the working sheet is the one the clew is nearest"
+ * flips every frame. So the side is set once, by which side of the boat the
+ * hand let go on, and holds until a hand changes it — which is also what
+ * happens on the water, where the crew choose a sheet and it stays chosen.
+ */
+export function naturalJibAngle(
+  sheet: Meters,
+  side: number,
+  apparent: ApparentWind,
+): Radians {
+  const car = { x: side * JIB_CAR.x, y: JIB_CAR.y };
+  const w = subtract(car, STATIONS.jibTack);
+  const d = magnitude(w);
+  const foot = JIB.foot;
+
+  // The clew nearest the car: chord bearing straight at it, so a₀ = π − β.
+  const centre = sailChordBearing(angleOfVector(w));
+  const weathervane = normalizeSigned(-apparent.angle);
+
+  const cosine = (foot * foot + d * d - sheet * sheet) / (2 * foot * d);
+  // Sheet hauled shorter than the geometry allows — |foot − d| — so both
+  // constraints cannot hold at once. The cloth wins: the clew goes to the point
+  // on the foot circle nearest the car and the sheet is simply bar taut.
+  if (cosine >= 1) return centre;
+  // Longer than `foot + d`: no reach of the sheet can stop the clew anywhere, so
+  // it flies free and weathervanes.
+  if (cosine <= -1) return weathervane;
+
+  const half = acos(cosine);
+  const gap = normalizeSigned(weathervane - centre);
+  return normalizeSigned(centre + Math.min(Math.max(gap, -half), half));
+}
+
+/**
+ * The sheet length a clew position implies — the inverse of the above, and what
+ * a release writes.
+ *
+ * Taken from the *car on the side the hand let go on*, which is the whole of how
+ * a sheet gets chosen: dragging the clew across and releasing on the new side is
+ * one gesture that both changes sheets and sets the new one's length, which is
+ * "cast off one and haul the other" with no second control.
+ */
+export function jibSheetFor(clewAngle: Radians, side: number): Meters {
+  const car = { x: side * JIB_CAR.x, y: JIB_CAR.y };
+  return magnitude(subtract(jibClewPosition(clewAngle), car));
 }
 
 /**

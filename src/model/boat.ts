@@ -286,6 +286,48 @@ export const CHAINPLATES: {
   lower: STATIONS.bow.y + feetToMeters((FORWARD_CHAINPLATE_IN + AFT_CHAINPLATE_OFFSET_IN) / 12),
 };
 
+/**
+ * The sheer's half-beam at the lower chainplate's station, 1.0333 m.
+ *
+ * **Measured off the drawn outline, then written down here**, which is the one
+ * place in this file a number comes from `render/`. The model may not import the
+ * renderer, and the hull's sheer is a fairing decision that lives there
+ * (`render/hull.ts`), so the alternative was a second curve in the model that
+ * could disagree with the drawn one. `hull.test.ts` asserts
+ * `sheerHalfBeamAt(CHAINPLATES.lower)` still equals this, so refairing the hull
+ * fails a test rather than silently moving the jib car.
+ */
+const SHEER_AT_LOWER_CHAINPLATE: Meters = 1.0333;
+
+/**
+ * Where the jib sheet leads, as a starboard-side station; the port car is its
+ * mirror.
+ *
+ * **Chosen rather than measured, because there is nothing to measure it
+ * against.** The class rules control the mast, boom, spinnaker pole, standing
+ * rigging, sails, keel and rudder, and say nothing whatever about jib sheeting —
+ * Article XXIX is mainsheet travelers. A jib lead is not a controlled dimension,
+ * so no two boats need agree and the rule book cannot settle it.
+ *
+ * So it is placed by the customer's rule: **midway between the lower chainplate
+ * and the centreline**, at the lower chainplate's own station. That is a real
+ * position on a real deck rather than a number picked to make the geometry come
+ * out, and it is defensible for the boats this teaches on.
+ *
+ * The figure to sanity-check it against is what it makes a bar-taut jib do:
+ * **12.6°** off the centreline, which is about where a Rhodes 19's jib sits
+ * sheeted flat. If a measurement off a real boat ever arrives, that angle is
+ * what should be compared, not the coordinates.
+ *
+ * Adjustable cars are deliberately not modelled. They mostly change the sail's
+ * *twist*, and §7 does not model twist, so a movable car would be a control with
+ * nothing on the other end of it.
+ */
+export const JIB_CAR: Vec2 = {
+  x: SHEER_AT_LOWER_CHAINPLATE / 2,
+  y: CHAINPLATES.lower,
+};
+
 // --- Rig geometry ----------------------------------------------------------
 
 /**

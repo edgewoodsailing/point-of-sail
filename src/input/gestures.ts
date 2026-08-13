@@ -62,6 +62,7 @@ import {
   STATIONS,
 } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
+import { jibSheetFor } from "../model/sail.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
 import {
   add,
@@ -711,7 +712,7 @@ export function holdFor(state: SimState, target: GrabTarget): SimState {
  * from the drag would make the rope remember which side of the boat it had been
  * on, which is the thing about the old model this replaces.
  */
-export function releaseFrom(state: SimState, target: GrabTarget): SimState {
+export function releaseFrom(state: SimState, target: GrabTarget, world: Vec2): SimState {
   if (target === "main") {
     return {
       ...state,
@@ -719,7 +720,30 @@ export function releaseFrom(state: SimState, target: GrabTarget): SimState {
       trim: { ...state.trim, mainSheet: Math.abs(state.trim.mainAngle) },
     };
   }
-  if (target === "jib") return { ...state, jibHeld: false };
+  if (target === "jib") {
+    // **Which side the hand let go on chooses the working sheet**, and it is the
+    // only thing that ever does (`RigTrim.jibSheetSide`). Dragging the clew
+    // across and releasing on the new side is therefore one gesture that casts
+    // off one sheet and hauls the other — which is the real foredeck action, and
+    // it needs no second control to express.
+    //
+    // Taken from the pointer's own position rather than from where the clew
+    // ended up, because those disagree exactly when it matters: a clew dragged
+    // near the centreline is ambiguous while the hand holding it is not.
+    // A release on the centreline itself keeps the side it had, so nothing
+    // flips on a rounding difference.
+    const at = toBoatPoint(world, state.motion.heading);
+    const side = at.x === 0 ? state.trim.jibSheetSide : Math.sign(at.x);
+    return {
+      ...state,
+      jibHeld: false,
+      trim: {
+        ...state.trim,
+        jibSheetSide: side,
+        jibSheet: jibSheetFor(state.trim.jibAngle, side),
+      },
+    };
+  }
   return state;
 }
 

@@ -176,7 +176,7 @@ export function bindPointers(
     // left held by a finger that no longer exists.
     if (held === undefined) return;
     const current = state.read();
-    const next = releaseFrom(current, held.grab.target);
+    const next = releaseFrom(current, held.grab.target, held.at);
     if (next !== current) state.write(next);
   }
 

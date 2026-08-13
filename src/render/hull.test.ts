@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { HULL, STATIONS } from "../model/boat.ts";
+import { CHAINPLATES, HULL, JIB_CAR, STATIONS } from "../model/boat.ts";
 import type { Vec2 } from "../model/units.ts";
 import {
   cubicPoint,
   HULL_OUTLINE,
   hullPathData,
   outlineRadius,
+  sheerHalfBeamAt,
   type CubicSegment,
 } from "./hull.ts";
 
@@ -161,3 +162,23 @@ function isMonotonic(values: number[], direction: "up" | "down"): boolean {
 function pathNumbers(d: string): number[] {
   return (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
 }
+
+/**
+ * The model carries one number that is measured *here*: the sheer's half-beam at
+ * the lower chainplate's station, which `model/boat.ts` halves to place the jib
+ * car. The model may not import the renderer, so the figure is written down
+ * there — and this is what stops it drifting when the hull is refaired.
+ */
+describe("what the model borrows from the drawn hull", () => {
+  it("keeps boat.ts's sheer figure equal to the outline it was measured from", () => {
+    // The constant is not exported — it is folded into JIB_CAR.x, which is half
+    // of it — so the assertion is made through that.
+    expect(sheerHalfBeamAt(CHAINPLATES.lower)).toBeCloseTo(2 * JIB_CAR.x, 3);
+  });
+
+  it("puts the jib car inboard of the lower shroud, which is the point of it", () => {
+    expect(JIB_CAR.x).toBeLessThan(sheerHalfBeamAt(CHAINPLATES.lower));
+    expect(JIB_CAR.x).toBeGreaterThan(0);
+    expect(JIB_CAR.y).toBe(CHAINPLATES.lower);
+  });
+});
