@@ -859,9 +859,11 @@ mass to 600–1200 kg, so a pass that needs more room has to say so out loud.
 
 #### Quadratic drag has no slope at rest, and that gives the no-go zone an edge
 
-Both charges above are even and quadratic in speed, so at rest they are not
-merely small — they are zero, and so is their slope. That has a consequence at
-exactly one place in the polar, and it is worth writing down because it looks
+Both charges above vanish at least as fast as `v²` — the hull's quadratic term
+and the wall on top of it, and the keel's induced drag, which goes as `v²` at
+low speed where the stall term dominates the denominator. So at rest they are
+not merely small: they are zero, and so is their *slope*. That has a consequence
+at exactly one place in the polar, and it is worth writing down because it looks
 like a bug and is not.
 
 At the true wind angle where the drive from rest passes through zero — the edge
@@ -881,9 +883,10 @@ mean that one hairline of angles has two answers is the same fact seen from the
 other side.
 
 **It is bounded and it is small.** The band is half a degree of TWA wide at trim
-0 and vanishes at any ease at all — trim −1° is clean. Across 2–30 kt, both rigs
-and every trim the sheet can hold, the widest split is 0.664 kt and the fastest
-either branch ever reaches is 0.452 kt, both sheeted flat at TWA 64.88° in 14 kt.
+0 and vanishes at any ease at all — a quarter of a degree off the centreline is
+already clean. Across 2–30 kt, both rigs and every trim the sheet can hold, the
+widest split is 0.664 kt and the fastest either branch ever reaches is 0.452 kt,
+both on the sloop sheeted flat at TWA 64.88° in 14 kt.
 The boat is stopped on both branches, so nothing that is sailing has two answers.
 `fold.test.ts` locates the boundary by bisection rather than by sweeping for it
 and holds those two figures.
@@ -913,8 +916,8 @@ and holds those two figures.
 So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
 pre-`pos-i4o` curve the same band sat at TWA 36.3°–37.5° and split 2.934 kt with
 a 2.498 kt fast branch — a boat genuinely sailing on one of them. Giving the
-attached limb a maximum shrank it by four and a half times and moved it to where
-both branches are a standstill, which is the most any of these constants can do.
+attached limb a maximum shrank it more than fourfold and moved it to where both
+branches are a standstill, which is the most any of these constants can do.
 
 ### 3.6 Calibration targets
 
