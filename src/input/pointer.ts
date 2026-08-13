@@ -178,7 +178,22 @@ export function bindPointers(
     // left held by a finger that no longer exists.
     if (held === undefined) return;
     const current = state.read();
-    const next = releaseFrom(current, held.grab.target, held.at);
+    // **The release event's own position, not the last one a `pointermove`
+    // reported.** They are usually the same and occasionally are not: a
+    // `pointerup` carries its own coordinates, and a finger that crosses the
+    // centreline and lifts in one motion can deliver the crossing only on the
+    // up. For the jib that decides which car the sheet is cleated to
+    // (`gestures.releaseFrom`), so the stale reading would cleat to the side the
+    // hand had *left* and the sail would swing back across on its own.
+    //
+    // `lostpointercapture` is the exception and takes the stored point: it can
+    // fire without a meaningful position — a disconnected device, a capture the
+    // browser revoked — and a spurious (0, 0) would be read as hard to port.
+    const at =
+      event.type === "lostpointercapture"
+        ? held.at
+        : scene.toWorld(event.clientX, event.clientY);
+    const next = releaseFrom(current, held.grab.target, at);
     if (next !== current) state.write(next);
   }
 
