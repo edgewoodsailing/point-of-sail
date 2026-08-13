@@ -16,6 +16,7 @@ import {
 } from "./model/units.ts";
 import { apparentWind, trueWindAngle } from "./model/wind.ts";
 import { createClewLayer } from "./render/clew.ts";
+import { createDevicePicker, createGeometryOverlay } from "./render/geometry.ts";
 import { createSailLayer, rigDrawing } from "./render/sail.ts";
 import { createScene } from "./render/scene.ts";
 import { createSpeedLayer } from "./render/speed.ts";
@@ -88,6 +89,36 @@ scene.layers.sails.append(sails.element);
 
 const clews = createClewLayer();
 scene.layers.handles.append(clews.element);
+
+// --- The geometry overlay (prototyping only) --------------------------------
+//
+// Appended to the SVG root rather than to a named layer, so it paints above
+// everything and `render/scene.ts`'s layer contract is untouched. The root and
+// the world group share a transform — the world→user map is the identity — so
+// world-frame metres drop straight in.
+//
+// On by default on this branch, because looking at it is the point. `?geometry=0`
+// turns it off, and `g` toggles it.
+
+const geometry = createGeometryOverlay(scene.pixelsToMeters, () => ({
+  width: surface.clientWidth,
+  height: surface.clientHeight,
+}));
+scene.element.append(geometry.element);
+surface.append(geometry.legend);
+
+const simRoot = document.querySelector<HTMLElement>(".pos-sim");
+if (simRoot === null) throw new Error("Page shell is missing its root (.pos-sim)");
+controls.append(createDevicePicker(simRoot));
+
+let showGeometry = new URLSearchParams(location.search).get("geometry") !== "0";
+geometry.setVisible(showGeometry);
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "g" || event.metaKey || event.ctrlKey || event.altKey) return;
+  showGeometry = !showGeometry;
+  geometry.setVisible(showGeometry);
+});
 
 // --- The control strip ------------------------------------------------------
 
@@ -187,6 +218,7 @@ function draw(next: SimState): void {
   speed.update?.(next);
   sails.update?.(next);
   clews.update?.(next);
+  geometry.update(next);
   windSpeed(next);
 }
 
