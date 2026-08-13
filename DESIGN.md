@@ -883,10 +883,14 @@ mean that one hairline of angles has two answers is the same fact seen from the
 other side.
 
 **It is bounded and it is small.** The band is half a degree of TWA wide at trim
-0 and vanishes at any ease at all — a quarter of a degree off the centreline is
-already clean. Across 2–30 kt, both rigs and every trim the sheet can hold, the
-widest split is 0.664 kt and the fastest either branch ever reaches is 0.452 kt,
-both on the sloop sheeted flat at TWA 64.88° in 14 kt.
+0 and needs the sheet almost exactly flat: it survives a quarter of a degree of
+ease, at a slightly wider angle and a smaller split, and half a degree is clean.
+Swept across §5's whole wind slider at a tenth of a knot, both rigs and every
+trim the sheet can hold, the widest split is 0.699 kt and the fastest either
+branch ever reaches is 0.482 kt, both on the sloop sheeted flat at TWA 64.88° in
+12.8 kt — the peak sits at [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+13 kt knee, where the drive stops growing with the wind and the water's scale
+does not.
 The boat is stopped on both branches, so nothing that is sailing has two answers.
 `fold.test.ts` locates the boundary by bisection rather than by sweeping for it
 and holds those two figures.
@@ -902,7 +906,7 @@ and holds those two figures.
   [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
   flat in 10 kt, settled from rest: at the shipped 50° the boat makes 1.20 kt at
   TWA 60°, drifts astern at 75° and sits still at 90°; at 80° it makes 2.60,
-  2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.664 kt
+  2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.699 kt
   wobble at a standstill is the wrong trade.
 - *Give the water a slope at rest.* A linear damping term would do it, and needs
   `C > 15.4 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
