@@ -137,11 +137,17 @@ export const DEAD_ZONE_PX = 24;
  * both. Outward there is nothing to reach for, so 22 px is enough.
  *
  * **Outward, rather than claiming everything beyond the ring.** The generous
- * reading is tempting, since nothing else is out there to want the touch. It is
+ * reading is tempting, since nothing else is out there to want the touch, and it
+ * will look like an obvious improvement to whoever reads this next. It is
  * rejected for the case §5 designs for: an iPad flat on a table collects resting
  * palms at the screen edges, and because a target belongs to one pointer at a
  * time (§5, multi-touch), the first palm to land would own the wind and every
  * deliberate ring drag after it would get nothing at all.
+ *
+ * Worth spelling out because of how that failure would arrive: not as a bug
+ * anyone could diagnose, but as "the wind control sometimes doesn't work" —
+ * intermittent, dependent on where someone's hand happened to be resting, and
+ * gone by the time anyone looked.
  *
  * **That protection is real on two edges of four, not on all of them**, which is
  * worth stating because the arithmetic is easy to get backwards. The scene is
