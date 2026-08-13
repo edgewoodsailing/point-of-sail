@@ -857,6 +857,65 @@ displacement argues for, or as the resistance sitting at the top of its plausibl
 range; the evidence doesn't distinguish them. `hull.test.ts` holds the derived
 mass to 600–1200 kg, so a pass that needs more room has to say so out loud.
 
+#### Quadratic drag has no slope at rest, and that gives the no-go zone an edge
+
+Both charges above are even and quadratic in speed, so at rest they are not
+merely small — they are zero, and so is their slope. That has a consequence at
+exactly one place in the polar, and it is worth writing down because it looks
+like a bug and is not.
+
+At the true wind angle where the drive from rest passes through zero — the edge
+of the no-go zone — rest is a balance point. Whether it is a *stable* one is
+decided by the drive's own slope, unopposed, since the water contributes none.
+That slope is positive: the moment the boat has way on, the apparent wind hauls
+forward, the angle of attack comes down off the stall, and the sail makes more.
+Measured at that boundary it runs 3.5 to 15.4 N/(m/s) across 4–30 kt on both
+rigs. So rest there is **unstable**, and the boat runs away from it — astern if
+it started astern, ahead if it started ahead — until the quadratic drag catches
+up a couple of tenths of a knot out.
+
+Which is to say the model reproduces the reason a boat has to be pushed off a
+mooring: below some speed it cannot generate the drive to get going, and above it
+it can. [§3.4](#34-backing-a-sail)'s whole mechanic is that fact. Having it also
+mean that one hairline of angles has two answers is the same fact seen from the
+other side.
+
+**It is bounded and it is small.** The band is half a degree of TWA wide at trim
+0 and vanishes at any ease at all — trim −1° is clean. Across 2–30 kt, both rigs
+and every trim the sheet can hold, the widest split is 0.664 kt and the fastest
+either branch ever reaches is 0.452 kt, both sheeted flat at TWA 64.88° in 14 kt.
+The boat is stopped on both branches, so nothing that is sailing has two answers.
+`fold.test.ts` locates the boundary by bisection rather than by sweeping for it
+and holds those two figures.
+
+**Three ways out, all rejected, and the measurements are the point.**
+
+- *Move the stall blend.* It is a real lever, in the opposite direction from the
+  obvious one: narrowing drops the band to a smaller angle and widens the split
+  (20° → TWA 36°, 1.59 kt), widening pushes it up and shrinks it (70° → TWA 87°,
+  0.265 kt) and 80° removes it. It costs nothing against
+  [§3.6](#36-calibration-targets) — the polar at optimal trim moves under 0.02 kt
+  out to 80°. It is spent entirely out of
+  [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
+  flat in 10 kt, settled from rest: at the shipped 50° the boat makes 1.20 kt at
+  TWA 60°, drifts astern at 75° and sits still at 90°; at 80° it makes 2.60,
+  2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.664 kt
+  wobble at a standstill is the wrong trade.
+- *Give the water a slope at rest.* A linear damping term would do it, and needs
+  `C > 15.4 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
+  the hull's 7.4 — it more than doubles the resistance at a knot, recalibrates
+  the whole light-air end, and introduces a second absolute speed scale, which
+  falsifies [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale)
+  being the model's only source of wind-dependence.
+- *Flatten the stalled sail.* `FOIL.plateNormalForce` does nothing here at all —
+  identical band at every value from 0.7 to 1.6.
+
+So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
+pre-`pos-i4o` curve the same band sat at TWA 36.3°–37.5° and split 2.934 kt with
+a 2.498 kt fast branch — a boat genuinely sailing on one of them. Giving the
+attached limb a maximum shrank it by four and a half times and moved it to where
+both branches are a standstill, which is the most any of these constants can do.
+
 ### 3.6 Calibration targets
 
 Constants get tuned until the polar hits roughly these marks in 10 kt true:
