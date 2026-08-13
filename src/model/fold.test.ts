@@ -719,14 +719,25 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * and it is the reason the maximum sits at the trim-0 endpoint rather than
    * anywhere a finer grid would find.
    *
-   * **The windward side of the centreline is out of scope, and is worse.**
-   * Every sweep in this file runs trim 0 to −90°, the side the sheet holds a sail
-   * on. Carried the other way the band is wider and the fast branch does make
-   * way — 1.306 kt split with a 0.827 kt branch at trim +4.75°, TWA 50.48° — but
-   * a sail to windward is §3.4's *held* state rather than a trim, since releasing
-   * it swings it back to leeward, so settling there needs the boom held across
-   * for the couple of hundred frames it takes. Measured and named rather than
-   * asserted over, because backing a sail is a transient by design.
+   * **What is bounded here is an artefact, and §3.5 says whose.** At these
+   * speeds the rig is making some 450 N of side force against 6 N of drive, and
+   * the keel — whose lift goes as `v²` — is charging 0.6–0.8% of that side force
+   * where close hauled and sailing it charges 22%. It would need a `Cl` of 37 to
+   * 202 to hold the load; a foil tops out near 1.5. The boat would sideslip and
+   * §7 does not let it, so these equilibria live in the gap between the keel
+   * having given up and the hull still being pinned to its heading. Bounding them
+   * is worth doing because it keeps the artefact where it cannot be mistaken for
+   * the boat; removing them is not, because the thing to remove is §7.
+   *
+   * **Which is also why the windward side of the centreline is not asserted
+   * over.** Every sweep in this file runs trim 0 to −90°, the side the sheet
+   * holds a sail on. Carried the other way the band is wider and the fast branch
+   * does make way — 1.306 kt split with a 0.827 kt branch at trim +4.75°,
+   * TWA 50.48°. That is the same artefact at the same speeds, not a second
+   * phenomenon, and it is §3.4's *held* state rather than a trim besides. Left
+   * measured and named rather than guarded, because a bound on it would be a
+   * bound on how wrong the no-leeway assumption is allowed to be, which is not a
+   * number this file can defend.
    */
   it("leaves the boat stopped on both branches wherever rest is unstable", () => {
     const worst = worstAstrideRest(BOUND_WINDS);

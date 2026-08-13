@@ -897,6 +897,36 @@ The boat is stopped on both branches, so nothing that is sailing has two answers
 `fold.test.ts` locates the boundary by bisection rather than by sweeping for it
 and holds those two figures.
 
+**These equilibria are not claims about the world, and that is the honest reason
+they stay.** The rig at that angle is making 450 N of side force and about 6 N of
+drive. The keel has to hold the 450, and keel lift goes as `v²`, so at half a
+knot it has a few percent of the capacity it has at three. This section's own
+`keelStall` is what models it giving up — measured at the branches the keel is
+charging **0.6–0.8%** of the side force as drag, against the 22% ceiling it sits
+at within a percent when the boat is actually sailing close hauled.
+
+Put a number on how far past the keel this is. Taking the effective keel area
+implied by this section's own reading of that ceiling — 0.22 as "crabbing at
+12°", which for an aspect-ratio-3 foil is `Cl` ≈ 0.79 and so ≈ 0.37 m² at the
+close-hauled load — the keel would need a `Cl` of **37 on the ahead branch and
+202 on the astern one** to hold what the rig is making. A foil of any kind tops
+out near 1.5. It is short by twenty-five to a hundred and thirty times, and it
+could carry that load only above about **2 kt**. Nothing about the estimate is
+delicate: a keel four times larger is still short by seven to thirty-four times
+and only moves the floor to about 1.2 kt.
+
+So the boat would sideslip, and [§7](#7-deliberately-out-of-scope) does not let
+it. **The fold lives in the gap between the keel having stopped paying for the
+side force and the hull still being pinned to its heading** — which is to say
+§7's no-leeway exclusion stops being a simplification somewhere around a knot or
+two, and every equilibrium below that is an artefact of it rather than a
+prediction. That is the domain limit of this model, it covers the windward side
+of the centreline as well as the leeward, and it is why the branches being a
+standstill is not merely tolerable but the only place the artefact can live: as
+soon as the boat is fast enough for the keel to carry its load, the gap closes.
+`pos-i4o` is the demonstration — it moved the band from a 2.5 kt fast branch,
+where the boat is sailing and the model should be believed, to half a knot.
+
 **Three ways out, all rejected, and the measurements are the point.**
 
 - *Move the stall blend.* It is a real lever, in the opposite direction from the
@@ -912,13 +942,31 @@ and holds those two figures.
   2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.699 kt
   wobble at a standstill is the wrong trade.
 - *Give the water a slope at rest.* A linear damping term would do it, and needs
-  `C > 15.4 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
+  `C > 15.95 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
   the hull's 7.4 — it more than doubles the resistance at a knot, recalibrates
   the whole light-air end, and introduces a second absolute speed scale, which
   falsifies [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale)
   being the model's only source of wind-dependence.
 - *Flatten the stalled sail.* `FOIL.plateNormalForce` does nothing here at all —
   identical band at every value from 0.7 to 1.6.
+
+**And one that is cheaper than any of them, found in the prior art rather than
+reasoned out.** *By the Lee* computes residuary resistance from the Delft series,
+which is fitted for Froude numbers of 0.1 to 0.6, and clamps below that — so
+under about 1.4 kt its hull drag stops falling with speed and sits at a constant.
+That is exactly the missing slope at rest, arrived at by accident: it is an
+empirical formula being held inside its range, not a decision about low-speed
+sailing. A constant floor is far cheaper here than a linear term, because it
+stops mattering as soon as the boat is moving — **5 N removes the fold and costs
+about 1% of the polar at every point of sail in 10 kt** (4.19 → 4.15 kt close
+hauled, 5.58 → 5.56 on a beam reach), against the linear term's doubling at a
+knot. It is not adopted, and the reason is not the price: a constant drag at rest
+is static friction, which water does not have, and it would make the boat stop
+dead in finite time where
+[§3.5's integration](#35-hull-resistance-and-integration) says it coasts like
+`1/t`. It is recorded because it is the one middle option between doing nothing
+and modelling leeway, and a later pass that wants the boat to *stay* stopped in
+irons should start here rather than rediscover it.
 
 So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
 pre-`pos-i4o` curve the same band sat at TWA 36.3°–37.5° and split 2.934 kt with
