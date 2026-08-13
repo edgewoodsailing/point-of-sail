@@ -63,14 +63,20 @@ import { formatNumber, svgElement } from "./svg.ts";
 // --- Taste ------------------------------------------------------------------
 
 /**
- * How long the yarn is when it is streaming, in metres.
+ * How long the yarn is when it is streaming, in metres — about twelve inches,
+ * which is roughly what is actually tied in the school's rigging.
  *
- * Not the length of real telltale yarn, which is about ten inches and would draw
- * a 4 px stub. This is a drawing of a boat rather than a scale plan, and the
- * mark has to be readable across a table (§4.2's premise) — so it is sized to be
- * legible and kept well under the boom's length so it can never read as a spar.
+ * Halved from a first attempt at 0.62 m, and the honest account is that the
+ * first figure was drawn to be *legible* rather than to be right, on the
+ * assumption that real yarn would vanish at this scale. It does not: at 0.31 m
+ * the mark is still about 24 px on an iPad, which is plenty for something whose
+ * job is carried by motion rather than by size.
+ *
+ * Worth keeping short for a reason beyond fidelity. The longer it was, the more
+ * it competed with the two velocity arrows, which are the marks that *do* mean
+ * length — and a telltale means nothing but direction.
  */
-const YARN_LENGTH: Meters = 0.62;
+const YARN_LENGTH: Meters = 0.31;
 
 /**
  * What fraction of its length the yarn shows when there is no wind to stream in.
@@ -115,13 +121,18 @@ const YARN_SAMPLES = 14;
 /**
  * Ripple amplitude, as a fraction of the drawn length.
  *
- * Much larger than the sail's 4% (`render/sail.ts`), and deliberately: a
- * fluttering sail is reporting a *fault* and must stay legible as a sail, while
- * a telltale flicking about is what a healthy one does. This is the mark meant
- * to catch the eye across a table, so it moves like yarn rather than shivering
- * like cloth.
+ * Larger than the sail's 4% (`render/sail.ts`), because a fluttering sail is
+ * reporting a *fault* and must stay legible as a sail, while a telltale flicking
+ * about is what a healthy one does.
+ *
+ * But not as large as it first was. **The motion has to be enough to catch the
+ * eye and small enough to leave the direction readable**, and those pull against
+ * each other: this mark's entire content is a bearing, so amplitude spent on
+ * liveliness is precision taken away from the one thing it says. Pulled back
+ * from 11% once the mark was proven to read as yarn — the movement had done its
+ * job of drawing the eye, and past that it was only blurring the answer.
  */
-const YARN_AMPLITUDE_FRACTION = 0.11;
+const YARN_AMPLITUDE_FRACTION = 0.07;
 
 /**
  * **Less than one wave along the yarn**, which is the difference between yarn
@@ -151,8 +162,13 @@ const YARN_HZ = 4.5;
  * sweep swings the whole free end about the tie, which is what the eye reads as
  * *blowing*. The ripple is then a small thing riding on top of it, not the
  * subject.
+ *
+ * It is also the constant that costs the most precision, for the same reason it
+ * buys the most life: it is literally an error bar on the bearing the telltale
+ * reports. At 7° the yarn swings about ±8° either side of the apparent wind,
+ * which is inside the resolution anyone reads a piece of yarn to.
  */
-const YARN_SWEEP: Radians = degreesToRadians(16);
+const YARN_SWEEP: Radians = degreesToRadians(7);
 
 /**
  * The phase a frozen telltale is drawn at, under `prefers-reduced-motion`.
