@@ -29,7 +29,7 @@ import { RADIAL, touchScale } from "../input/gestures.ts";
 import { hullPathData } from "./hull.ts";
 import { boatTransform, SCENE } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
-import { ARROW_REACH } from "./wind.ts";
+import { radiusForWind, WIND_CONTROL } from "./wind.ts";
 import "./geometry.css";
 
 /** Samples along a clew's travel arc. Smooth enough at the sizes in play. */
@@ -163,6 +163,24 @@ export function createWindKnobs(root: HTMLElement): HTMLElement {
   });
   mode.append(modeCaption, modeSelect);
 
+  const polarity = document.createElement("label");
+  const polarityCaption = document.createElement("span");
+  polarityCaption.textContent = "More wind";
+  const polaritySelect = document.createElement("select");
+  for (const [value, label] of [
+    ["inward", "drag inward (tip tracks finger)"],
+    ["outward", "drag outward (dial-like)"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    polaritySelect.append(option);
+  }
+  polaritySelect.addEventListener("change", () => {
+    WIND_CONTROL.inward = polaritySelect.value === "inward";
+  });
+  polarity.append(polarityCaption, polaritySelect);
+
   const opacity = document.createElement("label");
   const opacityCaption = document.createElement("span");
   opacityCaption.textContent = "Wind layer";
@@ -181,7 +199,7 @@ export function createWindKnobs(root: HTMLElement): HTMLElement {
   });
   opacity.append(opacityCaption, opacityInput, opacityValue);
 
-  strip.append(mode, opacity);
+  strip.append(mode, polarity, opacity);
   return strip;
 }
 
@@ -239,7 +257,9 @@ export function createGeometryOverlay(
   const contentRule = rule("pos-geo-content", SCENE.contentRadius);
   const ringRule = rule("pos-geo-ring", SCENE.windRingRadius);
   const shortRule = rule("pos-geo-short", SCENE.shortRadius);
-  const arrowRule = rule("pos-geo-arrow", ARROW_REACH);
+  /** Where the radial control's handle stands right now — the arrowhead, under
+      `inward`. Set per frame, because it is the one reference that moves. */
+  const handleRule = rule("pos-geo-arrow", 0);
 
   /** The rotation dead zone, shared by the hull and the wind. */
   const dead = svgElement("circle", { class: "pos-geo-dead", cx: 0, cy: 0 });
@@ -250,7 +270,7 @@ export function createGeometryOverlay(
     "vector-effect": "non-scaling-stroke",
   });
 
-  world.append(band, gap, sweep, dead, contentRule, arrowRule, ringRule, shortRule, ruler);
+  world.append(band, gap, sweep, dead, contentRule, handleRule, ringRule, shortRule, ruler);
 
   // --- Boat frame -----------------------------------------------------------
 
@@ -371,9 +391,11 @@ export function createGeometryOverlay(
           ? span(SCENE.boatRadius + scale.grab, scale.windRing.inner, metersPerPixel)
           : "none — wind is the fall-through",
       );
+      const handle = radiusForWind(state.wind.speed);
+      handleRule.setAttribute("r", formatNumber(handle));
       report(
         "band",
-        `all water · ${RADIAL.absolute ? "absolute" : "relative"} radial`,
+        `all water · ${RADIAL.absolute ? "absolute" : "relative"} · ${WIND_CONTROL.inward ? "in" : "out"}=more`,
       );
       report("ring", radius(SCENE.windRingRadius, metersPerPixel));
       report("short", radius(SCENE.shortRadius, metersPerPixel));

@@ -63,7 +63,6 @@ import {
   knotsToMetersPerSecond,
   metersPerSecondToKnots,
   vectorFromAngle,
-  ZERO_VECTOR,
 } from "../model/units.ts";
 import { SCENE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
@@ -71,49 +70,76 @@ import { formatNumber, svgElement } from "./svg.ts";
 // --- Drawing taste ----------------------------------------------------------
 
 /**
- * PROTOTYPE — the arrow's length is the wind's *speed*, and its tail is the
+ * PROTOTYPE — the arrow's length is the wind's *speed*, and its **tip** is the
  * radial control's handle.
  *
- * The arrow runs from `radiusForSpeed(speed)` on the bearing the wind blows
- * *from*, inward to the scene origin, so:
+ * The arrow's tail stays on the ring, where it has always been, and only the tip
+ * moves: it flies in from the perimeter by `arrowLength(speed)`, reaching the
+ * scene origin — the mast — at the top of the range and vanishing into the ring
+ * in a calm. So:
  *
- * - **Its length is the wind**, on one scale: 20 kt — the whole of the range §5
- *   teaches in — puts the tail on the drawn ring, and a calm shrinks it to
- *   nothing. That is the scale pos-bwd.5 wants for the two arrows, arrived at
- *   from the other direction.
- * - **Its head is on the boat**, which is where a wind vector's head belongs if
- *   it is ever going to compose head-to-tail with the boat's own velocity.
- * - **Its tail is under the finger.** A pointer's radius *is* the speed and its
- *   bearing *is* the direction, so the whole water is one radial control and the
- *   arrow is drawn where the hand left it.
+ * - **Its length is the wind**, on one scale, and 20 kt is full scale because
+ *   20 kt is the whole of the range §5 teaches in. That is pos-bwd.5's shared
+ *   scale at its "reach the centre" row, 0.2825 m/kt, which that bead's own
+ *   table makes the cheapest of the four for the speed arrow.
+ * - **It is never buried.** An arrow anchored at the origin instead is entirely
+ *   inside the boat's swept disc below 12.7 kt — which is most of the teaching
+ *   range, 6–14 kt — and at 5 kt reads as a piece of deck hardware lying across
+ *   the sails. Anchoring at the ring means the arrow is always outside the boat
+ *   at the wind a student is usually in, and only crosses it when the wind is
+ *   genuinely strong. The overlay then costs something exactly when it says
+ *   something.
+ * - **Its tip is under the finger**, which is what makes the water one radial
+ *   control: a pointer's radius is where the arrowhead goes, and its bearing is
+ *   where the wind comes from.
  *
- * The consequence to look at rather than reason about: the arrow now crosses the
- * boat at any real wind. That is what the translucent display layer in
- * `scene.css` is for — and it is the question pos-bwd.5 left open, answered by
- * letting the arrow overlay the sails instead of stopping short of them.
+ * The consequence worth judging rather than reasoning about: **dragging inward
+ * makes more wind**, because the tip is the handle and the tip travels inward as
+ * the wind builds. {@link WIND_CONTROL} is the switch, and neither setting is
+ * free:
+ *
+ * - **Inward (the default) tracks.** Your finger is the arrowhead and the
+ *   arrowhead is under your finger, which is what direct manipulation means, and
+ *   it is pos-bwd.6's "drag the arrowhead" with the requirement to hit the
+ *   arrowhead removed. Against it: "further out is more" is what a dial teaches,
+ *   and this is the reverse.
+ * - **Outward reads the way a dial does** — and then the arrowhead moves the
+ *   opposite way to the hand moving it, which is usually the worse of the two
+ *   mistakes. Under relative dragging the finger is not on any drawn point
+ *   anyway, so it is not incoherent; it just has nothing to track.
  */
-function radiusForSpeed(speed: MetersPerSecond): Meters {
+export const WIND_CONTROL = { inward: true };
+
+function arrowLength(speed: MetersPerSecond): Meters {
   const fraction = metersPerSecondToKnots(speed) / WIND_SPEED_KT.max;
   return SCENE.windRingRadius * Math.min(Math.max(fraction, 0), 1);
 }
 
 /**
- * The inverse: what wind a pointer at this radius is asking for, clamped to the
- * range the control offers.
+ * What wind a pointer at this radius is asking for, clamped to the range the
+ * control offers.
  *
  * Exported for `input/gestures.ts`, which is the whole point — the mapping is
- * one function read both ways, so the arrow cannot end up drawn on a different
- * scale from the one the finger is moving it on.
+ * one pair of functions read both ways, so the arrow cannot end up drawn on a
+ * different scale from the one the finger is moving it on.
  */
 export function speedForRadius(radius: Meters): MetersPerSecond {
-  const fraction = radius / SCENE.windRingRadius;
+  const travel = WIND_CONTROL.inward ? SCENE.windRingRadius - radius : radius;
+  const fraction = travel / SCENE.windRingRadius;
   const knots = WIND_SPEED_KT.max * Math.min(Math.max(fraction, 0), 1);
   return knotsToMetersPerSecond(knots);
 }
 
-/** What radius a given wind speed puts the arrow's tail at. Inverse of the above. */
+/**
+ * Where this wind speed puts the control's handle.
+ *
+ * Under `inward` that is the arrowhead itself, so the drawn mark and the grabbed
+ * point are the same place. Under `outward` it is a radius with nothing drawn on
+ * it — which is the honest thing to say about that setting.
+ */
 export function radiusForWind(speed: MetersPerSecond): Meters {
-  return radiusForSpeed(speed);
+  const length = arrowLength(speed);
+  return WIND_CONTROL.inward ? SCENE.windRingRadius - length : length;
 }
 
 /** Barb length and how far the barbs splay back from the tip. */
@@ -150,9 +176,9 @@ function point(v: Vec2): string {
 }
 
 /**
- * The arrow: tail at the radius this wind speed earns, tip at the origin, along
- * the bearing the wind blows *from* — so it flies the way the wind is going and
- * its length is how hard it is blowing.
+ * The arrow: tail on the ring at the bearing the wind blows *from*, flying
+ * inward along the same radial by however hard it is blowing — so it points the
+ * way the wind is going and its length is the speed.
  *
  * The head is path geometry in metres rather than a `marker`. Markers are sized
  * in stroke widths by default, and every stroke in this drawing is
@@ -160,21 +186,26 @@ function point(v: Vec2): string {
  * has been taken out of user space — which draws an arrowhead the size of the
  * boat.
  *
- * A calm draws nothing at all rather than an arrowhead sitting on the mast.
- * There is nothing to grab in a calm and nothing needs grabbing: the whole water
- * is the control now, so the wind is recoverable from anywhere by dragging
- * outward. That is the zero-wind edge case pos-bwd.6 had to design around,
- * dissolved rather than solved.
+ * **A calm draws nothing**, and needs to draw nothing. The zero-wind edge case
+ * pos-bwd.6 had to design a grabbable minimum for is dissolved rather than
+ * solved: the whole water is the control, so a wind dragged away to nothing is
+ * recoverable from anywhere on the surface.
+ *
+ * The barbs shrink with the shaft below `4 × ARROW_BARB`, so a light air draws a
+ * small arrow rather than an arrowhead with no arrow behind it. Without it the
+ * mark inverts at the bottom of the range, which is precisely where a student is
+ * trying to read whether there is any wind at all.
  */
 export function windArrowPathData(from: Radians, speed: MetersPerSecond): string {
-  const length = radiusForSpeed(speed);
-  if (length <= ARROW_BARB) return "";
+  const length = arrowLength(speed);
+  if (length <= 0) return "";
 
-  const tail = vectorFromAngle(from, length);
-  const tip = ZERO_VECTOR;
+  const tail = vectorFromAngle(from, SCENE.windRingRadius);
+  const tip = vectorFromAngle(from, SCENE.windRingRadius - length);
+  const barbLength = Math.min(ARROW_BARB, length / 4);
   // Barbs splay back upwind from the tip, which is bearing `from` again.
   const barb = (sign: number): Vec2 =>
-    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, ARROW_BARB));
+    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, barbLength));
 
   return [
     `M ${point(tail)} L ${point(tip)}`,
