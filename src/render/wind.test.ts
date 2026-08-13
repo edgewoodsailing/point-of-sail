@@ -64,6 +64,9 @@ const deg = degreesToRadians;
  */
 const MEASURED_WIND = knotsToMetersPerSecond(10);
 
+/** The arrow's length at that wind: half the radius, since 20 kt is full scale. */
+const MEASURED_ARROW = SCENE.windRingRadius / 2;
+
 
 
 /** Every `x y` pair in some path data, in order. */
@@ -113,12 +116,12 @@ describe("wind ring (DESIGN.md §4.1, §5)", () => {
 });
 
 describe("wind arrow", () => {
-  it.skip("hangs its tail on the ring and flies inward, at every bearing", () => {
+  it("hangs its tail on the ring and flies inward, at every bearing", () => {
     for (let d = 0; d < 360; d += 5) {
       const from = deg(d);
       const [tail, tip] = pathPoints(windArrowPathData(from, MEASURED_WIND));
       expect(radius(tail!)).toBeCloseTo(SCENE.windRingRadius, METRES);
-      expect(radius(tip!)).toBeCloseTo(0, METRES);
+      expect(radius(tip!)).toBeCloseTo(SCENE.windRingRadius - MEASURED_ARROW, METRES);
       // Tail and tip on the same radial, which is what "flies inward" means:
       // the arrow points at the boat, not past it.
       expect(normalizeSigned(angleOfVector(tail!) - from)).toBeCloseTo(0, BEARING);
@@ -126,14 +129,14 @@ describe("wind arrow", () => {
     }
   });
 
-  it.skip("points the way the wind blows, not the way it comes from", () => {
+  it("points the way the wind blows, not the way it comes from", () => {
     // `wind.from` is the direction it blows *from* (§2), so a northerly has its
     // tail at the top of the scene and its head toward the boat — the arrow
     // flies south. Getting this backwards is the one mistake that would still
     // look plausible, so it is pinned against an absolute direction.
     const [tail, tip] = pathPoints(windArrowPathData(deg(0), MEASURED_WIND));
     expect(tail!.y).toBeCloseTo(-SCENE.windRingRadius, METRES);
-    expect(tip!.y).toBeCloseTo(-(0), METRES);
+    expect(tip!.y).toBeCloseTo(-(SCENE.windRingRadius - MEASURED_ARROW), METRES);
     expect(tip!.y).toBeGreaterThan(tail!.y); // +y is down the screen, i.e. south
   });
 
@@ -158,10 +161,19 @@ describe("wind arrow", () => {
 });
 
 describe("points-of-sail graduations", () => {
-  it.skip("draws seven marks, every 45°, with the eighth left to the arrow", () => {
+  it("draws seven marks, every 45°, with the eighth left to the arrow", () => {
     const from = deg(200);
+    // **Folded onto +π before sorting.** The marks are emitted at exact 45°
+    // steps, but path data is rounded to four decimals, so the 180° tick parses
+    // back as −179.999445° — and `normalizeSigned` puts that on the far end of
+    // the range, which rotates the sorted array by one against `expected`. The
+    // seam is a property of reading coordinates back out of a string, not of the
+    // graduations; with the old 5.65 m ring the rounding happened to fall on the
+    // +π side and this passed by luck.
+    const halfTurn = Math.PI;
     const offsets = tickBearings(from)
       .map((bearing) => normalizeSigned(bearing - from))
+      .map((offset) => (Math.abs(Math.abs(offset) - halfTurn) < 1e-3 ? halfTurn : offset))
       .sort((a, b) => a - b);
     expect(offsets).toHaveLength(TICKS_DRAWN);
     // ±45 close-hauled, ±90 a beam reach, ±135 a broad reach, 180 a run — every

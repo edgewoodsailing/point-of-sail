@@ -467,7 +467,7 @@ describe("state handling", () => {
     ).toBeLessThan(1e-4);
   });
 
-  it.skip("settles on a speed where the forces actually balance", () => {
+  it("settles on a speed where the forces actually balance", () => {
     // The definition of the thing, asserted directly against the forces rather
     // than against another integration — and the property that a five-second
     // settle step quietly broke. Stepping that far is not a step toward

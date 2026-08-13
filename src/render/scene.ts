@@ -246,9 +246,11 @@ export function sceneExtent(widthPx: number, heightPx: number): SceneExtent {
  * wind a student is ever taught in, and pinning it there keeps the composition
  * true at every wind they can set. A knee or a clamp inside the range would make
  * the triangle a lie exactly where the breeze gets interesting. It works out at
- * 0.2825 m per knot, which is pos-bwd.5's own table at its "reach the centre"
- * row — the row that bead measured as the cheapest of the four for the speed
- * arrow.
+ * **0.2174 m per knot**, measured. (An earlier draft of this docblock said
+ * 0.2825, which was the figure while `windRingRadius` was still the declared
+ * 5.65 m; solving the radius moved it and the number here did not follow. It is
+ * `windRingRadius / 20 kt` by construction, so it is derived rather than quoted
+ * — but a stale figure in prose is exactly as misleading as one in code.)
  *
  * Where this constant should *live* is a real question this prototype ducks: it
  * is stated here because both renderers already import the scene, and it reaches

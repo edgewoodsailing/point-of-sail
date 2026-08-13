@@ -4,7 +4,7 @@ import { bindPointers } from "./input/pointer.ts";
 import { knotsFromWindSpeed, WIND_SPEED_KT, windSpeedFromKnots } from "./input/windSpeed.ts";
 import { clampTrim } from "./model/boat.ts";
 import type { CollapseEdge } from "./model/sail.ts";
-import { jibSheetFor, rigForce } from "./model/sail.ts";
+import { cleatedAt, rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle, step } from "./model/simulation.ts";
 import type { Degrees, Meters, Newtons, Radians, Seconds } from "./model/units.ts";
@@ -67,19 +67,21 @@ if (controls === null) {
 let state: SimState = settle({
   wind: { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
   motion: { heading: degreesToRadians(35), speed: 0 },
-  trim: {
-    mainAngle: degreesToRadians(-75),
-    // The sheet the boom is hanging on, not a second copy of the angle: settle()
-    // now moves the boom too, so the opening state is where this SHEET puts it
-    // in this wind rather than where the angle above was written.
-    mainSheet: degreesToRadians(75),
-    jibAngle: degreesToRadians(-70),
-    // A length, not an angle: how far the clew is from the working car. Derived
-    // from the angle above rather than written down, so the two cannot disagree.
-    jibSheet: jibSheetFor(degreesToRadians(-70), -1),
-    jibSheetSide: -1,
-    jibSet: true,
-  },
+  // Cleated, so the sheets hold the angles asked for and `settle` leaves them
+  // where this says. Built by `cleatedAt` rather than field by field: writing
+  // `jibSheet` by hand measured it against the rigid 7'6" foot while the model
+  // reads it back against the bellied chord, which opened the boat at −71.36°
+  // when the line above said −70. The helper passes the live chord, which is
+  // the whole reason it exists.
+  trim: cleatedAt(
+    degreesToRadians(-75),
+    degreesToRadians(-70),
+    true,
+    apparentWind(
+      { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
+      { heading: degreesToRadians(35), speed: 0 },
+    ),
+  ),
   mainHeld: false,
   jibHeld: false,
 });

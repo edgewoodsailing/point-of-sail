@@ -47,7 +47,7 @@
  * the box on any square-or-portrait viewport.
  *
  * The bend is placed at the ring rather than at hull speed on purpose, and it
- * is what makes this change invisible: **every speed out to 6.87 kt draws
+ * was what made pos-w4v's change invisible: **every speed out to the ring drew
  * exactly what it drew before**, because that is where the linear tip reaches
  * `windRingRadius`. What compresses is only the 0.25 m between the ring and the
  * edge — the one band in the drawing that nothing else uses, since `wind.ts`
@@ -63,7 +63,7 @@
  * ## Why this stays, once nothing can reach the clip
  *
  * pos-d7u depowers the rig in a breeze and drops the fastest reachable speed
- * from 8.9 kt to about 6.4 — *below* the 6.87 kt ring crossing. So once it
+ * from 8.9 kt to about 6.4 — which used to be *below* the ring crossing. So once it
  * lands the knee never engages in normal use and the arrow is linear over the
  * whole reachable range, which can make this look like dead weight. It is not,
  * and the reason is the same one that made it wrong to clamp at a measured top
@@ -155,7 +155,7 @@ const TAIL_RADIUS: Meters = ARROW_TAIL_RADIUS;
 export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 
 /**
- * PROTOTYPE (pos-bwd.5) — how long the arrow is at hull speed, ≈ 1.60 m.
+ * PROTOTYPE (pos-bwd.5) — how long the arrow is at hull speed, **1.227 m**.
  *
  * **Derived from `VELOCITY_SCALE` now, not from `SCENE.contentRadius`.** That is
  * the whole of the change: the two arrows are both velocities, so their lengths
@@ -181,13 +181,22 @@ export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 export const SPEED_REACH: Meters = VELOCITY_SCALE * SPEED_FULL_SCALE;
 
 /**
- * The longest arrow still drawn by the plain linear law, ≈ 2.53 m — the one
- * whose tip lands on the wind ring, at about 6.87 kt.
+ * The longest arrow still drawn by the plain linear law — the one whose tip
+ * lands on the wind ring.
  *
- * Everything at or below this is untouched by pos-w4v's bend, which is the
- * whole reason the knee is here rather than at `SPEED_REACH`: the ring is the
- * only landmark in the drawing a student can see the arrow cross, and moving
- * the speed that crosses it would be a real change to what the picture says.
+ * **It is now the same number as `SPEED_REACH`, and that is algebra rather than
+ * coincidence.** Substituting `R = Rtail·Vwind/(Vwind − Vhull)` makes
+ * `windRingRadius − TAIL_RADIUS` identical to `VELOCITY_SCALE × hull speed`;
+ * measured, the two differ in the last ulp (1.2274683188377038 against …36). So
+ * the knee sits *at hull speed*, not past it.
+ *
+ * This docblock used to say ≈ 2.53 m, crossing at about 6.87 kt, and to argue
+ * that placing the knee at the ring rather than at `SPEED_REACH` was what kept
+ * pos-w4v's bend invisible. That argument is now vacuous — the two places are
+ * one place — and it is recorded rather than deleted because it is the reasoning
+ * a reader would otherwise reconstruct and trust. What replaced it: the shared
+ * velocity scale is worth a 4% shortfall at the model's top speed, which is the
+ * whole of what the bend now costs.
  */
 export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
 

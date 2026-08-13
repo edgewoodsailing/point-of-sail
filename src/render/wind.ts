@@ -79,15 +79,17 @@ import { formatNumber, svgElement } from "./svg.ts";
  *
  * - **Its length is the wind**, on one scale, and 20 kt is full scale because
  *   20 kt is the whole of the range §5 teaches in. That is pos-bwd.5's shared
- *   scale at its "reach the centre" row, 0.2825 m/kt, which that bead's own
- *   table makes the cheapest of the four for the speed arrow.
- * - **It is never buried.** An arrow anchored at the origin instead is entirely
- *   inside the boat's swept disc below 12.7 kt — which is most of the teaching
- *   range, 6–14 kt — and at 5 kt reads as a piece of deck hardware lying across
- *   the sails. Anchoring at the ring means the arrow is always outside the boat
- *   at the wind a student is usually in, and only crosses it when the wind is
- *   genuinely strong. The overlay then costs something exactly when it says
- *   something.
+ *   scale — 0.2174 m/kt once the ring's radius is solved from it.
+ * - **It is not buried.** An arrow anchored at the origin instead is entirely
+ *   inside the boat's swept disc below 12.7 kt — most of the teaching range —
+ *   and at 5 kt reads as deck hardware lying across the sails. Anchored at the
+ *   ring, the whole arrow is clear of the boat's disc up to **3.49 kt** and its
+ *   *tail* is clear at every wind, so there is always a length of it out in open
+ *   water to read and to grab. (An earlier draft of this bullet claimed it was
+ *   "always outside the boat", which was true of the 5.65 m ring it was written
+ *   against and stopped being true when the radius was solved down to 4.35 m.
+ *   The arrow crossing the sails in a breeze is the intent — that is what the
+ *   translucent layer is for — but "always outside" was simply wrong.)
  * - **Its tip is under the finger**, which is what makes the water one radial
  *   control: a pointer's radius is where the arrowhead goes, and its bearing is
  *   where the wind comes from.

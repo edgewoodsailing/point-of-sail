@@ -13,6 +13,7 @@ import {
   hullResistanceSlope,
   keelInducedDrag,
 } from "./hull.ts";
+import { clampTrim } from "./boat.ts";
 import type { RigTrim } from "./sail.ts";
 import {
   depoweringFactor,
@@ -22,7 +23,8 @@ import {
   naturalMainAngle,
   rigForce,
 } from "./sail.ts";
-import type { MetersPerSecond, Seconds } from "./units.ts";
+import type { MetersPerSecond, Radians, Seconds } from "./units.ts";
+import { normalizeSigned } from "./units.ts";
 import type { BoatMotion, TrueWind } from "./wind.ts";
 import { apparentWind } from "./wind.ts";
 
@@ -223,10 +225,12 @@ function advance(state: SimState, dt: Seconds): SimState {
       ...state.trim,
       mainAngle: state.mainHeld
         ? state.trim.mainAngle
-        : easeSailAngle(
-            state.trim.mainAngle,
-            naturalMainAngle(state.trim.mainSheet, apparent),
-            dt,
+        : clampTrim(
+            easeSailAngle(
+              state.trim.mainAngle,
+              naturalMainAngle(state.trim.mainSheet, apparent),
+              dt,
+            ),
           ),
       // The jib runs on the same clock and the same rule, with the interval its
       // two-circle geometry gives instead of the boom's symmetric one. Struck,
@@ -239,15 +243,17 @@ function advance(state: SimState, dt: Seconds): SimState {
       jibAngle:
         state.jibHeld || !state.trim.jibSet
           ? state.trim.jibAngle
-          : easeSailAngle(
-              state.trim.jibAngle,
-              naturalJibAngle(
+          : clampTrim(
+              easeSailAngle(
+                state.trim.jibAngle,
+                naturalJibAngle(
                 state.trim.jibSheet,
                 state.trim.jibSheetSide,
                 apparent,
-                jibChord(state.trim.jibAngle, apparent),
+                  jibChord(state.trim.jibAngle, apparent),
+                ),
+                dt,
               ),
-              dt,
             ),
     },
   };
@@ -321,6 +327,26 @@ const SETTLE_STEP: Seconds = MAX_STEP;
 const SETTLE_TOLERANCE: MetersPerSecond = 1e-8;
 
 /**
+ * How still the *sails* have to be before {@link settle} calls it settled, in
+ * radians per step.
+ *
+ * There has to be one, and its absence was a real bug rather than an omission.
+ * `advance` evolves the sail angles as well as the speed (§3.4), so a state that
+ * starts at rest with the rig not yet driving moves the *speed* by exactly zero
+ * on the first step while the boom is mid-swing — and a convergence test that
+ * watches only the speed breaks out there and returns a state that is not
+ * settled at all. Measured on the case that caught it: main alone, 80 kt, boom
+ * released from +85°, `settle` returned **0.00 kt with the boom at −6.2°**
+ * against a true steady state of 4.21 kt at −85°. Calling `settle` on its own
+ * output converged, which is the signature of an early break.
+ *
+ * `1e-8` rad is the same order as the speed tolerance and far below anything
+ * drawable — the boom eases exponentially, so this is reached a few time
+ * constants in rather than asymptotically.
+ */
+const SETTLE_ANGLE_TOLERANCE: Radians = 1e-8;
+
+/**
  * How many frames {@link settle} will run before giving up — half an hour of
  * simulated sailing.
  *
@@ -372,8 +398,17 @@ export function settle(state: SimState): SimState {
   for (let iteration = 0; iteration < SETTLE_LIMIT; iteration += 1) {
     const next = step(settled, SETTLE_STEP);
     const change = Math.abs(next.motion.speed - settled.motion.speed);
+    // **The sails have to be still too.** `settle` promises a state where the
+    // forces balance, and the rig is now part of what has to stop moving before
+    // that is true. Both angles, because either can be the slow one: the boom
+    // swings on `BOOM_RESPONSE` while the jib's clew rides a chord that is
+    // itself still changing as the sail fills.
+    const swing = Math.max(
+      Math.abs(normalizeSigned(next.trim.mainAngle - settled.trim.mainAngle)),
+      Math.abs(normalizeSigned(next.trim.jibAngle - settled.trim.jibAngle)),
+    );
     settled = next;
-    if (change < SETTLE_TOLERANCE) break;
+    if (change < SETTLE_TOLERANCE && swing < SETTLE_ANGLE_TOLERANCE) break;
   }
 
   return settled;

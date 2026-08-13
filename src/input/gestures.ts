@@ -486,9 +486,11 @@ function axisFor(target: GrabTarget, state: SimState): Axis {
         radial: {
           radius: radiusForWind(state.wind.speed),
           applyRadius: (of, radius) => {
-            // `speedForRadius` clamps to the control's range, so dragging past
-            // the ring holds at 20 kt and dragging through the centre floors at
-            // a calm rather than going negative.
+            // `speedForRadius` clamps to the control's range at both ends.
+            // Under the default inward polarity that means dragging to the
+            // centre holds at 20 kt and dragging out past the ring floors at a
+            // calm — the opposite way round from what this comment used to say,
+            // which is the one behaviour a reader would check it for.
             const speed = speedForRadius(radius);
             // Identity when nothing moved, because `input/pointer.ts` compares
             // by identity to decide whether a move was worth writing. A drag
@@ -616,7 +618,14 @@ export function beginGrab(
   // nothing, and moves a centimetre.
   if (reserved) return null;
 
-  if (!taken.has("hull") && insideHull(point)) {
+  if (insideHull(point)) {
+    // **The deck is the boat's whether or not the hull is free.** A second finger
+    // landing on a held deck used to fall through to the wind, so a pointer
+    // demonstrably *on the boat* drove a world-frame control — which is exactly
+    // the "everything else is the wind" rule failing the one case where it is
+    // visibly untrue. Blocking is the quiet answer, and it is the same answer a
+    // clew disc already gives to a second finger.
+    if (taken.has("hull")) return null;
     return reference({ target: "hull", offset: null }, state, world, scale.deadZone);
   }
 

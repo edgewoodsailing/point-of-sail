@@ -599,7 +599,14 @@ export function naturalJibAngle(
   const half = acos(cosine);
   const gap = normalizeSigned(weathervane - centre);
   const settled = normalizeSigned(centre + Math.min(Math.max(gap, -half), half));
-  return clearMast(settled, side);
+  // **Clamped to the shrouds like every other trim.** The interval is centred on
+  // `a₀` rather than on zero, so `centre + half` can reach past ±SWING_LIMIT —
+  // measured at 92.01°, from a jib cleated at the drag clamp and then borne away
+  // to a run. That is outside the range `render/scene.ts` sweeps when it sizes
+  // the boat's swept disc, so the clew would leave the disc the scene reserves
+  // for it. §5's rule is that *every* site setting a sail angle routes through
+  // the clamp; the integrator is a site.
+  return clampTrim(clearMast(settled, side));
 }
 
 /**
@@ -649,8 +656,14 @@ export function cleatedAt(
   jibSet: boolean,
   apparent: ApparentWind,
 ): RigTrim {
-  // Leeward, from the wind, exactly as `naturalMainAngle` picks the boom's side.
-  const lee = Math.sign(-apparent.angle) || 1;
+  // Leeward, from the wind, and taken **through the same normalisation
+  // `naturalMainAngle` uses** rather than from the raw angle. At exactly dead
+  // downwind `apparent.angle` is +π — `angleOfVector` folds −π onto +π — so
+  // `Math.sign(-angle)` gives −1 while `normalizeSigned(-π)` gives +π, and the
+  // two functions put the boom on opposite sides. The symptom was a run built by
+  // `cleatedAt` gybing itself within half a second of the first step, which is
+  // every dead-run state in the polar sweep.
+  const lee = Math.sign(normalizeSigned(-apparent.angle)) || 1;
   const main = lee * Math.abs(mainAngle);
   const jib = lee * Math.abs(jibAngle);
   return {

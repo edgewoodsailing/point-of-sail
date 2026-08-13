@@ -1996,7 +1996,7 @@ lands exactly on it. So a full-length arrow still means *hull speed*, which is a
 thing worth recognising; what changed is that the length now also means
 *comparable to the wind arrow*, which is the more valuable of the two.
 
-**The arrow shrank about 1.30× at hull speed**, 2.08 m to 1.60 m. That is not a
+**The arrow shrank at hull speed**, from 2.08 m to 1.227 m. That is not a
 regression: the boat genuinely *is* several times slower than the top of the wind
 range, and the proportions being true is the entire point. What the drawing lost
 in the boat's arrow it more than got back in the 1.30× zoom the same derivation
@@ -2035,7 +2035,7 @@ square-or-portrait viewport.
 
 Three choices were on the table — clamp, compress, or accept the clip — and the
 bend used to be placed **at the ring rather than at hull speed** deliberately,
-so that every speed out to 6.87 kt drew exactly what it drew before. Bending at
+so that every speed out to the ring drew exactly what it drew before. Bending at
 hull speed instead, the argument ran, would shorten the arrow across 5.6–8 kt
 where the boat actually sails.
 

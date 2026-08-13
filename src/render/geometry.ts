@@ -26,6 +26,8 @@ import type { SimState } from "../model/simulation.ts";
 import type { Meters, Vec2 } from "../model/units.ts";
 import { vectorFromAngle } from "../model/units.ts";
 import { RADIAL, touchScale } from "../input/gestures.ts";
+import { jibChord } from "../model/sail.ts";
+import { apparentWind } from "../model/wind.ts";
 import { hullPathData } from "./hull.ts";
 import { boatTransform, SCENE } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
@@ -360,6 +362,10 @@ export function createGeometryOverlay(
     legend,
 
     update(state: SimState): void {
+      // Hidden costs nothing. `surfaceSize()` reads `clientWidth`, which forces
+      // a synchronous layout immediately after the frame's SVG writes — a
+      // reflow at 60 Hz for an overlay that is `display: none` by default.
+      if (element.classList.contains("pos-geo-off")) return;
       const scale = touchScale(state, pixelsToMeters);
       const metersPerPixel = pixelsToMeters(1);
 
@@ -369,7 +375,15 @@ export function createGeometryOverlay(
       dead.setAttribute("r", formatNumber(scale.deadZone));
 
       place(mainDisc, mainClewPosition(state.trim.mainAngle), scale.grab);
-      place(jibDisc, jibClewPosition(state.trim.jibAngle), scale.grab);
+      // The live chord, because that is where `beginGrab` hit-tests. Drawing it
+      // on the rigid foot put the disc ~14 cm from the target it claims to show,
+      // which is the discrepancy `liveJibClew` exists to remove and exactly what
+      // this overlay's docblock promises not to do.
+      place(
+        jibDisc,
+        jibClewPosition(state.trim.jibAngle, jibChord(state.trim.jibAngle, apparentWind(state.wind, state.motion))),
+        scale.grab,
+      );
       jibDisc.classList.toggle("pos-geo-struck", !state.trim.jibSet);
       jibTravel.classList.toggle("pos-geo-struck", !state.trim.jibSet);
 
