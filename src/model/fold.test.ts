@@ -447,11 +447,11 @@ describe("what is left, and where it lives", () => {
  * leans, in knots.
  *
  * Small enough to be inside the linear stretch around zero, and far enough out
- * to clear the residue of the bisection below. At a boundary located to a
- * millionth of a degree the drive left at rest is around 1e-12 N — the drive
- * moves about 2 N per degree of TWA there — while a ten-thousandth of a knot
- * against the shallowest drive slope in the model, 3.5 N/(m/s), reads 1.8e-4 N.
- * Eight orders of margin.
+ * to clear the residue of the bisection below. Forty halvings take a one-degree
+ * bracket to about 1e-12 of a degree, and the drive moves some 2 N per degree of
+ * TWA there, so the drive left at rest is around 2e-12 N — while a
+ * ten-thousandth of a knot against the shallowest drive slope in the model,
+ * 3.5 N/(m/s), reads 1.8e-4 N. Eight orders of margin.
  */
 const REST_PROBE_KNOTS = 1e-4;
 
