@@ -108,8 +108,8 @@
 import { HULL, STATIONS } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
-import { add, degreesToRadians, magnitude, subtract, vectorFromAngle } from "../model/units.ts";
-import { SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
+import { add, degreesToRadians, vectorFromAngle } from "../model/units.ts";
+import { ARROW_TAIL_RADIUS, SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- The scale --------------------------------------------------------------
@@ -139,7 +139,7 @@ const HULL_GAP: Meters = 0.2;
  * astern, so sternway gets exactly the room headway does — `scene.test.ts` pins
  * that symmetry from the other side.
  */
-const TAIL_RADIUS: Meters = magnitude(subtract(STATIONS.bow, STATIONS.pivot)) + HULL_GAP;
+const TAIL_RADIUS: Meters = ARROW_TAIL_RADIUS;
 
 /**
  * The speed at which the arrow is exactly {@link SPEED_REACH} long.

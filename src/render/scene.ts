@@ -31,9 +31,9 @@
  */
 
 import type { SimState } from "../model/simulation.ts";
-import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
+import { HULL, jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
 import { WIND_SPEED_KT } from "../input/windSpeed.ts";
-import type { Meters, Radians, Vec2 } from "../model/units.ts";
+import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
 import { knotsToMetersPerSecond, magnitude, radiansToDegrees, subtract } from "../model/units.ts";
 import { createHullLayer, outlineRadius } from "./hull.ts";
 import { formatNumber, svgElement } from "./svg.ts";
@@ -52,6 +52,75 @@ function clewRadius(): Meters {
   }
   return farthest;
 }
+
+/**
+ * The clear water between the stem and the speed arrow's tail.
+ *
+ * An arrow welded to the stem reads as a bowsprit — part of the boat rather than
+ * a thing said about it. Lives here rather than in `render/speed.ts` because the
+ * ring's radius is now derived from it; see {@link ARROW_TAIL_RADIUS}.
+ */
+const BOW_GAP: Meters = 0.2;
+
+/**
+ * How far the speed arrow's *tail* stands from the pivot, ≈ 3.12 m.
+ *
+ * Because `STATIONS.pivot` is the midpoint of LOA the figure is the same astern,
+ * so sternway gets exactly the room headway does.
+ */
+export const ARROW_TAIL_RADIUS: Meters =
+  magnitude(subtract(STATIONS.bow, STATIONS.pivot)) + BOW_GAP;
+
+/** The two speeds that between them fix the whole drawing's scale. */
+const WIND_FULL_SCALE: MetersPerSecond = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+const BOAT_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
+
+/**
+ * PROTOTYPE — **the ring's radius is solved for, not chosen.**
+ *
+ * Both velocity arrows are drawn on one scale, and each has a natural maximum
+ * that lands on something already in the drawing:
+ *
+ * - The **wind** arrow hangs its tail on the ring and flies inward. Its longest
+ *   useful length is the one that puts the tip on the centre — further and the
+ *   radial control's handle would have to pass through the origin, where a
+ *   bearing stops existing. So full-scale wind draws `R`.
+ * - The **speed** arrow starts at the bow and flies outward. Its longest useful
+ *   length is the one that puts the tip on the ring. So hull speed draws
+ *   `R − ARROW_TAIL_RADIUS`.
+ *
+ * One scale through both:
+ *
+ * ```text
+ *   R / Vwind = (R − Rtail) / Vhull
+ *   R = Rtail · Vwind / (Vwind − Vhull)
+ * ```
+ *
+ * The ring is then whatever radius makes those two statements consistent, and
+ * `shortRadius` follows it out to the viewport. The drawing zooms until the
+ * proportion is satisfied, which is what turns the space the wind gave up — it
+ * is an overlay now, not a reservation — into a bigger boat rather than more
+ * water.
+ *
+ * Note the sign condition, which is not academic: the wind's full scale must
+ * exceed the boat's, or `R` goes negative. It does, comfortably, and it is the
+ * true statement about a keelboat — but it means the ring's radius is now
+ * sensitive to hull speed and to §5's 20 kt ceiling in a way nothing was before.
+ * Lower the ceiling toward hull speed and the ring runs away to infinity.
+ */
+const SOLVED_RING_RADIUS: Meters =
+  (ARROW_TAIL_RADIUS * WIND_FULL_SCALE) / (WIND_FULL_SCALE - BOAT_FULL_SCALE);
+
+/**
+ * How much water is left outside the ring, as a fraction of it.
+ *
+ * A fraction rather than a length, so the margin is the same number of *pixels*
+ * whatever the derivation above does to the radius — which is what it has to be,
+ * since its whole job is to keep the graduations from being clipped by the
+ * viewport edge. Matches what 0.35 m of 5.65 m bought before: 22 px on an iPad
+ * and 11 px on a phone.
+ */
+const EDGE_FRACTION = 0.35 / 5.65;
 
 /**
  * Concentric bands, as radii in metres from the mast. Everything but
@@ -82,13 +151,23 @@ export const SCENE = {
    * the arrow cannot intercept a drag meant for it — which is what
    * `pointer-events: none` on `.pos-speed` guarantees, not the paint order.
    */
-  contentRadius: 5.2,
+  contentRadius: SOLVED_RING_RADIUS,
 
-  /** Centreline of the drawn wind ring (pos-qmk.3). */
-  windRingRadius: 5.65,
+  /**
+   * Centreline of the drawn wind ring — now {@link SOLVED_RING_RADIUS} rather
+   * than the declared 5.65 m.
+   *
+   * `contentRadius` above is left pointing at the same number rather than
+   * deleted, and it is worth saying why it is now redundant instead of quietly
+   * leaving it at 5.2: it existed to reserve the band the speed arrow's tip
+   * landed on at hull speed, and under the derivation that band *is* the ring.
+   * The reservation and the mark it was reserving space for have become the
+   * same circle, which is the whole of what this change buys.
+   */
+  windRingRadius: SOLVED_RING_RADIUS,
 
   /** Half the span mapped across the surface's *shorter* dimension. */
-  shortRadius: 6.0,
+  shortRadius: SOLVED_RING_RADIUS * (1 + EDGE_FRACTION),
 } as const;
 
 /**
