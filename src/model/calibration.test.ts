@@ -29,7 +29,7 @@ import { apparentWind } from "./wind.ts";
  * coefficient — will fail something here rather than drift quietly.
  *
  * **Where the model does not reach the table, and why.** The broad reach comes
- * in about 9% light, and that one is structural rather than a matter of turning
+ * in about 8% light, and that one is structural rather than a matter of turning
  * something harder. §3.6 puts a beam reach and a broad reach 0.2 kt apart while
  * the driving force at 135° is barely half what it is at 90°, which needs a
  * resistance curve going as `v¹⁰`; §3.5's is a square under a fourth power and
@@ -55,10 +55,17 @@ import { apparentWind } from "./wind.ts";
  * does not move at all. It also sits at 1.000 in 10 kt by construction, so it
  * is not even present in this table.
  *
- * So the 9% stands, and it stands for good unless something changes the *shape*
- * of the force curve rather than its scale — the sails' own coefficients, or a
- * resistance curve steeper than §3.5 can afford. This is the tightest the broad
- * reach gets, and it has about a point of margin left.
+ * So the shortfall stands unless something changes the *shape* of the force
+ * curve rather than its scale — the sails' own coefficients, or a resistance
+ * curve steeper than §3.5 can afford.
+ *
+ * **`pos-i4o` was such a change, and it bought back a point: 9% to 8%.** Giving
+ * the attached limb a maximum of its own reshapes the lift curve rather than
+ * scaling it, which is exactly the lever named above. It was done to stop the
+ * boat settling at two different speeds at one trim, and the broad reach was a
+ * side effect rather than the goal — but it is the first thing to move this
+ * figure, and it moved it in the predicted direction. Two points of margin now,
+ * where there was one.
  */
 
 const deg = degreesToRadians;
@@ -278,6 +285,16 @@ describe("the shape of the polar (DESIGN.md §3.6)", () => {
     // stalled at the apparent wind at rest, and the boat could not climb out.
     // `FOIL.stallBlendWidth` is what fixed it, and this is what would notice it
     // coming back.
+    //
+    // **This sweep is narrow, and pos-i4o is what proved how narrow.** It walks
+    // one line through the space — sloop rig, and the single trim
+    // `wellTrimmed()` finds at each angle — so it tests the one trim per angle
+    // at which the bug it was written for happens to be absent. A fold living a
+    // few degrees off the optimum, on either rig, passed straight through it for
+    // three rounds. `fold.test.ts` is the general form: every trim, both rigs,
+    // by counting the force balance's roots rather than by settling. Keep this
+    // one anyway — it is cheap, it is the polar's own statement of the property,
+    // and it fails first and most legibly if the whole polar starts drifting.
     for (let twa = 10; twa <= 180; twa += 10) {
       expect(speedAt(twa), `TWA ${twa}°`).toBeCloseTo(speedAt(twa, true, kt(8)), 6);
     }
@@ -529,8 +546,8 @@ describe("how far the calibration reaches (DESIGN.md §2.1, §5)", () => {
     // with the factor disabled, 6 kt and 8 kt are identical to six decimal
     // places, and 10 kt differs in the fifth — 4.179710 kt close hauled against
     // 4.179732. The table is not approximately preserved, it is preserved.
-    expect(speedAt(90, true, 0, kt(10))).toBeCloseTo(5.5486, 3);
-    expect(speedAt(135, true, 0, kt(10))).toBeCloseTo(4.7273, 3);
+    expect(speedAt(90, true, 0, kt(10))).toBeCloseTo(5.5786, 3);
+    expect(speedAt(135, true, 0, kt(10))).toBeCloseTo(4.7793, 3);
 
     // Past the knee the force is capped rather than merely slowed, so `k·q` —
     // the pressure the rig is allowed to convert — is flat. Checked as a ratio

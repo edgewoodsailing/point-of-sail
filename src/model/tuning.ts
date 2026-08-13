@@ -32,7 +32,45 @@ export const FOIL: {
   readonly stallAngle: Radians;
   readonly stallBlendWidth: Radians;
   readonly plateNormalForce: number;
+  readonly maxLift: number;
+  readonly saturationSharpness: number;
 } = {
+  /**
+   * The most lift the attached limb will make, however hard it is sheeted.
+   *
+   * **This constant exists because the model previously had no answer to "how
+   * much lift can this sail make?"** (pos-i4o). `Cl = a·α` climbed without
+   * bound — 4.66 at 60°, against 1.2–1.6 for a real cambered sail — and the
+   * only thing that ever brought it down was the crossfade into the flat plate.
+   * So the curve's peak was an artefact of where the blend caught the ramp, not
+   * a property anyone had chosen, and it could not be moved without moving the
+   * post-stall falloff with it. Peak lift is now a number this file states and
+   * the calibration table is fitted against, which is what a tuning constant is
+   * supposed to be.
+   *
+   * **1.7 is the asymptote, not the peak.** The realised maximum is ≈ 1.63 near
+   * α = 24°, because the blend into the plate limb starts pulling the curve down
+   * before it has finished approaching. 1.63 is the figure to have in mind when
+   * reading §3.6 — it is where the optimal-trim search sits — and it is a
+   * realistic maximum for a soft sail, a little above the 1.57 the model used to
+   * arrive at by accident.
+   */
+  maxLift: 1.7,
+
+  /**
+   * How sharply the attached limb bends over as it approaches
+   * {@link FOIL.maxLift}: the exponent in `x/(1 + x^p)^(1/p)`, which is a `min`
+   * with the corner rounded off.
+   *
+   * **16, the same exponent as {@link DEPOWERING.knee}**, and for the same
+   * reason: the corner has to be sharp enough not to disturb the range below it.
+   * At `p = 6` the softening reaches a long way down the linear limb — 4.4% low
+   * by 18°, which is inside the range §3.2 says is honest thin-aerofoil theory
+   * and where the polar is actually fitted. At 16 it is 0.27% there, so the
+   * straight part of the curve stays straight and only the top bends.
+   */
+  saturationSharpness: 16,
+
   /** `Cd0` — the drag a sail carries at zero incidence, before induced drag. */
   profileDrag: 0.02,
 
@@ -43,17 +81,17 @@ export const FOIL: {
   spanEfficiency: 0.9,
 
   /**
-   * Where attached flow gives up. Together with the lift-curve slope it sets
-   * peak lift, so the two cannot be tuned separately — move this angle and peak
-   * lift moves with it.
+   * Where attached flow gives up and the crossfade into the flat plate begins.
    *
-   * On the main, `Cl` reaches 1.40 here, the figure §3.2 quotes. That is not
-   * the maximum: the smoothstep blend leaves this angle with zero slope, so the
-   * attached limb keeps climbing well past it and the curve actually tops out
-   * at ≈ 1.57 near 22.4°. Both are realistic for a soft sail, but the
-   * optimal-trim search settles on the second one — at every point of sail in
-   * the §3.6 table the main sits within a degree or two of 22° — so it is the
-   * number to have in mind when reading the calibration table.
+   * **It no longer sets peak lift** (pos-i4o). It used to, jointly with the
+   * lift-curve slope, because nothing else bounded the attached limb — so this
+   * angle and the post-stall falloff were one knob wearing two names. Peak lift
+   * is now {@link FOIL.maxLift}'s job, and this constant does only what it says.
+   *
+   * On the main, `Cl` reaches **1.394** here — the 1.40 §3.2 quotes, 0.27%
+   * under the bare linear limb because the saturation has just begun to bite —
+   * and the curve tops out at ≈ 1.63 near 24°, which is where the optimal-trim
+   * search sits at every point of sail in the §3.6 table.
    */
   stallAngle: degreesToRadians(18),
 
@@ -74,13 +112,31 @@ export const FOIL: {
    * not get going without easing first and trimming after would be learning
    * the model's arithmetic rather than sailing.
    *
-   * The threshold is sharp and the margin here is deliberate: 12° is still
-   * bistable by 3 kt, 14° is clean, and 20° leaves room for a later pass to
-   * move the neighbouring constants without falling back over the edge. It also
-   * costs something — see {@link FOIL.stallAngle} for where peak lift ends up —
-   * so it is not free to widen further.
+   * **pos-i4o widened it again, from 20° to 50°, and found the limit of what
+   * this constant can do alone.** 20° was enough at the trim `wellTrimmed`
+   * finds and not enough anywhere else: swept over every trim, the same boat in
+   * the same wind still settled 2.90 kt apart depending on where it started,
+   * worst about 4° from the optimum — ordinary trimming, not a corner. Widening
+   * inside the old parameterisation could not fix that. It *relocated* the
+   * problem into lighter air instead, because a gentler fall closes the same
+   * feedback loop at a lower speed, and no width was clean at every wind while
+   * the polar still met §3.6.
+   *
+   * What fixed it was giving the attached limb a maximum of its own
+   * ({@link FOIL.maxLift}), so this width governs the falloff and nothing else.
+   * The two are both needed and neither is sufficient: with the maximum in
+   * place and this left at 20°, the fold returns at 2.40 kt.
+   *
+   * The margin is deliberate, as it was before. Swept at every wind from 2 to
+   * 10 kt, **31° still folds** — by 0.9 kt at 4 kt of wind — and **32° is the
+   * narrowest width that is clean everywhere**. 50° sits half again past that,
+   * where the old 20° sat 1.43× past its own 14°, so there is room for a later
+   * pass to move the neighbouring constants without falling back over the edge.
+   * Widening further is not free — it is what puts lift under a sail at large
+   * incidence, and §4.2's "sheeted flat is a mistake" is spent out of the same
+   * account.
    */
-  stallBlendWidth: degreesToRadians(20),
+  stallBlendWidth: degreesToRadians(50),
 
   /**
    * `k` in the stalled sail's normal force, `Cn = k·sinα`, which `foil.ts`

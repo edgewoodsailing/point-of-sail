@@ -430,9 +430,17 @@ export function optimalTrim(
  * α* = π·AR·e·tan(AWA) / (2a)
  * ```
  *
- * — the exact answer wherever the flow is attached and the luff is drawing,
- * which is precisely the regime the sweep struggles with. Two conditions bound
- * it, and outside them the sweep is already comfortable:
+ * — the exact answer for a limb of *linear* lift, `Cl = a·α`, which is what
+ * the attached limb was when this seed was derived. Since pos-i4o it is not:
+ * {@link FOIL.maxLift} bends the top over, so the expression above is an
+ * approximation that improves the closer α* sits to zero. That costs nothing
+ * here, for the reason the last paragraph gives — it is a candidate rather than
+ * an answer — and the second condition below keeps it where the two agree
+ * best: at the stall angle the saturation has moved the lift by 0.27%, and
+ * below 11.5° of apparent wind, where this seed is the one that matters, by
+ * far less.
+ *
+ * Two conditions bound it, and outside them the sweep is already comfortable:
  *
  * - `cos(AWA) > 0`. With the wind abaft the beam drag *helps*, the parabola
  *   opens upward, and `α*` is its minimum rather than its maximum.
