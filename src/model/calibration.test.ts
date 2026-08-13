@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { HULL, JIB, MAIN } from "./boat.ts";
-import { depoweringFactor, optimalTrim } from "./sail.ts";
+import { cleatedAt, depoweringFactor, optimalTrim } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle } from "./simulation.ts";
 import type { Knots, Radians } from "./units.ts";
@@ -82,7 +82,7 @@ function boat(twa: Radians, jibSet: boolean, speed = 0, wind = WIND_SPEED): SimS
   return {
     wind: { from: twa, speed: wind },
     motion: { heading: 0, speed },
-    trim: { mainAngle: 0, jibAngle: 0, jibSet },
+    trim: cleatedAt(0, 0, jibSet, apparentWind({ from: twa, speed: wind }, { heading: 0, speed })),
     mainHeld: false,
     jibHeld: false,
   };
@@ -110,11 +110,14 @@ function wellTrimmed(twa: Radians, jibSet = true, from = 0, wind = WIND_SPEED): 
     state = {
       ...state,
       motion: settled.motion,
-      trim: {
-        ...state.trim,
-        mainAngle: optimalTrim(MAIN, apparent).angle,
-        jibAngle: optimalTrim(JIB, apparent).angle,
-      },
+      // Cleated, not merely set: a sheet is a limit now, so an angle without a
+      // sheet to hold it is eased straight back out by the next step.
+      trim: cleatedAt(
+        optimalTrim(MAIN, apparent).angle,
+        optimalTrim(JIB, apparent).angle,
+        state.trim.jibSet,
+        apparent,
+      ),
     };
   }
 

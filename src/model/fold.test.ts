@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN } from "./boat.ts";
 import { hullResistance, hullResistanceSlope, keelInducedDrag } from "./hull.ts";
-import { depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
+import { cleatedAt, depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
 import { FOIL } from "./tuning.ts";
 import type { SimState } from "./simulation.ts";
 import { settle } from "./simulation.ts";
@@ -128,7 +128,7 @@ function boat(twa: number, jibSet: boolean, trim: Radians, wind: MetersPerSecond
   return {
     wind: { from: deg(twa), speed: wind },
     motion: { heading: 0, speed: 0 },
-    trim: { mainAngle: trim, jibAngle: trim, jibSet },
+    trim: cleatedAt(trim, trim, jibSet, apparentWind({ from: deg(twa), speed: wind }, { heading: 0, speed: 0 })),
     mainHeld: false,
     jibHeld: false,
   };

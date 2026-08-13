@@ -237,6 +237,12 @@ const CAMBER_HALF_PRESSURE_SPEED = knotsToMetersPerSecond(3);
  * to §4.1 and costs nothing.
  */
 export function pressureFactor(q: number): number {
+  // A saturating curve saturates. `q/(q+half)` is `Inf/Inf` at an infinite
+  // pressure, which is NaN, and NaN is the one value that poisons everything
+  // downstream — it reached `acos` through the jib's chord and took a whole
+  // sweep with it. Harmless while this only tinted a drawing; load-bearing now
+  // that the depth sets the chord.
+  if (!Number.isFinite(q)) return q > 0 ? 1 : 0;
   const half = dynamicPressure(CAMBER_HALF_PRESSURE_SPEED);
   return q / (q + half);
 }
@@ -313,22 +319,48 @@ export function camberDepth(sail: Sail, sailAngle: Radians, apparent: ApparentWi
 export function chordForArc(cloth: Meters, depth: Meters): Meters {
   const belly = Math.abs(depth);
   if (!(belly > 0) || !(cloth > 0)) return cloth;
-  const ratio = Math.min(belly / cloth, 1 / Math.PI);
+  const ratio = Math.min(belly / cloth, DEPTH_RATIO_MAX);
+  return cloth * chordRatioFor(ratio);
+}
 
-  // f/L = (1 − cos θ)/(2θ) rises monotonically from 0 to 1/π across (0, π].
-  let low = 0;
-  let high = Math.PI;
-  // Fixed count rather than a tolerance: 60 halvings take the bracket below a
-  // float's resolution, and a loop that cannot spin is worth more here than the
-  // few iterations it wastes when the answer was easy.
-  for (let i = 0; i < 60; i += 1) {
-    const mid = (low + high) / 2;
-    if ((1 - cos(mid)) / (2 * mid) < ratio) low = mid;
-    else high = mid;
+/** `f/L` at a half circle, `1/π` — the deepest arc that still has a chord. */
+const DEPTH_RATIO_MAX = 1 / Math.PI;
+
+/** Samples across `f/L`. At 512 the interpolation error is under a micron. */
+const ARC_SAMPLES = 512;
+
+/**
+ * `f/L → c/L`, tabulated once at module load.
+ *
+ * A table rather than a solve per call, and the reason is measured rather than
+ * assumed: this runs twice a frame in the app, where a bisection would never be
+ * noticed — and millions of times in `fold.test.ts`, which sweeps settled speeds
+ * over a grid. The bisection took that sweep past a sixty-second timeout. The
+ * relation has no boat dimensions in it, so one table serves every sail forever.
+ */
+const CHORD_RATIO: readonly number[] = (() => {
+  const table: number[] = [];
+  for (let i = 0; i <= ARC_SAMPLES; i += 1) {
+    const target = (DEPTH_RATIO_MAX * i) / ARC_SAMPLES;
+    let low = 0;
+    let high = Math.PI;
+    for (let step = 0; step < 60; step += 1) {
+      const mid = (low + high) / 2;
+      if ((1 - cos(mid)) / (2 * mid) < target) low = mid;
+      else high = mid;
+    }
+    const theta = (low + high) / 2;
+    table.push(theta > 0 ? sin(theta) / theta : 1);
   }
-  const theta = (low + high) / 2;
-  if (!(theta > 0)) return cloth;
-  return (cloth * sin(theta)) / theta;
+  return table;
+})();
+
+/** The table, read with linear interpolation. */
+function chordRatioFor(depthRatio: number): number {
+  const position = (depthRatio / DEPTH_RATIO_MAX) * ARC_SAMPLES;
+  const index = Math.min(Math.floor(position), ARC_SAMPLES - 1);
+  const fraction = position - index;
+  return CHORD_RATIO[index] * (1 - fraction) + CHORD_RATIO[index + 1] * fraction;
 }
 
 /**
@@ -552,6 +584,10 @@ export function naturalJibAngle(
   const weathervane = normalizeSigned(-apparent.angle);
 
   const cosine = (foot * foot + d * d - sheet * sheet) / (2 * foot * d);
+  // A sheet or a chord that is not a number has no geometry, and `acos` says so
+  // loudly rather than returning NaN. Hold what we have instead — the same
+  // answer "there is no usable bearing right now" gets everywhere else.
+  if (!Number.isFinite(cosine)) return centre;
   // Sheet hauled shorter than the geometry allows — |foot − d| — so both
   // constraints cannot hold at once. The cloth wins: the clew goes to the point
   // on the foot circle nearest the car and the sheet is simply bar taut.
@@ -578,6 +614,41 @@ export function naturalJibAngle(
 export function jibSheetFor(clewAngle: Radians, side: number, chord: Meters = JIB.foot): Meters {
   const car = { x: side * JIB_CAR.x, y: JIB_CAR.y };
   return magnitude(subtract(jibClewPosition(clewAngle, chord), car));
+}
+
+/**
+ * The trim whose **sheets hold the sails at the angles asked for** — trim to
+ * here, then cleat it.
+ *
+ * The one honest way to say "put the sails there" now that a sheet is a limit
+ * rather than a position. Setting `mainAngle` alone no longer does it: the next
+ * step eases the boom back to wherever the wind and the sheet agree, so an angle
+ * without a sheet to hold it is a wish rather than a trim.
+ *
+ * **The sign is the wind's, not the caller's.** A sheet has no side, so the
+ * magnitude of each angle becomes the limit and the wind decides which side it
+ * is reached on. Ask for a windward angle and you will get its mirror, which is
+ * exactly what letting go of a backed sail does.
+ *
+ * Used by the opening state, by the console, and by every test that means "the
+ * boat is sailing at this trim" — which is most of them, and which is why this
+ * lives in the model rather than in a test helper.
+ */
+export function cleatedAt(
+  mainAngle: Radians,
+  jibAngle: Radians,
+  jibSet: boolean,
+  apparent: ApparentWind,
+): RigTrim {
+  const side = Math.sign(jibAngle) || 1;
+  return {
+    mainAngle,
+    mainSheet: Math.abs(mainAngle),
+    jibAngle,
+    jibSheetSide: side,
+    jibSheet: jibSheetFor(jibAngle, side, jibChord(jibAngle, apparent)),
+    jibSet,
+  };
 }
 
 /**

@@ -107,8 +107,11 @@ scene.layers.handles.append(telltale.element);
 // the world group share a transform — the world→user map is the identity — so
 // world-frame metres drop straight in.
 //
-// On by default on this branch, because looking at it is the point. `?geometry=0`
-// turns it off, and `g` toggles it.
+// **Off by default**, now that the prototyping it existed for is done. `g`
+// toggles the whole kit — the overlay, its readout, and the two rows of
+// prototyping controls — and `?geometry=1` opens with it up. The code stays:
+// it is the only way to see the touch geometry, and the next person to argue
+// about target sizes will want it.
 
 const geometry = createGeometryOverlay(scene.pixelsToMeters, () => ({
   width: surface.clientWidth,
@@ -119,15 +122,27 @@ surface.append(geometry.legend);
 
 const simRoot = document.querySelector<HTMLElement>(".pos-sim");
 if (simRoot === null) throw new Error("Page shell is missing its root (.pos-sim)");
-controls.append(createDevicePicker(simRoot), createWindKnobs(simRoot));
 
-let showGeometry = new URLSearchParams(location.search).get("geometry") !== "0";
-geometry.setVisible(showGeometry);
+// The prototyping controls ride in their own box so one class hides them all,
+// rather than three elements each remembering to.
+const rig = document.createElement("div");
+rig.className = "pos-geo-rig";
+rig.append(createDevicePicker(simRoot), createWindKnobs(simRoot));
+controls.append(rig);
+
+let showGeometry = new URLSearchParams(location.search).get("geometry") === "1";
+
+function setDebug(on: boolean): void {
+  geometry.setVisible(on);
+  rig.classList.toggle("pos-geo-off", !on);
+}
+
+setDebug(showGeometry);
 
 window.addEventListener("keydown", (event) => {
   if (event.key !== "g" || event.metaKey || event.ctrlKey || event.altKey) return;
   showGeometry = !showGeometry;
-  geometry.setVisible(showGeometry);
+  setDebug(showGeometry);
 });
 
 // --- The control strip ------------------------------------------------------

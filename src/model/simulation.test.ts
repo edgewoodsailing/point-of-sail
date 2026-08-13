@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN, SWING_LIMIT } from "./boat.ts";
 import { hullResistance, keelInducedDrag } from "./hull.ts";
-import { depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
+import { cleatedAt, depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
 import type { SimState } from "./simulation.ts";
 import { settle, step } from "./simulation.ts";
 import type { MetersPerSecond, Radians, Seconds } from "./units.ts";
@@ -29,10 +29,21 @@ const FRAME: Seconds = 1 / 60;
  * reads as the angle a sailor would describe.
  */
 function boat(twa: Radians, trim: Partial<SimState["trim"]> = {}): SimState {
+  const want = { mainAngle: 0, jibAngle: 0, jibSet: true, ...trim };
+  // Cleated at the angles asked for, so the sheets hold them. Setting an angle
+  // without its sheet would have the first step ease it straight back out — see
+  // `cleatedAt`. The caller's own fields still win, so a test that wants to set
+  // a sheet directly can.
+  const cleated = cleatedAt(
+    want.mainAngle,
+    want.jibAngle,
+    want.jibSet,
+    apparentWind({ from: twa, speed: WIND_SPEED }, { heading: 0, speed: 0 }),
+  );
   return {
     wind: { from: twa, speed: WIND_SPEED },
     motion: { heading: 0, speed: 0 },
-    trim: { mainAngle: 0, jibAngle: 0, jibSet: true, ...trim },
+    trim: { ...cleated, ...trim },
     mainHeld: false,
     jibHeld: false,
   };
