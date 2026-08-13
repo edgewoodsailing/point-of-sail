@@ -20,7 +20,7 @@
  *
  * ## Where the range stops
  *
- * **0 to 25 knots.** §5 asked for a slider without saying where it ended, and
+ * **0 to 20 knots.** §5 asked for a slider without saying where it ended, and
  * for several beads the answer was whatever the scaffolding happened to offer;
  * comments across the model still appeal to "today's scaffolding offers 0–30 kt"
  * as though that were a decision (pos-g7p). This is where it becomes one.
@@ -30,15 +30,19 @@
  * - **0** has to be reachable. A boat that will not stop is a boat whose speed
  *   looks like a property of the boat rather than of the wind, and the drift to
  *   a halt is the cheapest demonstration in the simulator that it is not.
- * - **25** is where the school stops sailing. The Rhodes 19 is a nineteen-foot
- *   daysailer; by the low twenties it is overpowered and heavily reefed and
- *   nobody is teaching in it. §3.2's depowering begins around 13 kt, so the top
- *   half of this range is entirely inside the regime where the rig is shedding
- *   force — a student who runs the slider up watches the boat *stop* gaining
- *   speed, which is the lesson that end of the range exists to teach.
+ * - **20** is roughly where the school stays ashore. Above it, with new sailors,
+ *   the experience turns bad and equipment starts to break — so this is the top
+ *   of the range a student is being taught to sail in, which is the only range
+ *   the simulator is for. §3.2's depowering begins at exactly 13 kt, so the top
+ *   third of this range is inside the regime where the rig is shedding force: a
+ *   student who runs the slider up watches the boat *stop* gaining speed, which
+ *   is the lesson that end of the range exists to teach.
  *
- * The model is sound past 25 and this range is not a claim that it is not; it is
- * a claim about what is worth putting under a student's thumb.
+ * **It is a teaching limit, not a model limit and not a UI convenience**, and
+ * that is worth stating because the number invites raising. The physics is sound
+ * well past 20 kt — §3.6 owns how far — and nothing here is a claim that it is
+ * not. What is claimed is that a wind the school would not go out in is not a
+ * wind worth putting under a student's thumb.
  */
 
 import type { Knots, MetersPerSecond } from "../model/units.ts";
@@ -53,7 +57,7 @@ import { knotsToMetersPerSecond, metersPerSecondToKnots } from "../model/units.t
  */
 export const WIND_SPEED_KT = {
   min: 0 as Knots,
-  max: 25 as Knots,
+  max: 20 as Knots,
   step: 1 as Knots,
 } as const;
 

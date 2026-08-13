@@ -135,7 +135,7 @@ function createWindSpeedControl(host: HTMLElement, of: SimState): (next: SimStat
   value.className = "wind-speed-value";
   // Hidden from assistive technology, not from the eye. `<output>` maps to
   // `role="status"`, which is a polite live region — so dragging the thumb from
-  // 0 to 25 would announce the wind twenty-five times *on top of* the range
+  // 0 to 20 would announce the wind twenty times *on top of* the range
   // input announcing exactly the same number as its own value. The readout is a
   // visual duplicate of the slider's value, and the slider already says it.
   value.setAttribute("aria-hidden", "true");

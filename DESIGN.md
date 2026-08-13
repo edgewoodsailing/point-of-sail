@@ -1959,7 +1959,7 @@ state exists**, touch targets must be large, and targets will overlap.
 | --- | --- | --- |
 | Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
 | Wind direction | Drag anywhere on the perimeter ring | Large target, never overlaps the boat |
-| Wind speed | Slider, 0–25 kt | Separate control; easier than dragging arrow length on a phone |
+| Wind speed | Slider, 0–20 kt | Separate control; easier than dragging arrow length on a phone |
 | Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
 | Jib | Drag the clew | Same; absent when the jib is struck |
 
@@ -2084,23 +2084,30 @@ out, which on a phone is the pairing guaranteed to make both worse. So the ring
 keeps the bearing and the speed goes to the control strip, beside the switches,
 where it cannot be missed.
 
-**The range is 0 to 25 knots**, in whole-knot steps, and both ends are chosen
+**The range is 0 to 20 knots**, in whole-knot steps, and both ends are chosen
 rather than inherited. Zero has to be reachable: a boat that will not stop is a
 boat whose speed looks like a property of the boat rather than of the wind, and
 the drift to a halt is the cheapest demonstration in the simulator that it is
-not. Twenty-five is where the school stops sailing — the Rhodes 19 is a
-nineteen-foot daysailer, and by the low twenties it is overpowered and nobody is
-teaching in it. [§3.2](#32-sail-forces)'s depowering begins around 13 kt, so the
-top half of the range sits entirely inside the regime where the rig is shedding
-force: run the slider up and the boat visibly *stops* gaining speed, which is
-what that end of the range is for.
+not.
 
-This is a decision about the **control**, not about the model. The physics is
-sound past 25 kt and [§3.6](#36-calibration-targets) is where the question of how
-far it stays honest belongs. Recorded here because several comments across the
-model appealed to "the wind slider" without this section ever saying where it
-stopped, and for four beads the answer was whatever the throwaway scaffolding
-happened to offer.
+**Twenty is roughly where the school stays ashore**, and that is the whole
+reason for it: above 20 kt, with new sailors, the experience turns bad and
+equipment starts to break. So the top of the slider is the top of the range a
+student is being taught to sail in, which is the only range this simulator is
+for. It lands well: [§3.2](#32-sail-forces)'s depowering begins at exactly 13 kt,
+so the top third of the slider sits inside the regime where the rig is shedding
+force — run it up and the boat visibly *stops* gaining speed, which is what that
+end of the range is for.
+
+**It is a teaching limit**, not a model limit and not a UI convenience, and the
+distinction is worth keeping because a bare ceiling invites the next person to
+raise it. The physics is sound well past 20 kt and
+[§3.6](#36-calibration-targets) is where the question of how far it stays honest
+belongs; what is claimed here is only that a wind the school would not go out in
+is not a wind worth putting under a student's thumb. Recorded because several
+comments across the model appealed to "the wind slider" without this section ever
+saying where it stopped, and for four beads the answer was whatever the throwaway
+scaffolding happened to offer.
 
 The value is shown in knots beside the slider. That is not the scaffolding
 [§7](#7-deliberately-out-of-scope) rules out: §7 is about not handing the student
