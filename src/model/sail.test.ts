@@ -362,6 +362,32 @@ describe("where the sails go on their own (DESIGN.md §3.4)", () => {
     expect(restingMain(-30, 30, -40)).toBeCloseTo(30, 9);
   });
 
+  /**
+   * **The swing-back and the gybe are one boundary, not two**, and this is the
+   * half of the swing-back the fix changed. A boom pushed to windward comes
+   * back only while the wind is forward of its leech; push it across while the
+   * boat is *by the lee of it* and there is no back-pressure to bring it home,
+   * so it stays where it was put. On a dead run that makes both sides stable —
+   * which is what wing and wing is, and which the near-branch model could not
+   * hold at any trim.
+   *
+   * The threshold is the gybe rule read from the other end, and it lands on the
+   * same degree: at 80° of sheet the boom mirrors at AWA 99° and stays at 101°.
+   */
+  it("leaves a boom pushed across by the lee where it was put — wing and wing", () => {
+    for (const sheet of SHEETS) {
+      const leech = 180 - sheet;
+
+      // Forward of the leech: home it comes, to the mirror.
+      expect(restingMain(sheet, sheet, leech - 0.5)).toBeCloseTo(-Math.min(sheet, leech - 0.5), 9);
+      // By the lee of it: it stays, on the windward side, indefinitely.
+      expect(restingMain(sheet, sheet, leech + 0.5)).toBeCloseTo(sheet, 9);
+      expect(restingMain(sheet, sheet, 180)).toBeCloseTo(sheet, 9);
+      // Which is to say a run is stable on either side.
+      expect(restingMain(-sheet, sheet, 180)).toBeCloseTo(-sheet, 9);
+    }
+  });
+
   /** Eased past the apparent wind, the clamp stops binding and the sail flogs. */
   it("leaves an over-eased boom at the weathervane, where α is zero", () => {
     for (const awa of [30, 60, -45]) {

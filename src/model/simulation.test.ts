@@ -484,19 +484,38 @@ describe("bearing away through a gybe (DESIGN.md §3.4)", () => {
   });
 
   /**
-   * The same manoeuvre at four times the helm rate. The crossing angles move —
-   * the sails are chasing a wind that is swinging faster — but the order and
-   * the side do not, which is what says the behaviour is the geometry rather
-   * than a race between two time constants.
+   * The same manoeuvre at four times the helm rate, and the crossing angles
+   * barely move: measured, the jib goes at −125.6° against −124.0° and the boom
+   * at −99.8° against −98.9°.
+   *
+   * **That near-invariance is the assertion**, not a robustness afterthought.
+   * If the sails were crossing because a wind that had swung past them was
+   * dragging them over, quadrupling how fast it swings would move the angle a
+   * long way; that it moves by a degree says the crossing is set by the
+   * geometry — α arriving at the leech — and that the boom's time constant only
+   * decides how long the crossing takes once it has started.
+   *
+   * Bounded on both sides for a reason worth recording: `main < −85°` would
+   * pass under the *old* model too, which crossed at AWA ±180°. A one-sided
+   * threshold cannot tell "held too long" from "went at the transom", so the
+   * band has to exclude both.
    */
-  it("keeps the same order and the same sides at a much faster turn", () => {
-    const { main, jib } = bearAwayThroughAGybe(deg(12));
+  it("crosses at the same angles at a much faster turn", () => {
+    const slow = bearAwayThroughAGybe(deg(3));
+    const fast = bearAwayThroughAGybe(deg(12));
 
-    expect(jib).not.toBeNull();
-    expect(main).not.toBeNull();
-    expect(jib as number).toBeLessThan(-110);
-    expect(main as number).toBeLessThan(-85);
-    expect(jib as number).toBeLessThan(main as number);
+    expect(fast.jib).not.toBeNull();
+    expect(fast.main).not.toBeNull();
+
+    // The same bands the 3°/s turn is held to, and both exclude ±180°.
+    expect(fast.jib as number).toBeLessThan(-120);
+    expect(fast.jib as number).toBeGreaterThan(-130);
+    expect(fast.main as number).toBeLessThan(-96);
+    expect(fast.main as number).toBeGreaterThan(-104);
+
+    expect(Math.abs((fast.jib as number) - (slow.jib as number))).toBeLessThan(3);
+    expect(Math.abs((fast.main as number) - (slow.main as number))).toBeLessThan(3);
+    expect(fast.jib as number).toBeLessThan(fast.main as number);
   });
 });
 

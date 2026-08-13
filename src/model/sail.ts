@@ -461,9 +461,16 @@ export function clearMast(jibAngle: Radians, incumbent: number): Radians {
  * on the way. While the wind is still on the after face of the sail it is
  * pressing the boom *outward*, into its stop, and a rope cannot pull it back.
  *
- * The two expressions agree everywhere `|current − α| ≤ 180°`, which is every
- * trim from close hauled round to a broad reach. A tack is unaffected: near the
- * bow `|α|` is small and there is nothing to wrap.
+ * The two expressions agree everywhere `|current − α| < 180°` — equivalently
+ * `|α| < 90°`, since `|current| ≤ SWING_LIMIT` — which is every trim from close
+ * hauled round to a broad reach. A tack is unaffected: near the bow `|α|` is
+ * small and there is nothing to wrap.
+ *
+ * The bound is strict, and the boundary is the bug rather than a fussy epsilon.
+ * At `current − α = −180°` exactly, `normalizeSigned` folds −π onto **+π**, so
+ * the two branches are a full turn apart and the old one puts the boom on the
+ * far shroud. That is a boom on the shrouds at a dead run: the case this
+ * function exists to get right.
  *
  * ## What falls out of it, none of which is special-cased
  *
@@ -496,10 +503,21 @@ export function clearMast(jibAngle: Radians, incumbent: number): Radians {
  *   a free boom never holds to windward with the apparent wind forward of the
  *   beam.
  * - **Backing, and pos-bql.2's swing-back, derived rather than animated.** Push
- *   the boom to windward and let go: `sheet` is whatever you held it at, the
- *   wind is on the other side, so the natural angle is `−sheet` — the *mirror*
- *   of where you had it. That is pos-bql.2's specified behaviour, "same trim,
- *   other side", arrived at without a swing-back animation existing.
+ *   the boom to windward and let go **with the wind forward of the leech**:
+ *   `sheet` is whatever you held it at, the wind is on the other side, so the
+ *   natural angle is `−sheet` — the *mirror* of where you had it. That is
+ *   pos-bql.2's specified behaviour, "same trim, other side", arrived at
+ *   without a swing-back animation existing. It is the mooring departure's
+ *   mechanism, and that happens head to wind, where nothing here is in doubt.
+ * - **Wing and wing, past the same threshold.** The proviso above is not a
+ *   hedge — it is the gybe rule again, from the other end. Push the boom to
+ *   windward while the boat is *by the lee of it*, `|awa| > 180° − sheet`, and
+ *   there is no back-pressure to swing it: the wind is on the after face of the
+ *   cloth and holds it exactly where you put it. So at a dead run the boom is
+ *   stable on **either** side, which is what wing and wing is, and which the
+ *   near-branch model could not represent — it flopped the boom back to leeward
+ *   however the sails were set. One boundary, `α = ±180°`, decides both: past
+ *   it a boom crosses, short of it a boom pushed across comes back.
  *
  * ## The feedback loop this creates, which is real and worth having
  *
@@ -670,7 +688,13 @@ export function naturalJibAngle(
   //   point on the foot circle nearest the car and the sheet is simply bar taut.
   //   Also a zero interval.
   // - **Longer than `foot + d`**: no reach of the sheet can stop the clew
-  //   anywhere, so it flies free and weathervanes. A full interval, `h = π`.
+  //   anywhere, so it flies free and weathervanes. A full interval, `h = π`,
+  //   which is inert rather than merely wide: `|centre|` is 12.6°, so
+  //   `[centre − π, centre + π]` contains ±SWING_LIMIT whole, and the shroud
+  //   clamp below is what actually bounds the swing. Measured unreachable from
+  //   any cleatable clew — `jibSheetFor` is bounded by `chord + d`, and even at
+  //   full camber the longest sheet it writes falls 0.66 m short of this — so
+  //   it is a guard against a hand-built state rather than a live path.
   const half = !Number.isFinite(cosine) || cosine >= 1 ? 0 : cosine <= -1 ? Math.PI : acos(cosine);
 
   const settled = heldBetween(weathervane, centre - half, centre + half);

@@ -708,9 +708,19 @@ and nothing else.
   not show at all — it took both across together, at 180°, with the boat barely
   by the lee.
 - **The swing-back above, derived rather than animated.** Push the boom to
-  windward and let go: the sheet is `|angle|`, the wind is on the other side, so
-  the natural angle is its mirror. "Same trim, other side" is what the clamp
-  says; there is no swing-back mechanism and there does not need to be.
+  windward and let go *with the wind forward of the leech*: the sheet is
+  `|angle|`, the wind is on the other side, so the natural angle is its mirror.
+  "Same trim, other side" is what the clamp says; there is no swing-back
+  mechanism and there does not need to be. The mooring departure this exists for
+  happens head to wind, where the proviso is nowhere near binding.
+- **Wing and wing, past that same threshold.** The proviso is not a hedge — it
+  is the gybe rule read from the other end, and one boundary decides both. Push
+  the boom to windward while the boat is *by the lee of it*, `|awa| > 180° −
+  sheet`, and there is no back-pressure to swing it back: the wind is on the
+  after face of the cloth and holds it where you put it. So on a run the boom is
+  stable on **either** side, which is what wing and wing is. The old model could
+  not hold that position at all — it flopped the boom back to leeward however
+  the sails were set.
 
 `mainHeld` — in the state and inert since it was added — is what the hand uses:
 while it is set the boom does not move, because a hand on it outranks the wind.
