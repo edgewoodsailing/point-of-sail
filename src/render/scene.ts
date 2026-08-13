@@ -32,8 +32,9 @@
 
 import type { SimState } from "../model/simulation.ts";
 import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
+import { WIND_SPEED_KT } from "../input/windSpeed.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
-import { magnitude, radiansToDegrees, subtract } from "../model/units.ts";
+import { knotsToMetersPerSecond, magnitude, radiansToDegrees, subtract } from "../model/units.ts";
 import { createHullLayer, outlineRadius } from "./hull.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 import "./scene.css";
@@ -147,6 +148,36 @@ export function sceneExtent(widthPx: number, heightPx: number): SceneExtent {
     metersPerPixel,
   };
 }
+
+/**
+ * PROTOTYPE (pos-bwd.5) — **metres of drawing per metre per second, shared by
+ * both velocity arrows.**
+ *
+ * The wind arrow and the speed arrow are both velocities, and until this
+ * constant existed they were drawn on scales that differed by 30% *and* ran the
+ * wrong way round: the boat's arrow was the longer per knot, so a 5 kt boat in a
+ * 5 kt wind drew a longer arrow than the wind moving it. Three readouts, not one
+ * picture.
+ *
+ * One number, read by both, so they cannot drift — pos-bwd.5's acceptance
+ * criterion in as many words: *one exported scale constant, not two
+ * coincidentally-equal numbers.*
+ *
+ * **Full scale is the top of §5's wind range**, because that is the whole of the
+ * wind a student is ever taught in, and pinning it there keeps the composition
+ * true at every wind they can set. A knee or a clamp inside the range would make
+ * the triangle a lie exactly where the breeze gets interesting. It works out at
+ * 0.2825 m per knot, which is pos-bwd.5's own table at its "reach the centre"
+ * row — the row that bead measured as the cheapest of the four for the speed
+ * arrow.
+ *
+ * Where this constant should *live* is a real question this prototype ducks: it
+ * is stated here because both renderers already import the scene, and it reaches
+ * into `input/windSpeed.ts` for the range, which is the wrong direction across
+ * §6's layering. The range is arguably not an input concern at all.
+ */
+export const VELOCITY_SCALE: number =
+  SCENE.windRingRadius / knotsToMetersPerSecond(WIND_SPEED_KT.max);
 
 /** The `viewBox` attribute for an extent: origin centred, so the mast is mid-screen. */
 export function viewBoxAttribute(extent: SceneExtent): string {

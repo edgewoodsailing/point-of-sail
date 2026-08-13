@@ -109,7 +109,7 @@ import { HULL, STATIONS } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
 import { add, degreesToRadians, magnitude, subtract, vectorFromAngle } from "../model/units.ts";
-import { SCENE, type Layer } from "./scene.ts";
+import { SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- The scale --------------------------------------------------------------
@@ -142,19 +142,43 @@ const HULL_GAP: Meters = 0.2;
 const TAIL_RADIUS: Meters = magnitude(subtract(STATIONS.bow, STATIONS.pivot)) + HULL_GAP;
 
 /**
- * How long the arrow is at hull speed: what is left of `SCENE.contentRadius`
- * once the bow and the gap are accounted for, ≈ 2.08 m.
+ * The speed at which the arrow is exactly {@link SPEED_REACH} long.
  *
- * Measured rather than declared, the way `SCENE.boatRadius` is. Refair the hull
- * or move the mast station and this follows, instead of quietly disagreeing with
- * the band it is supposed to fill.
+ * Hull speed rather than a number chosen to look right: it is already the
+ * boat's own scale — `model/hull.ts` builds its resistance wall around it — and
+ * it is the speed a student is trying to reach.
  *
- * Note which end the gap is taken out of: the *arrow's*, not the band's. The
- * clear water is a drawing decision and the band is a budget, so the gap comes
- * out of what the arrow may spend rather than being added on top of it — which
- * is what keeps the tip landing exactly on `contentRadius` at hull speed.
+ * Declared above `SPEED_REACH` rather than below it, as it was, because that
+ * constant now derives from this one and a module's constants initialise in
+ * source order.
  */
-export const SPEED_REACH: Meters = SCENE.contentRadius - TAIL_RADIUS;
+export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
+
+/**
+ * PROTOTYPE (pos-bwd.5) — how long the arrow is at hull speed, ≈ 1.60 m.
+ *
+ * **Derived from `VELOCITY_SCALE` now, not from `SCENE.contentRadius`.** That is
+ * the whole of the change: the two arrows are both velocities, so their lengths
+ * come off one scale and the drawing becomes a vector diagram instead of three
+ * separate readouts. The old figure was 2.08 m — what was left of the
+ * `contentRadius` band once the bow and the gap were accounted for — and it was
+ * a fine length chosen for the wrong reason. It made the boat's arrow 30% longer
+ * per knot than the wind's, so a 5 kt boat in a 5 kt wind out-drew the wind
+ * pushing it.
+ *
+ * Two consequences, both intended and both stated rather than discovered:
+ *
+ * - **The arrow shrinks about 1.30×.** Not a regression: the boat genuinely *is*
+ *   several times slower than the top of the wind range, and the proportions
+ *   being true is the entire point. pos-bwd.5's table measured exactly this row.
+ * - **`contentRadius` no longer has a tenant.** The band it reserved is now
+ *   unspent, which is a space question this prototype opens rather than closes.
+ *
+ * Hull speed is still the *speed* this length is quoted at, because it is still
+ * the boat's own scale — what has changed is that the length is no longer chosen
+ * to fill a band.
+ */
+export const SPEED_REACH: Meters = VELOCITY_SCALE * SPEED_FULL_SCALE;
 
 /**
  * The longest arrow still drawn by the plain linear law, ≈ 2.53 m — the one
@@ -205,15 +229,6 @@ const EDGE_KEEP_OUT: Meters = 0.1;
  */
 export const SPEED_LIMIT: Meters = SCENE.shortRadius - EDGE_KEEP_OUT - TAIL_RADIUS;
 
-/**
- * The speed at which the arrow is exactly `SPEED_REACH` long.
- *
- * Hull speed rather than a number chosen to look right: it is already the
- * boat's own scale — `model/hull.ts` builds its resistance wall around it — and
- * it is the speed a student is trying to reach. That makes a full-length arrow
- * mean something rather than merely being the biggest one.
- */
-export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 
 /**
  * Below this drawn length there is no arrow at all.

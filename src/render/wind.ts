@@ -61,10 +61,9 @@ import {
   add,
   degreesToRadians,
   knotsToMetersPerSecond,
-  metersPerSecondToKnots,
   vectorFromAngle,
 } from "../model/units.ts";
-import { SCENE, type Layer } from "./scene.ts";
+import { SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- Drawing taste ----------------------------------------------------------
@@ -111,8 +110,8 @@ import { formatNumber, svgElement } from "./svg.ts";
 export const WIND_CONTROL = { inward: true };
 
 function arrowLength(speed: MetersPerSecond): Meters {
-  const fraction = metersPerSecondToKnots(speed) / WIND_SPEED_KT.max;
-  return SCENE.windRingRadius * Math.min(Math.max(fraction, 0), 1);
+  const full = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+  return VELOCITY_SCALE * Math.min(Math.max(speed, 0), full);
 }
 
 /**
@@ -125,9 +124,8 @@ function arrowLength(speed: MetersPerSecond): Meters {
  */
 export function speedForRadius(radius: Meters): MetersPerSecond {
   const travel = WIND_CONTROL.inward ? SCENE.windRingRadius - radius : radius;
-  const fraction = travel / SCENE.windRingRadius;
-  const knots = WIND_SPEED_KT.max * Math.min(Math.max(fraction, 0), 1);
-  return knotsToMetersPerSecond(knots);
+  const full = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+  return Math.min(Math.max(travel / VELOCITY_SCALE, 0), full);
 }
 
 /**
