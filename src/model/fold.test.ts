@@ -91,10 +91,23 @@ const TRIM_STEP_DEGREES = 0.25;
 const TWA_STEP_DEGREES = 10;
 
 /**
- * How finely the net force is sampled in speed when hunting for crossings. The
- * two branches of a fold are more than a knot apart, so this is about ten
- * samples between them; it sets how precisely a fold's *width* is reported, not
- * whether one is noticed.
+ * How finely the net force is sampled in speed when hunting for crossings.
+ *
+ * **This does bound what can be noticed, not merely how precisely it is
+ * measured**, and it is worth being exact about why, because the comfortable
+ * reading — "the two branches are more than a knot apart, so ten samples fall
+ * between them" — is wrong. What has to be resolved is not the gap between the
+ * stable branches but the *positive* stretch of net force between the unstable
+ * root and the upper stable one. Step over both ends of that stretch and the
+ * two crossings vanish together, leaving a fold reading as a single root. At a
+ * saddle-node the branches are born coalescent, so that stretch shrinks to
+ * nothing as a fold first appears: **there is necessarily a band of parameter
+ * space where a fold exists and this grid cannot see it.**
+ *
+ * No step size removes that band; it only moves it. What the table above does
+ * is bound it empirically — down to a blend of 30°, this grid still finds what
+ * a grid ten times finer in speed finds — and what the shipped 18° of margin
+ * over the 32° threshold does is keep the model far away from it.
  */
 const SPEED_STEP_KNOTS = 0.1;
 
