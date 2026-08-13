@@ -600,6 +600,20 @@ physical event.
 The jib backs by the same mechanism, which is the other classic way off a
 mooring.
 
+**This manoeuvre is inside the model's domain, and it is worth saying so because
+the section that follows gives a reason to wonder.**
+[§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
+records that below a knot or two the keel cannot hold the side force the rig is
+making, so §7's no-leeway exclusion stops being a simplification — and a backed
+sail is the obvious place to worry, since it is deliberately a large force at no
+speed. Measured, it is not: backed to 45°–90° anywhere from head to wind out to
+TWA 45° in 10 kt, the boat settles at **2.1–2.8 kt of sternway**, and the keel is
+charging 0–22% of the side force against its 22% ceiling — at or under capacity
+throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5. The reason is
+that backing makes its force mostly as *drag*, straight down the boat's axis: at
+90° of backed trim the side force is a couple of newtons. So the boat gets moving
+smartly, and by the time it is moving the question does not arise.
+
 ### 3.5 Hull resistance and integration
 
 Resistance rises steeply approaching hull speed:
@@ -856,6 +870,123 @@ Read the gap as the boat feeling slightly heavier off the mark than its
 displacement argues for, or as the resistance sitting at the top of its plausible
 range; the evidence doesn't distinguish them. `hull.test.ts` holds the derived
 mass to 600–1200 kg, so a pass that needs more room has to say so out loud.
+
+#### Quadratic drag has no slope at rest, and that gives the no-go zone an edge
+
+Both charges above vanish at least as fast as `v²` — the hull's quadratic term
+and the wall on top of it, and the keel's induced drag, which goes as `v²` at
+low speed where the stall term dominates the denominator. So at rest they are
+not merely small: they are zero, and so is their *slope*. That has a consequence
+at exactly one place in the polar, and it is worth writing down because it looks
+like a bug and is not.
+
+At the true wind angle where the drive from rest passes through zero — the edge
+of the no-go zone — rest is a balance point. Whether it is a *stable* one is
+decided by the drive's own slope, unopposed, since the water contributes none.
+That slope is positive: the moment the boat has way on, the apparent wind hauls
+forward, the angle of attack comes down off the stall, and the sail makes more.
+Measured at that boundary it runs 0.29 to 15.95 N/(m/s) across the 0.5–30 kt the
+tests sweep, on both rigs — scaling with the wind up to the 13 kt depowering
+knee and falling away above it. So rest there is **unstable**, and the boat runs
+away from it — astern if
+it started astern, ahead if it started ahead — until the quadratic drag catches
+up a couple of tenths of a knot out.
+
+Which is to say the model reproduces the reason a boat has to be pushed off a
+mooring: below some speed it cannot generate the drive to get going, and above it
+it can. [§3.4](#34-backing-a-sail)'s whole mechanic is that fact. Having it also
+mean that one hairline of angles has two answers is the same fact seen from the
+other side.
+
+**It is bounded and it is small.** The band is half a degree of TWA wide at trim
+0 and needs the sheet almost exactly flat: it survives a quarter of a degree of
+ease, at a slightly wider angle and a smaller split, and half a degree is clean.
+Swept across §5's whole wind slider at a tenth of a knot, both rigs and every
+trim the sheet can hold, the widest split is 0.699 kt and the fastest either
+branch ever reaches is 0.482 kt, both on the sloop sheeted flat at TWA 64.88° in
+12.8 kt — the peak sits at [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
+13 kt knee, where the drive stops growing with the wind and the water's scale
+does not.
+The boat is stopped on both branches, so nothing that is sailing has two answers.
+`fold.test.ts` locates the boundary by bisection rather than by sweeping for it
+and holds those two figures.
+
+**These equilibria are not claims about the world, and that is the honest reason
+they stay.** The rig at that angle is making 450 N of side force and about 6 N of
+drive. The keel has to hold the 450, and keel lift goes as `v²`, so at half a
+knot it has a few percent of the capacity it has at three. This section's own
+`keelStall` is what models it giving up — measured at the branches the keel is
+charging **0.6–0.8%** of the side force as drag, against the 22% ceiling it sits
+at within a percent when the boat is actually sailing close hauled.
+
+Put a number on how far past the keel this is. Taking the effective keel area
+implied by this section's own reading of that ceiling — 0.22 as "crabbing at
+12°", which for an aspect-ratio-3 foil is `Cl` ≈ 0.79 and so ≈ 0.37 m² at the
+close-hauled load — the keel would need a `Cl` of **37 on the ahead branch and
+202 on the astern one** to hold what the rig is making. A foil of any kind tops
+out near 1.5. It is short by twenty-five to a hundred and thirty times, and it
+could carry that load only above about **2 kt**. Nothing about the estimate is
+delicate: a keel four times larger is still short by seven to thirty-four times
+and only moves the floor to about 1.2 kt.
+
+So the boat would sideslip, and [§7](#7-deliberately-out-of-scope) does not let
+it. **The fold lives in the gap between the keel having stopped paying for the
+side force and the hull still being pinned to its heading** — which is to say
+§7's no-leeway exclusion stops being a simplification somewhere around a knot or
+two, and every equilibrium below that is an artefact of it rather than a
+prediction. That is the domain limit of this model, it covers the windward side
+of the centreline as well as the leeward, and it is why the branches being a
+standstill is not merely tolerable but the only place the artefact can live: as
+soon as the boat is fast enough for the keel to carry its load, the gap closes.
+`pos-i4o` is the demonstration — it moved the band from a 2.5 kt fast branch,
+where the boat is sailing and the model should be believed, to half a knot.
+
+**Three ways out, all rejected, and the measurements are the point.**
+
+- *Move the stall blend.* It is a real lever, in the opposite direction from the
+  obvious one: narrowing drops the band to a smaller angle and widens the split
+  (20° → TWA 35.9°, 1.639 kt), widening pushes it up and shrinks it (70° →
+  TWA 86.9°, 0.275 kt) and 80° removes it — all measured on the same sweep as the
+  0.699 kt above, rather than beside it on a coarser one. It costs nothing against
+  [§3.6](#36-calibration-targets) — the polar at optimal trim moves under 0.02 kt
+  out to 80°. It is spent entirely out of
+  [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
+  flat in 10 kt, settled from rest: at the shipped 50° the boat makes 1.20 kt at
+  TWA 60°, drifts astern at 75° and sits still at 90°; at 80° it makes 2.60,
+  2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.699 kt
+  wobble at a standstill is the wrong trade.
+- *Give the water a slope at rest.* A linear damping term would do it, and needs
+  `C > 15.95 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
+  the hull's 7.4 — it more than doubles the resistance at a knot, recalibrates
+  the whole light-air end, and introduces a second absolute speed scale, which
+  falsifies [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale)
+  being the model's only source of wind-dependence.
+- *Flatten the stalled sail.* `FOIL.plateNormalForce` does nothing here at all —
+  identical band at every value from 0.7 to 1.6.
+
+**And one that is cheaper than any of them, found in the prior art rather than
+reasoned out.** *By the Lee* computes residuary resistance from the Delft series,
+which is fitted for Froude numbers of 0.1 to 0.6, and clamps below that — so
+under about 1.4 kt its hull drag stops falling with speed and sits at a constant.
+That is exactly the missing slope at rest, arrived at by accident: it is an
+empirical formula being held inside its range, not a decision about low-speed
+sailing. A constant floor is far cheaper here than a linear term, because it
+stops mattering as soon as the boat is moving — **5 N removes the fold and costs
+about 1% of the polar at every point of sail in 10 kt** (4.19 → 4.15 kt close
+hauled, 5.58 → 5.56 on a beam reach), against the linear term's doubling at a
+knot. It is not adopted, and the reason is not the price: a constant drag at rest
+is static friction, which water does not have, and it would make the boat stop
+dead in finite time where
+[§3.5's integration](#35-hull-resistance-and-integration) says it coasts like
+`1/t`. It is recorded because it is the one middle option between doing nothing
+and modelling leeway, and a later pass that wants the boat to *stay* stopped in
+irons should start here rather than rediscover it.
+
+So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
+pre-`pos-i4o` curve the same band sat at TWA 36.3°–37.5° and split 2.934 kt with
+a 2.498 kt fast branch — a boat genuinely sailing on one of them. Giving the
+attached limb a maximum shrank it more than fourfold and moved it to where both
+branches are a standstill, which is the most any of these constants can do.
 
 ### 3.6 Calibration targets
 
@@ -2136,7 +2267,19 @@ one. Several are worth revisiting *after* v1 works.
 
 - Leeway — the crab angle between heading and track. The *cost* of making side
   force is charged ([§3.5](#35-hull-resistance-and-integration)); what is out is
-  the boat visibly crabbing, and any separate accounting of where that cost goes
+  the boat visibly crabbing, and any separate accounting of where that cost goes.
+  **That reading holds above a knot or two and not below**, which `pos-rem` found
+  and [§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
+  works through. Keel lift goes as `v²`, so at half a knot close hauled the keel
+  is being asked for a `Cl` of 37 and upwards against a foil's 1.5; §3.5's
+  `keelStall` duly stops charging for side force it cannot hold — 0.6% of it,
+  against 22% when the boat is sailing — and a real boat answers by sliding
+  sideways, which this bullet forbids. So down there the exclusion is not the
+  cosmetic one this bullet describes: it is load-bearing, and it is what produces
+  the stalemate at the edge of the no-go zone. This is a statement about the
+  model's domain rather than an argument for modelling leeway — nothing a student
+  does below that speed is anything but stopped — but the bullet should not be
+  read as "leeway costs nothing but a drawing" at every speed, because it does not
 - **Sail telltales** — yarn at the luff, showing whether the flow is attached.
   Weaker than it first looks: [§4.2](#42-the-traffic-light) already reports trim
   quality, and it reports it from the *driving force* rather than from a proxy

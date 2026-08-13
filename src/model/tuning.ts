@@ -134,7 +134,11 @@ export const FOIL: {
    * pass to move the neighbouring constants without falling back over the edge.
    * Widening further is not free — it is what puts lift under a sail at large
    * incidence, and §4.2's "sheeted flat is a mistake" is spent out of the same
-   * account.
+   * account. pos-rem priced that: widening buys out the fold at the edge of the
+   * no-go zone (80° removes it) and costs nothing against §3.6, because the
+   * polar at *optimal* trim barely moves. What it costs is the whole lesson at
+   * trim 0 — sheeted flat in 10 kt the boat goes from drifting astern at TWA 75°
+   * to making 2.01 kt there. §3.5 has the rest of that reckoning.
    */
   stallBlendWidth: degreesToRadians(50),
 

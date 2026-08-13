@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN } from "./boat.ts";
-import { hullResistance, keelInducedDrag } from "./hull.ts";
+import { hullResistance, hullResistanceSlope, keelInducedDrag } from "./hull.ts";
 import { depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
 import { FOIL } from "./tuning.ts";
 import type { SimState } from "./simulation.ts";
@@ -152,8 +152,9 @@ function netForce(state: SimState, speed: MetersPerSecond): number {
  *
  * Forward speeds only. Sternway is §3.4's territory and has its own stable
  * points — a boat in irons with its sheets in sits astern — which are not what
- * this file is about; the last test below names that boundary explicitly and
- * measures what is left on the far side of it.
+ * this sweep is about. `what is left, and where it lives` names that boundary
+ * explicitly, and the block after it searches the far side of it with an
+ * instrument built for the job, since a grid in TWA is the wrong one.
  */
 function settledSpeeds(state: SimState, ceiling: Knots): Knots[] {
   const found: Knots[] = [];
@@ -168,17 +169,29 @@ function settledSpeeds(state: SimState, ceiling: Knots): Knots[] {
   return found;
 }
 
+/**
+ * How fast a search has to look before it can conclude there is nothing there.
+ *
+ * High enough that a fast branch can never hide above it and leave a fold
+ * reading as a single crossing, and no higher, because every knot of ceiling is
+ * samples spent. Scaled to the wind in light air; flattened at 12 kt above
+ * that, which is nearly double the fastest speed this model can reach at any
+ * wind at all — §3.2's depowering holds a beam reach to 6.41 kt in 45 kt of
+ * breeze, and §3.5's wall would want a great deal more than 12 to be passed.
+ *
+ * Shared by both searches in this file rather than written out twice, so the
+ * bound the forward sweep clears and the bound the boundary sweep below clears
+ * cannot drift apart.
+ */
+function speedCeiling(windKnots: number): Knots {
+  return Math.min(Math.max(3, windKnots * 1.4), 12);
+}
+
 /** The widest fold anywhere in the trim/angle grid at one wind, in knots. */
 function worstFold(windKnots: number): { width: Knots; where: string } {
   let width = 0;
   let where = "none";
-  // High enough that a fast branch can never hide above it and leave a fold
-  // reading as a single crossing, and no higher, because every knot of ceiling
-  // is samples spent. Scaled to the wind in light air; flattened at 12 kt above
-  // that, which is nearly double the fastest speed this model can reach at any
-  // wind at all — §3.2's depowering holds a beam reach to 6.41 kt in 45 kt of
-  // breeze, and §3.5's wall would want a great deal more than 12 to be passed.
-  const ceiling = Math.min(Math.max(3, windKnots * 1.4), 12);
+  const ceiling = speedCeiling(windKnots);
 
   for (const jibSet of [false, true]) {
     for (let twa = 0; twa <= 180; twa += TWA_STEP_DEGREES) {
@@ -377,14 +390,19 @@ describe("what is left, and where it lives", () => {
    * **Sheeted flat, close hauled** — no ease at all, so α is the whole apparent
    * wind angle. At TWA 65° the boat either drifts astern or creeps ahead
    * depending on where it started: −0.233 kt against +0.404 kt in 14 kt of
-   * wind, the widest case anywhere. This one is new. Before pos-i4o it settled
-   * astern from both directions (−0.327 kt), and it is the price of the wider
-   * blend — a sail at 65° of incidence now makes just enough lift to sustain
-   * way, where before it made none worth having. Left rather than fixed, and
-   * tracked as `pos-rem`: both branches are under half a knot, the boat is in
-   * irons on either, §4.2 paints the sail red at this trim either way, and
-   * moving the blend does not remove it (at 40° it shifts to TWA 55° and grows
-   * to 0.77 kt).
+   * wind, the widest case anywhere. This is the model sitting on the edge of its
+   * own no-go zone, and `the fold at the edge of the no-go zone` below works out
+   * what it is, why no constant in `tuning.ts` removes it, and what bounds it.
+   * Kept here as well because it is what this sweep actually walks into, and
+   * because the two searches reaching the same case by different routes is worth
+   * something.
+   *
+   * pos-rem filed this as introduced by pos-i4o and it is not: what pos-i4o moved
+   * is *which grid cell* the band falls in. The phenomenon predates it and was
+   * far worse — on the pre-pos-i4o curve the same band sits at TWA 36.3°–37.5° at
+   * trim 0 and splits 2.934 kt, with a fast branch of 2.498 kt, a boat genuinely
+   * sailing. The block below measures that, and measures that this sweep's grid
+   * could not have seen it.
    *
    * **A boat coasting to rest** — 0.000 kt against 0.042 kt. Not a fold at all
    * but `settle`'s iteration budget running out, which `simulation.ts`
@@ -415,5 +433,489 @@ describe("what is left, and where it lives", () => {
 
     // And the widest fork stays the one described above rather than growing.
     expect(residual.worstGap, `worst at ${residual.worstGapAt}`).toBeLessThan(1);
+  });
+});
+
+// --- The fold at the edge of the no-go zone (§3.4, §3.5) --------------------
+//
+// Everything above searches a *grid*. This does not, because for this fold a
+// grid is the wrong instrument and being lucky with one is what the file spent
+// three passes learning to distrust.
+
+/**
+ * How far either side of rest the net force is read to ask which way rest
+ * leans, in knots.
+ *
+ * Small enough to be inside the linear stretch around zero, and far enough out
+ * to clear the residue of the bisection below. Forty halvings take a one-degree
+ * bracket to about 1e-12 of a degree, and the drive moves some 2 N per degree of
+ * TWA there, so the drive left at rest is around 2e-12 N. Against that, a
+ * ten-thousandth of a knot reads 1.48e-5 N at the *shallowest* drive slope
+ * anywhere a fold is found — 0.288 N/(m/s), at the half-knot bottom of
+ * {@link BOUND_WINDS}, since the slope scales with the wind. Seven orders of
+ * margin at the worst case and nine at the 15.95 N/(m/s) top of the range.
+ */
+const REST_PROBE_KNOTS = 1e-4;
+
+/**
+ * How fast the walk outward from rest opens up, per step.
+ *
+ * It only has to bracket a sign change; the bisection that follows does the
+ * accuracy. A fifth per step spans a ten-thousandth of a knot to the 12 kt
+ * ceiling in 64 evaluations, where a fixed step fine enough for the lightest
+ * branch would want tens of thousands.
+ */
+const OUTWARD_GROWTH = 1.2;
+
+/**
+ * How finely the drive from rest is scanned in TWA before each sign change is
+ * bisected, in degrees.
+ *
+ * The only sampled axis left in this search, and the one place it could still
+ * miss something — a pair of sign changes inside one degree would read as none.
+ * Checked rather than assumed: against a scan twenty times finer, over every rig
+ * and trim this search visits and at six winds apiece, 4332 settings in all, the
+ * two agree on the number of sign changes at all but twelve. Those twelve are
+ * one setting — trim −2°, counted once per rig and wind — and in every one of
+ * them it is the *coarse* scan finding an extra rather than the fine one finding
+ * something the coarse missed. See {@link noGoBoundaries} on the collapsed
+ * plateau, where "the angle at which the drive changes sign" is not a well-posed
+ * question and nothing is hiding either way.
+ */
+const BOUNDARY_SCAN_DEGREES = 1;
+
+/**
+ * The wind {@link noGoBoundaries} is evaluated at, in knots. Any would do — see
+ * there for why the answer does not depend on it — so this is the middle of
+ * §2.1's opening range rather than a number with a job.
+ */
+const BOUNDARY_REFERENCE_WIND = 10;
+
+/**
+ * The winds the bound is taken over, in knots: §5's slider, finely.
+ *
+ * **Six sampled winds was not good enough and this is the axis that caught it.**
+ * The other two axes are honest — TWA is solved for rather than sampled, and the
+ * trim grid is the one the file already argues for — but the wind list was
+ * inherited from the sweeps above, where it is a list of *cases* rather than a
+ * search. Here it is a search, and the quantity being maximised is not monotone
+ * in the wind: the branches grow with it up to §3.2's `fullPowerWind` and shrink
+ * above, because past the knee the drive stops collecting while the water's
+ * scale does not. So the maximum sits at the knee — measured at 12.8 kt, against
+ * a 13 kt constant — and a list holding 10 and 14 straddles it and reports 6%
+ * low. A tenth of a knot resolves it.
+ */
+const BOUND_WINDS: number[] = Array.from({ length: 296 }, (_, i) => 0.5 + i * 0.1);
+
+/**
+ * Every true wind angle at which the drive from rest changes sign, at one trim
+ * and wind, bisected.
+ *
+ * **This is the whole point of the block.** The band of angles in which the boat
+ * has two settled speeds astride zero is a fraction of a degree wide — half a
+ * degree at trim 0 — and it always sits at the angle where the drive from rest
+ * passes through zero. A sweep in TWA finds it by luck or not at all. Solving
+ * for the angle instead makes the search exact on that axis, so trim is the only
+ * thing left being sampled.
+ *
+ * The net force at rest *is* the drive at rest: {@link hullResistance} and
+ * {@link keelInducedDrag} both vanish at least as fast as `v²`, so both vanish
+ * at zero. `charges nothing for the water at rest` below pins that, because it
+ * is the fact the whole mechanism turns on.
+ *
+ * **The collapsed plateau is not a boundary and does not need to be.** Near head
+ * to wind, and again near dead astern, §3.3 collapses the sail outright and the
+ * drive from rest is *exactly* zero over a stretch of angles rather than passing
+ * through zero at one. Sign changes at the ends of that stretch are an artefact
+ * of where the scan lands, which is why nothing below asserts on how many
+ * boundaries were found. Nothing hides there either: root-counting across signed
+ * speeds at all 36,984 grid cells where the drive from rest is exactly zero —
+ * every trim, both rigs, and the six winds that check was run at — finds no
+ * case with two settled speeds.
+ *
+ * **These angles do not depend on the wind, and that is what makes a fine wind
+ * grid affordable.** At rest the apparent wind *is* the true wind, so the drive
+ * from rest is `½ρW²·A` times a function of the angles alone, and §3.2's
+ * depowering is one more positive factor on top. Neither can move a sign change.
+ * So this is evaluated once per rig and trim at {@link BOUNDARY_REFERENCE_WIND}
+ * and reused at every wind, which turns the wind axis from six samples into
+ * three hundred for no extra boundary work. `locates the same boundaries at
+ * every wind` asserts the property rather than trusting this paragraph.
+ */
+function noGoBoundaries(
+  jibSet: boolean,
+  trim: Radians,
+  wind: MetersPerSecond = kt(BOUNDARY_REFERENCE_WIND),
+): number[] {
+  const atRest = (twa: number) => netForce(boat(twa, jibSet, trim, wind), 0);
+  const found: number[] = [];
+
+  let previous = atRest(0);
+  for (let twa = BOUNDARY_SCAN_DEGREES; twa <= 180; twa += BOUNDARY_SCAN_DEGREES) {
+    const current = atRest(twa);
+
+    if (previous > 0 !== current > 0) {
+      let low = twa - BOUNDARY_SCAN_DEGREES;
+      let high = twa;
+      const positiveAtHigh = current > 0;
+      // Halving the bracket forty times takes a degree to under 1e-12 of one.
+      for (let pass = 0; pass < 40; pass += 1) {
+        const mid = (low + high) / 2;
+        if (atRest(mid) > 0 === positiveAtHigh) high = mid;
+        else low = mid;
+      }
+      found.push((low + high) / 2);
+    }
+
+    previous = current;
+  }
+
+  return found;
+}
+
+/**
+ * Walking outward from rest in one direction, the first speed at which the net
+ * force crosses back through zero: the branch the boat runs away to on that
+ * side.
+ *
+ * Returns the ceiling itself if there is no crossing before it, so a branch that
+ * runs away to the end of the search shows up as a large number and fails the
+ * bound rather than vanishing from the set being bounded.
+ */
+function branchOutward(state: SimState, direction: 1 | -1, ceiling: Knots): Knots {
+  let low = REST_PROBE_KNOTS;
+  let atLow = netForce(state, kt(direction * low));
+
+  for (let high = low * OUTWARD_GROWTH; high <= ceiling; high *= OUTWARD_GROWTH) {
+    const atHigh = netForce(state, kt(direction * high));
+
+    if (atLow > 0 !== atHigh > 0) {
+      let inner = low;
+      let outer = high;
+      for (let pass = 0; pass < 50; pass += 1) {
+        const mid = (inner + outer) / 2;
+        if (netForce(state, kt(direction * mid)) > 0 === atLow > 0) inner = mid;
+        else outer = mid;
+      }
+      return (direction * (inner + outer)) / 2;
+    }
+
+    low = high;
+    atLow = atHigh;
+  }
+
+  return direction * ceiling;
+}
+
+/**
+ * The two speeds the boat settles at either side of an unstable rest, or null
+ * where rest is not unstable and there is only the one answer.
+ *
+ * **Rest is unstable exactly when the drive gains with speed there**, and that
+ * is the condition tested: the net force positive just ahead of zero and
+ * negative just astern of it. Since both water drags vanish at rest, that is a
+ * statement about the rig alone — the boat makes more drive the moment it has
+ * way on, because the apparent wind hauls forward and takes the sail off the
+ * stall. Which is a true thing about boats, and the reason a mooring departure
+ * starts with a push.
+ *
+ * Where it holds, rest is the *unstable* root and the two stable ones are
+ * necessarily either side of it, so this fold cannot be tuned away without
+ * denying that a boat sails itself out of irons once it is moving. §3.5 works
+ * through what that costs.
+ */
+function branchesAstrideRest(
+  state: SimState,
+  ceiling: Knots,
+): { astern: Knots; ahead: Knots } | null {
+  const ahead = netForce(state, kt(REST_PROBE_KNOTS));
+  const astern = netForce(state, kt(-REST_PROBE_KNOTS));
+  if (!(ahead > 0 && astern < 0)) return null;
+
+  return {
+    astern: branchOutward(state, -1, ceiling),
+    ahead: branchOutward(state, 1, ceiling),
+  };
+}
+
+/** The worst fold astride rest anywhere along the no-go boundary. */
+function worstAstrideRest(winds: number[]) {
+  const worst = {
+    split: 0,
+    where: "none",
+    fastest: 0,
+    fastestAt: "none",
+    boundaries: 0,
+    folds: 0,
+  };
+
+  for (const jibSet of [false, true]) {
+    for (let trim = 0; trim >= -90; trim -= TRIM_STEP_DEGREES) {
+      // Hoisted out of the wind loop, which is exactly what makes that loop
+      // affordable at a tenth of a knot. See {@link noGoBoundaries}.
+      const boundaries = noGoBoundaries(jibSet, deg(trim));
+
+      for (const wind of winds) {
+        const ceiling = speedCeiling(wind);
+
+        for (const twa of boundaries) {
+          worst.boundaries += 1;
+
+          const state = boat(twa, jibSet, deg(trim), kt(wind));
+          const branches = branchesAstrideRest(state, ceiling);
+          if (branches === null) continue;
+
+          worst.folds += 1;
+          const rig = jibSet ? "sloop" : "main only";
+          const where = `${wind.toFixed(1)} kt, ${rig}, TWA ${twa.toFixed(2)}°, trim ${trim}°`;
+          const split = branches.ahead - branches.astern;
+          const fastest = Math.max(branches.ahead, -branches.astern);
+          if (split > worst.split) worst.split = split, (worst.where = where);
+          if (fastest > worst.fastest) worst.fastest = fastest, (worst.fastestAt = where);
+        }
+      }
+    }
+  }
+
+  return worst;
+}
+
+describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () => {
+  /**
+   * **What is left after the sweeps above, measured by an instrument that finds
+   * it on purpose.** Right at the angle where the drive from rest changes sign,
+   * rest is an unstable balance and the boat runs away from it — astern if it
+   * starts astern, ahead if it starts ahead. That is a genuine second
+   * equilibrium and not `settle`'s convergence floor: root-counting and settling
+   * agree to four decimals on both branches.
+   *
+   * **It is structural, so this bounds it rather than forbidding it.** §3.5 has
+   * the argument and the rejected alternatives; the short form is that both
+   * water drags vanish at least as fast as `v²`, so they contribute no slope at
+   * rest at all, and the sign of the drive's own slope is left to decide the
+   * stability of rest unopposed. At the upwind boundary that slope is positive at
+   * every wind and both rigs — 0.288 N/(m/s) at the bottom of the sweep up to 15.95 at the
+   * 13 kt knee, scaling with the wind below it and falling away above.
+   *
+   * **What is defended is that nothing sailing has two answers.** Across §5's
+   * whole wind slider at a tenth of a knot, both rigs and every trim from flat to
+   * fully eased, the fastest branch anywhere is **0.482 kt** and the widest split
+   * **0.699 kt**, both at 12.8–12.9 kt on the sloop, TWA 64.88°, trim 0°. The
+   * boat is stopped on both branches, §4.2 paints the sail red at that trim
+   * either way, and there is no wind or angle at which a student is doing
+   * anything that works out differently.
+   *
+   * That the peak sits at 12.8 kt rather than at one of the round numbers the
+   * sweeps above use is the reason {@link BOUND_WINDS} exists; the first version
+   * of this test sampled six winds, straddled the knee, and reported 6% low.
+   *
+   * **Only two trims on the grid fold at all**, and it is worth naming them
+   * because "sheeted flat" undersells how flat: trim 0, and trim −0.25° at a
+   * slightly wider angle (TWA 66.25°) and a smaller branch (0.337 kt on the
+   * sloop). Swept continuously rather than on the grid the band reaches trim
+   * −0.41° on both rigs and is gone by −0.45°, so 0.25° is not resolving it
+   * finely — it is landing on the two cells of a sliver about four tenths of a
+   * degree deep. That is why the sweeps above meet it only at their first trim,
+   * and it is the reason the maximum sits at the trim-0 endpoint rather than
+   * anywhere a finer grid would find.
+   *
+   * **What is bounded here is an artefact, and §3.5 says whose.** At these
+   * speeds the rig is making some 450 N of side force against 6 N of drive, and
+   * the keel — whose lift goes as `v²` — is charging 0.6–0.8% of that side force
+   * where close hauled and sailing it charges 22%. It would need a `Cl` of 37 to
+   * 202 to hold the load; a foil tops out near 1.5. The boat would sideslip and
+   * §7 does not let it, so these equilibria live in the gap between the keel
+   * having given up and the hull still being pinned to its heading. Bounding them
+   * is worth doing because it keeps the artefact where it cannot be mistaken for
+   * the boat; removing them is not, because the thing to remove is §7.
+   *
+   * **Which is also why the windward side of the centreline is not asserted
+   * over.** Every sweep in this file runs trim 0 to −90°, the side the sheet
+   * holds a sail on. Carried the other way the band is wider and the fast branch
+   * does make way — 1.306 kt split with a 0.827 kt branch at trim +4.75°,
+   * TWA 50.48°. That is the same artefact at the same speeds rather than a second
+   * phenomenon, so it is left measured and named: a bound on it would be a bound
+   * on how wrong the no-leeway assumption is allowed to be, which is not a number
+   * this file can defend.
+   *
+   * **It is not §3.4's mooring departure, and that is worth keeping straight.**
+   * The band runs from trim 0 to about +14°, a sail a few degrees the wrong side
+   * of the centreline. Backing a sail properly puts it at 45°–90°, where the
+   * force is mostly drag along the boat's axis and the side force is a couple of
+   * newtons: the boat gathers 2.1–2.8 kt of sternway and the keel sits at or
+   * under its ceiling the whole way. §3.4 records the measurement. So the
+   * windward band is a sliver near the centreline that nothing in §3.4 passes
+   * through, not the manoeuvre it happens to share a side with.
+   */
+  it("leaves the boat stopped on both branches wherever rest is unstable", () => {
+    const worst = worstAstrideRest(BOUND_WINDS);
+
+    // **That the search reached what it measures.** Both bounds below are upper
+    // bounds, and an upper bound over an empty set is vacuous — which is what
+    // this test would become if the boundary scan stopped locating boundaries,
+    // or if `branchesAstrideRest` stopped recognising an unstable rest. A
+    // failure here is not necessarily bad news: a model that had genuinely
+    // stopped folding at its no-go boundary would fail it too, and should,
+    // because then the two bounds are guarding nothing and should be deleted
+    // rather than left looking like protection.
+    expect(worst.boundaries, "no no-go boundary was located at all").toBeGreaterThan(100);
+    expect(worst.folds, "no boundary folds — see this test's docblock").toBeGreaterThan(0);
+
+    // The property that makes it tolerable, and the one to defend: neither
+    // branch is a boat that is sailing. Measured 0.482 kt.
+    expect(worst.fastest, `a branch is under way at ${worst.fastestAt}`).toBeLessThan(0.6);
+
+    // And the fork stays the size it is. Measured 0.699 kt; the pre-pos-i4o
+    // curve put it at 2.93 kt.
+    expect(worst.split, `widest astride rest at ${worst.where}`).toBeLessThan(1);
+  }, 30_000);
+
+  /**
+   * **The property {@link worstAstrideRest} is built on**, which is what lets it
+   * find the boundary once per trim and spend the saving on three hundred winds
+   * instead of six. At rest the apparent wind is the true wind, so the drive is
+   * `½ρW²·A` times a function of the angles alone; the wind enters as a positive
+   * factor and a positive factor cannot move a zero crossing.
+   *
+   * Asserted rather than argued, because the argument stops holding the moment
+   * anything in `sail.ts` reads the true wind for something other than a scale —
+   * `depoweringFactor` already does, and is fine only because it is also a
+   * positive factor. Something keyed to the wind that was not would break this
+   * silently, and the search would then be reusing boundaries that had moved.
+   *
+   * **Two things this has to avoid being.** It compares *equality of two lists*,
+   * so it passes on two empty ones — and `noGoBoundaries` returning nothing is
+   * exactly the failure that would make {@link worstAstrideRest} vacuous too, so
+   * a guard that agreed with it silently would be worth nothing. Hence the count
+   * below. And it walks the same trim grid the hoist reuses boundaries at, not a
+   * coarser one, because agreement at every fifteenth trim is not agreement at
+   * the trims the saving is actually spent on. The two winds are the ends of
+   * {@link BOUND_WINDS}, which is the widest the property is ever leaned on.
+   */
+  it("locates the same boundaries at every wind", () => {
+    const light = BOUND_WINDS[0];
+    const heavy = BOUND_WINDS[BOUND_WINDS.length - 1];
+    let compared = 0;
+
+    for (const jibSet of [false, true]) {
+      for (let trim = 0; trim >= -90; trim -= TRIM_STEP_DEGREES) {
+        const inLight = noGoBoundaries(jibSet, deg(trim), kt(light));
+        const inHeavy = noGoBoundaries(jibSet, deg(trim), kt(heavy));
+        const where = `${jibSet ? "sloop" : "main only"}, trim ${trim}°`;
+
+        expect(inHeavy.length, `boundary count moved with the wind at ${where}`).toBe(
+          inLight.length,
+        );
+        for (let i = 0; i < inLight.length; i += 1) {
+          expect(inHeavy[i], `boundary moved with the wind at ${where}`).toBeCloseTo(inLight[i], 9);
+        }
+        compared += inLight.length;
+      }
+    }
+
+    // That there was anything to agree about: 748 boundaries over the 722
+    // rig-and-trim settings the hoist covers, which is a shade over one apiece.
+    expect(compared, "no boundaries were compared at all").toBeGreaterThan(700);
+  });
+
+  /**
+   * **The instrument check, and the thing it has to beat is the sweep upstairs.**
+   * `leaves only cases where the boat is stopped on one of the branches` bounds
+   * this same fold by settling on a grid of 15° in TWA and 2° in trim. The band
+   * is half a degree wide. That grid lands on it at TWA 65°, trim 0° — and it
+   * lands there by coincidence, which is not a property anyone chose and not one
+   * that survives the constants moving.
+   *
+   * So: restore the pre-pos-i4o curve, where the band sits at TWA 36.3°–37.5°
+   * instead, and check both halves of the claim. The search above finds a
+   * **2.934 kt** fold with a **2.498 kt** fast branch at TWA 36.65°, trim 0° — a
+   * boat sailing on one branch and drifting astern on the other. The settling
+   * grid's cells either side of that band, TWA 35° and 50°, each report a single
+   * settled speed to four decimals. The grid is not merely unlucky there; it has
+   * nowhere to stand.
+   *
+   * Which is what makes the bound in the previous test worth more than the one
+   * upstairs: it is derived from where the fold has to be rather than sampled in
+   * the hope of meeting it.
+   */
+  it("finds a fold the settling sweep's grid has nowhere to stand on", () => {
+    const foil = FOIL as { stallBlendWidth: number; maxLift: number };
+    const savedBlend = foil.stallBlendWidth;
+    const savedMaxLift = foil.maxLift;
+
+    // Before pos-i4o: no maximum on the attached limb, and the old 20° blend.
+    foil.maxLift = Infinity;
+    foil.stallBlendWidth = deg(20);
+
+    try {
+      const worst = worstAstrideRest([6, 10, 14]);
+      expect(worst.split, "the boundary search missed the pre-pos-i4o fold").toBeGreaterThan(2);
+      expect(worst.fastest, "the pre-pos-i4o fast branch was not a boat sailing").toBeGreaterThan(2);
+
+      // And the same fold, at the cells the settling sweep actually visits.
+      for (const wind of [6, 10, 14]) {
+        for (const twa of [35, 50]) {
+          const state = boat(twa, true, 0, kt(wind));
+          const fromRest = metersPerSecondToKnots(settle(state).motion.speed);
+          const fromSpeed = metersPerSecondToKnots(
+            settle({ ...state, motion: { heading: 0, speed: kt(wind * 1.2) } }).motion.speed,
+          );
+
+          expect(
+            Math.abs(fromRest - fromSpeed),
+            `the settling grid can see the band at ${wind} kt, TWA ${twa}° after all`,
+          ).toBeLessThan(0.01);
+        }
+      }
+    } finally {
+      foil.stallBlendWidth = savedBlend;
+      foil.maxLift = savedMaxLift;
+    }
+  }, 30_000);
+
+  /**
+   * **The fact the whole mechanism turns on, pinned where it can be broken.**
+   * Both of §3.5's water charges vanish at least as fast as `v²`, so the water
+   * offers no *slope* at rest, only curvature. That is what leaves the rig's own
+   * slope to decide whether rest is stable, and it is why no resistance constant
+   * can be turned to remove the fold: `RESISTANCE.quadratic` and the wall both
+   * arrive multiplied by a speed that has already gone to zero.
+   *
+   * **The claim is about rest itself, not about small speeds generally**, and
+   * the difference matters. By the time the boat is on either branch — a couple
+   * of tenths of a knot — the water is charging 15 N/(m/s) and is the whole
+   * reason the runaway stops there rather than continuing. What it charges *at*
+   * rest is zero, and that is the part that decides which way the boat leaves.
+   *
+   * So this pins the limit exactly and then pins the approach to it: the slope
+   * is not merely small near rest, it is going to zero *with* the speed, a tenth
+   * of the slope for a tenth of the speed. A linear damping term — the one change
+   * that would genuinely remove the fold — would leave a constant there instead,
+   * and fails both halves. §3.5 costs that option at more than doubling the
+   * hull's resistance at a knot; this is where it would first show.
+   */
+  it("charges nothing for the water at rest, which is what leaves the drive to decide", () => {
+    // A side force the keel is genuinely carrying close hauled, so the induced
+    // drag term is not let off by a zero load.
+    const sideForce = 500;
+    const chordSlope = (knots: number) => {
+      const speed = kt(knots);
+      return (hullResistance(speed) + keelInducedDrag(speed, sideForce)) / speed;
+    };
+
+    // Exactly zero at rest, both terms, which is the fact §3.5 leans on.
+    expect(hullResistanceSlope(0)).toBe(0);
+    expect(hullResistance(0)).toBe(0);
+    expect(keelInducedDrag(0, sideForce)).toBe(0);
+
+    // And approached linearly rather than levelling off at some small constant:
+    // a decade of speed is a decade of slope, twice over.
+    const linear = "the water's slope is not linear in speed";
+    expect(chordSlope(1e-3) / chordSlope(1e-4), linear).toBeCloseTo(10, 1);
+    expect(chordSlope(1e-4) / chordSlope(1e-5), linear).toBeCloseTo(10, 1);
+
+    // Which puts it nearly three orders under the shallowest drive slope found
+    // at any folding boundary, 0.288 N/(m/s), by a hundred-thousandth of a knot.
+    expect(chordSlope(1e-5), "the water has a slope at rest after all").toBeLessThan(1e-3);
   });
 });
