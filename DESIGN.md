@@ -2040,6 +2040,12 @@ What remains:
    never coincide — the ~22% of LOA minimum above. Touchdown still tie-breaks on
    the nearer clew, and a sail already captured by another pointer isn't a
    candidate.
+5. **Anything else claims nothing.** Open water, the perimeter, a sail's cloth
+   away from its clew: the touchdown is left alone rather than given to the
+   nearest anything. That is what leaves the ring free for the wind
+   ([§4.1](#41-whats-drawn)), and it is why the input layer never consults an
+   event's `target` — the sailcloth is a painted path and does receive the
+   event, so hit-testing is geometric from the touchdown point in metres.
 
 **A correction to the pixel figures above.** They were written against a
 hypothetical 500 px boat, which the scene ([§4.1](#41-whats-drawn)) has since
@@ -2050,12 +2056,31 @@ the typical one.
 
 The proportions are unaffected — 45% of LOA at normal trim, 22% at the worst
 legal trim — but the pixels are not. On a phone that worst case is ~42 px, which
-is *narrower* than two 44 px discs side by side, so **the nearer-clew tie-break
-is load-bearing on small screens, not the cheap defensive rule this section
-called it.** Disc radius should be `min(22px, gap / 2)` rather than a flat 22 px.
-`scene.pixelsToMeters()` exists so the input layer can compute that at runtime
-instead of assuming a scale. At normal trim there is no ambiguity anywhere: 45%
-of a 190 px boat is still ~85 px.
+is *narrower* than two 44 px discs side by side, so a flat 22 px radius would
+put a finger inside both discs at once. **Disc radius is therefore
+`min(22px, gap / 2)`**, and `scene.pixelsToMeters()` exists so the input layer
+can compute that at runtime instead of assuming a scale. At normal trim there is
+no ambiguity anywhere: 45% of a 190 px boat is still ~85 px, so the 22 px cap is
+what binds and the target is the full 44 px.
+
+The 22% figure is **derived rather than sampled**, which is worth stating because
+it is the number the sizing rule leans on. For a fixed main clew, the nearest
+point of the jib's whole circle is `|mainClew − jibTack| − JIB.foot`, and that
+first term is smallest at either end of the boom's legal swing — so the closest
+the two grab points ever come is that one expression, 1.273 m, or 21.8% of LOA.
+A sweep of the whole legal trim square finds nothing under it and gets within
+half a centimetre of it, which is all a sweep can do: it can look for a
+counterexample, it cannot establish the bound.
+
+**This demotes the nearer-clew tie-break rather than promoting it**, which is a
+correction to what the paragraph above used to say. `min(22px, gap / 2)` makes
+the two discs *at worst tangent*, so by the triangle inequality no point can lie
+strictly inside both, and the tie-break can only ever decide the single point
+where they touch. It is genuinely the cheap defensive rule this section
+originally called it — the **sizing** is the load-bearing part on a phone. Both
+are implemented, because they fail differently and only one of them is a
+function of the trim, but `input/gestures.test.ts` has to hand `beginGrab` a
+deliberately oversized disc to exercise the tie-break at all.
 
 **Discoverability.** With no labels, the grab points have to announce themselves.
 A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
@@ -2065,10 +2090,61 @@ about hiding the controls. The opening state helps too: the mistrimmed sail is
 usually luffing, and the motion draws the eye straight to the thing worth
 touching.
 
+The drawn fitting and the invisible disc are **independent sizes**, and they
+scale with different things. The fitting is a dimension *of the boat*, so it is
+in metres and shrinks with the drawing: at a 0.105 m radius its ring is 6.8 px
+across on a 390 px phone, 14.6 px on an iPad and 15.8 px on a desktop. The disc
+is a touch target, so it is in CSS pixels and does not shrink at all. On a phone
+the target is six and a half times the mark, and on a desktop under three.
+
+Those are the ring's **diameter**, not its inked extent — the stroke is another
+1.4–4 px on top, centred on the path — and the distinction is recorded because
+quoting a bounding box here once put 9.5 px in this paragraph against the
+6.8 px the geometry actually gives.
+
 One consequence for [§3.4](#34-backing-a-sail): backing the main means dragging
 the clew forward rather than shoving the boom amidships as you would on the
 water. The geometry is identical — the boom rotates about the mast either way —
 so the loss is a small one in physical metaphor only.
+
+### What a drag computes
+
+All three gestures turn out to be **one gesture with a different centre**: a
+bearing taken about a point, converted into the thing it drives. The main turns
+about the mast and writes `mainAngle`, the jib about its tack and writes
+`jibAngle`, the hull about the pivot and writes `heading`.
+
+Two things do not generalise, and both matter.
+
+**The frame differs.** A sail angle is measured against the boat, so its bearing
+is taken in the boat frame; a heading is what *relates* the boat frame to the
+world, so taking its bearing in the boat frame would feed the rotation back into
+its own input and the boat would run away from the finger. Sails read the boat
+frame at the live heading, the hull reads the world.
+
+**A drag preserves where you grabbed.** Touchdown records the angle between what
+the pointer's bearing implies and what the state actually holds, and every later
+move adds it back. Grab a clew 20 px off centre and the sail follows from where
+it was instead of jumping ~13° to meet the finger. The offset is captured once
+and the target recomputed from the live bearing each move, so nothing
+accumulates, and a drag pushed past the swing limit comes straight back off it
+rather than unwinding.
+
+Every drag-derived trim goes through `clampTrim`, so the boom cannot be dragged
+through the shrouds. Pushed past the limit the sail simply stops; pushed all the
+way around past *dead ahead of the tack* it changes sides, because that is the
+one bearing genuinely equidistant from both limits.
+
+**A dead zone about each centre.** A pointer at radius *r* turns its target by
+57.3/*r* degrees per pixel it moves across, so the gain grows without bound as
+the finger nears the centre — and the pivot sits inside the hull silhouette,
+about a foot abaft the mast, so a student can and will put a finger on it. Inside
+24 px the bearing is treated as absent: the angle is held, and the offset is
+taken afresh on the way out, so leaving the dead zone resumes the drag rather
+than snapping the boat to wherever the finger reappeared. Measured without it,
+an 11.2 cm slide across the pivot swings the boat **exactly 135°** — the two
+points sit 7.07 cm from the pivot on bearings 225° apart, and quoting that
+radius as the distance travelled is the error this sentence used to contain.
 
 ### Multi-touch
 
@@ -2076,6 +2152,51 @@ Two students, one on the main and one on the jib, at the same time. Pointer
 events support this and the model is stateless enough not to care. For a tool
 explicitly designed for small groups around a table, this is worth getting right
 rather than treating as a bonus.
+
+`setPointerCapture` is per-`pointerId`, so one element can hold two fingers at
+once and each keeps being delivered to it wherever it wanders — which is what
+makes hit-testing a touchdown-only concern.
+
+**A target belongs to one pointer at a time.** A second finger landing on a sail
+another finger already holds is given nothing, rather than a shared claim; the
+same goes for the hull, since two fingers fighting over one heading is a tug of
+war rather than a gesture.
+
+**And a clew's disc is reserved whether or not its sail is available**, which is
+the part that is easy to get wrong, because at ordinary trim *both* clews lie
+over the deck. "Skip the taken sail" and "then try the hull" compose into handing
+the second finger the *heading* from a touch that landed squarely on the sail
+someone else is holding — and turning the boat then drags that student's sail
+around under their own stationary finger, by the live-heading rule below. So a
+touchdown inside any clew disc either gets that sail or gets nothing.
+
+One case falls out of measuring a sail's bearing against the *live* heading, and
+it is worth having on purpose: with one student turning the hull and another
+holding a clew, the clew stays under its finger while the boat turns beneath it,
+so the trim changes. That is exactly what happens on the water when you hold a
+sheet through a turn.
+
+**It does not fall out of the event model, though, and that is the trap.** A
+finger holding still sends no `pointermove`, so the only gesture a frame
+recomputes is the one whose finger moved — which is fine for two sails, whose
+inputs are independent, and wrong the moment the hull is one of them. So every
+pointer's last position is kept in **world metres**, and the ones that did not
+move are re-applied after one that did. World metres rather than client pixels
+because the screen→world map depends on the layout and the viewBox, neither of
+which a gesture changes: a stored world point stays the point that finger is on
+however far the boat turns under it.
+
+One pass suffices, and that is a property rather than optimism: each gesture is
+idempotent in the state it does not write, so no re-application can invalidate
+one already done. Without it, a held clew would sit where the *boat* put it and
+then jump the whole accumulated rotation the instant its finger twitched — both
+halves worse than tracking.
+
+Listeners go on `.pos-sim .surface`, **not on the `<svg>`**. An SVG with no
+painted background receives events only over painted geometry, so a drag that
+began on the boat and continued over open water would stop being delivered. The
+host is an ordinary HTML element and receives events over its whole box, and it
+already carries the `touch-action: none` of [§6.2](#62-a-bare-page-owning-the-whole-viewport).
 
 ---
 

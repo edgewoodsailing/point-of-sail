@@ -141,6 +141,28 @@
   display: none;
 }
 
+/*
+ * The clew fittings (§5). Hull ink and hull weight, because a fitting is part
+ * of the boat rather than part of the sail — a shackle, not a telltale — and
+ * because the sail's own stroke is the heaviest line in the drawing and should
+ * stay so. Hollow, so it is told apart from the filled mast dot.
+ */
+.pos-sim .pos-clew {
+  fill: none;
+  stroke: var(--pos-ink);
+  stroke-width: var(--pos-rule-hull);
+}
+
+/*
+ * Transparent to the pointer. Hit-testing is geometric — `input/gestures.ts`
+ * arbitrates in metres and never reads an event's target — so this changes no
+ * behaviour; it is here to make that true by construction rather than by
+ * convention, exactly as `.pos-speed` above is.
+ */
+.pos-sim .pos-handles {
+  pointer-events: none;
+}
+
 /* The wind ring's track and its seven points-of-sail graduations (§4.1, §5). */
 .pos-sim .pos-wind-track,
 .pos-sim .pos-wind-ticks {
