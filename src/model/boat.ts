@@ -382,8 +382,17 @@ export function mainClewPosition(mainAngle: Radians): Vec2 {
 
 /**
  * Where the jib's clew sits for a given trim. With no boom it swings about the
- * tack — {@link STATIONS.jibTack}, not the stemhead — on a radius of its foot.
+ * tack — {@link STATIONS.jibTack}, not the stemhead — on a radius of its
+ * **chord**.
+ *
+ * The chord defaults to the sail's foot, which is the flat-cloth case and what
+ * every caller wanted while the foot was treated as a rigid bar. It is a
+ * parameter now because it is not a constant: a bellied foot spans less than its
+ * own length, so the radius shrinks as the sail fills (`model/sail.ts`'s
+ * `chordForArc`). Callers that know the wind pass the live chord; callers that
+ * only want the geometry — the extent sweep in `render/scene.ts`, which wants
+ * the *furthest* the clew can ever reach — take the default and are right to.
  */
-export function jibClewPosition(jibAngle: Radians): Vec2 {
-  return add(STATIONS.jibTack, vectorFromAngle(sailChordBearing(jibAngle), JIB.foot));
+export function jibClewPosition(jibAngle: Radians, chord: Meters = JIB.foot): Vec2 {
+  return add(STATIONS.jibTack, vectorFromAngle(sailChordBearing(jibAngle), chord));
 }

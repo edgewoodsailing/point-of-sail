@@ -99,11 +99,13 @@
  *
  * ## Drawing taste stays here
  *
- * The draft fractions and the pressure reference below are drawing decisions and
- * live in this file, not in `model/tuning.ts`, for the reason `hull.ts` gives
- * about its fairing constants: that file's job is to separate physics from taste
- * *in the model*, and camber affects no force. Nothing in `render/` feeds back
- * into what the boat does.
+ * The draft *position* below is still a drawing decision and lives here. The
+ * camber **depth** no longer does: it moved to `model/sail.ts` when the jib's
+ * foot began conserving its arc length, because the depth now sets the chord,
+ * the chord sets where the clew is, and that sets the force. The old claim in
+ * this docblock — "camber affects no force" — stopped being true on that day and
+ * is corrected rather than deleted, because it is exactly the assumption a
+ * reader would otherwise carry forward.
  */
 
 import type { Sail } from "../model/boat.ts";
@@ -111,6 +113,8 @@ import { JIB, MAIN, STATIONS, jibClewPosition, mainClewPosition } from "../model
 import type { CollapseEdge } from "../model/sail.ts";
 import {
   angleOfAttack,
+  camberDepth,
+  jibChord,
   collapseFrom,
   collapsedFraction,
   dynamicPressure,
@@ -122,7 +126,6 @@ import type { Meters, Radians, Seconds, Vec2 } from "../model/units.ts";
 import {
   TAU,
   add,
-  knotsToMetersPerSecond,
   magnitude,
   perpendicular,
   scale,
@@ -139,16 +142,6 @@ import { formatNumber, svgElement } from "./svg.ts";
 
 // --- Drawing taste ----------------------------------------------------------
 
-/**
- * Peak camber as a fraction of the chord, reached at α = 90° in full pressure.
- *
- * Deliberately over-drawn: real mains carry 8–12%, and what a student has to see
- * here is not a draft number but *which side the sail is on*. The binding case
- * is the jib on a phone, where the chord is ~74 px; at 10% that is 7 px of
- * deviation carrying a ~2.4 px stroke, which reads as a bent line rather than a
- * sail. This is the knob to move by eye against the running drawing.
- */
-const MAX_DRAFT_FRACTION = 0.16;
 
 /**
  * Where the deepest point sits along the chord, as a fraction from the luff.
@@ -163,19 +156,6 @@ const MAX_DRAFT_FRACTION = 0.16;
 const DRAFT_POSITION_MAIN = 0.45;
 const DRAFT_POSITION_JIB = 0.38;
 
-/**
- * The apparent wind speed at which the sail holds half its camber.
- *
- * Deliberately low, and this is the one place §4.1's "camber depth is a function
- * of … apparent wind pressure" wants reading carefully. Taken as a *growth* law
- * it teaches the wrong lesson: a real sail in 15 kt is flatter than the same
- * sail in 5 kt, because you flatten it. The honest job of this factor is a
- * soft-sail floor near calm — a drifter, where the cloth hangs and makes
- * nothing — and nothing else. At 3 kt the curve gives exactly that: from 8 kt to
- * 20 kt of apparent wind the depth moves by a tenth, about a pixel, while below
- * 5 kt it visibly softens and at a flat calm the sail is a straight line.
- */
-const CAMBER_HALF_PRESSURE_SPEED = knotsToMetersPerSecond(3);
 
 /** Chord intervals in the deformed polyline. See {@link sailPathData}. */
 export const SAIL_SAMPLES = 32;
@@ -250,44 +230,7 @@ export function camberProfile(chordFraction: number, draftPosition: number): num
   return profileAt(handleWeights(draftPosition), chordFraction);
 }
 
-/**
- * How hard the wind is pressing the cloth into shape, 0..1.
- *
- * `q / (q + q_half)` — monotone, smooth, saturating, and needing no clamp. Since
- * `q ∝ V²` this is `V²/(V² + V_half²)`, but writing it in pressure reads truer
- * to §4.1 and costs nothing.
- */
-export function pressureFactor(q: number): number {
-  const half = dynamicPressure(CAMBER_HALF_PRESSURE_SPEED);
-  return q / (q + half);
-}
 
-/**
- * Signed peak camber for a trim.
- *
- * ```text
- * depth = foot · MAX_DRAFT_FRACTION · (1 − collapsedFraction) · pressureFactor(q) · sin α
- * ```
- *
- * `(1 − collapsedFraction)` is what ties the drawing to the model: §3.3 asks
- * that one number drive both the flutter and the force reduction, and this makes
- * it drive the depth too, so what the student sees and what the boat does cannot
- * disagree. It is a scalar on the peak, so **which edge the collapse came from
- * does not enter here** — a sail with a third of its cloth shaking is a third
- * flatter whichever third it is. The edge is spent on the flutter's position
- * ({@link collapseAt}), not on the depth. `sin α` supplies the side and the
- * incidence; see the module docblock for what it is and is not still buying.
- */
-export function camberDepth(sail: Sail, sailAngle: Radians, apparent: ApparentWind): Meters {
-  const alpha = angleOfAttack(sailAngle, apparent);
-  return (
-    sail.foot *
-    MAX_DRAFT_FRACTION *
-    (1 - collapsedFraction(alpha)) *
-    pressureFactor(dynamicPressure(apparent.speed)) *
-    sin(alpha)
-  );
-}
 
 function shapeOf(
   sail: Sail,
@@ -333,7 +276,9 @@ export function jibShape(jibAngle: Radians, apparent: ApparentWind): SailShape {
     JIB,
     jibAngle,
     STATIONS.jibTack,
-    jibClewPosition(jibAngle),
+    // The live chord, so the drawn clew is where the model put it: a bellied
+    // foot spans less than 7'6" and the cloth is drawn between tack and clew.
+    jibClewPosition(jibAngle, jibChord(jibAngle, apparent)),
     DRAFT_POSITION_JIB,
     apparent,
   );

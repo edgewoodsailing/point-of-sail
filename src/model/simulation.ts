@@ -17,6 +17,7 @@ import type { RigTrim } from "./sail.ts";
 import {
   depoweringFactor,
   easeSailAngle,
+  jibChord,
   naturalJibAngle,
   naturalMainAngle,
   rigForce,
@@ -230,12 +231,22 @@ function advance(state: SimState, dt: Seconds): SimState {
       // The jib runs on the same clock and the same rule, with the interval its
       // two-circle geometry gives instead of the boom's symmetric one. Struck,
       // it is left alone: there is no cloth to blow anywhere.
+      // The chord is read from the belly the cloth has *now*, so the loop
+      // camber → chord → clew → angle of attack → camber closes across frames
+      // rather than inside a solver. That is the same resolution §3.5 already
+      // chose for apparent wind and speed, and for the same reason: one frame of
+      // lag costs nothing at 60 Hz and a fixed point costs a solver.
       jibAngle:
         state.jibHeld || !state.trim.jibSet
           ? state.trim.jibAngle
           : easeSailAngle(
               state.trim.jibAngle,
-              naturalJibAngle(state.trim.jibSheet, state.trim.jibSheetSide, apparent),
+              naturalJibAngle(
+                state.trim.jibSheet,
+                state.trim.jibSheetSide,
+                apparent,
+                jibChord(state.trim.jibAngle, apparent),
+              ),
               dt,
             ),
     },

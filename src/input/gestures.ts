@@ -62,7 +62,8 @@ import {
   STATIONS,
 } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
-import { jibSheetFor } from "../model/sail.ts";
+import { apparentWind } from "../model/wind.ts";
+import { jibChord, jibSheetFor } from "../model/sail.ts";
 import type { Meters, Radians, Vec2 } from "../model/units.ts";
 import {
   add,
@@ -184,9 +185,21 @@ export interface WindRing {
  */
 export function clewGap(state: SimState): Meters | null {
   if (!state.trim.jibSet) return null;
-  return magnitude(
-    subtract(mainClewPosition(state.trim.mainAngle), jibClewPosition(state.trim.jibAngle)),
-  );
+  return magnitude(subtract(mainClewPosition(state.trim.mainAngle), liveJibClew(state)));
+}
+
+/**
+ * The jib's clew where it actually is, belly and all.
+ *
+ * The grab disc has to sit on the drawn clew, and the drawn clew rides the
+ * *chord* rather than the cloth's full length now (`model/sail.ts`'s
+ * `chordForArc`). Taking the default here instead would put the target a few
+ * centimetres outboard of the mark a student is reaching for — small, and
+ * exactly the kind of small that reads as "it didn't take my finger".
+ */
+function liveJibClew(state: SimState): Vec2 {
+  const apparent = apparentWind(state.wind, state.motion);
+  return jibClewPosition(state.trim.jibAngle, jibChord(state.trim.jibAngle, apparent));
 }
 
 /**
@@ -571,7 +584,7 @@ export function beginGrab(
   const clews: readonly (readonly [GrabTarget, Vec2])[] = state.trim.jibSet
     ? [
         ["main", mainClewPosition(state.trim.mainAngle)],
-        ["jib", jibClewPosition(state.trim.jibAngle)],
+        ["jib", liveJibClew(state)],
       ]
     : [["main", mainClewPosition(state.trim.mainAngle)]];
 
@@ -740,7 +753,14 @@ export function releaseFrom(state: SimState, target: GrabTarget, world: Vec2): S
       trim: {
         ...state.trim,
         jibSheetSide: side,
-        jibSheet: jibSheetFor(state.trim.jibAngle, side),
+        // Measured against the clew where it actually is, belly and all — the
+        // same chord the model will use on the next frame, so letting go does
+        // not move the sail.
+        jibSheet: jibSheetFor(
+          state.trim.jibAngle,
+          side,
+          jibChord(state.trim.jibAngle, apparentWind(state.wind, state.motion)),
+        ),
       },
     };
   }

@@ -50,6 +50,10 @@ import type { Meters, MetersPerSecond, Newtons, Radians, Seconds } from "./units
 import {
   acos,
   add,
+  asin,
+  feetToMeters,
+  knotsToMetersPerSecond,
+  sin,
   angleBetween,
   angleOfVector,
   magnitude,
@@ -190,6 +194,195 @@ export function dynamicPressure(speed: MetersPerSecond): number {
 export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radians {
   const flow = oppositeAngle(apparent.angle);
   return angleBetween(sailChordBearing(sailAngle), flow);
+}
+
+// --- How full the cloth blows (§4.1) ----------------------------------------
+//
+// Moved here from `render/sail.ts`, and the move is the point rather than
+// tidiness. While a sail's depth was only ever *drawn*, it could live in the
+// renderer. Now that the jib's foot conserves its arc length, the depth sets
+// the CHORD — see {@link chordForArc} — and the chord sets where the clew is,
+// which sets the angle of attack and therefore the force. It is physics now.
+
+/**
+ * Peak camber as a fraction of the chord, reached at α = 90° in full pressure.
+ *
+ * Deliberately over-drawn: real mains carry 8–12%, and what a student has to see
+ * here is not a draft number but *which side the sail is on*. The binding case
+ * is the jib on a phone, where the chord is ~74 px; at 10% that is 7 px of
+ * deviation carrying a ~2.4 px stroke, which reads as a bent line rather than a
+ * sail. This is the knob to move by eye against the running drawing.
+ */
+const MAX_DRAFT_FRACTION = 0.16;
+
+/**
+ * The apparent wind speed at which the sail holds half its camber.
+ *
+ * Deliberately low, and this is the one place §4.1's "camber depth is a function
+ * of … apparent wind pressure" wants reading carefully. Taken as a *growth* law
+ * it teaches the wrong lesson: a real sail in 15 kt is flatter than the same
+ * sail in 5 kt, because you flatten it. The honest job of this factor is a
+ * soft-sail floor near calm — a drifter, where the cloth hangs and makes
+ * nothing — and nothing else. At 3 kt the curve gives exactly that: from 8 kt to
+ * 20 kt of apparent wind the depth moves by a tenth, about a pixel, while below
+ * 5 kt it visibly softens and at a flat calm the sail is a straight line.
+ */
+const CAMBER_HALF_PRESSURE_SPEED = knotsToMetersPerSecond(3);
+
+/**
+ * How hard the wind is pressing the cloth into shape, 0..1.
+ *
+ * `q / (q + q_half)` — monotone, smooth, saturating, and needing no clamp. Since
+ * `q ∝ V²` this is `V²/(V² + V_half²)`, but writing it in pressure reads truer
+ * to §4.1 and costs nothing.
+ */
+export function pressureFactor(q: number): number {
+  const half = dynamicPressure(CAMBER_HALF_PRESSURE_SPEED);
+  return q / (q + half);
+}
+
+/**
+ * Signed peak camber for a trim.
+ *
+ * ```text
+ * depth = foot · MAX_DRAFT_FRACTION · (1 − collapsedFraction) · pressureFactor(q) · sin α
+ * ```
+ *
+ * `(1 − collapsedFraction)` is what ties the drawing to the model: §3.3 asks
+ * that one number drive both the flutter and the force reduction, and this makes
+ * it drive the depth too, so what the student sees and what the boat does cannot
+ * disagree. It is a scalar on the peak, so **which edge the collapse came from
+ * does not enter here** — a sail with a third of its cloth shaking is a third
+ * flatter whichever third it is. The edge is spent on the flutter's position
+ * ({@link collapseAt}), not on the depth. `sin α` supplies the side and the
+ * incidence; see the module docblock for what it is and is not still buying.
+ */
+export function camberDepth(sail: Sail, sailAngle: Radians, apparent: ApparentWind): Meters {
+  const alpha = angleOfAttack(sailAngle, apparent);
+  return (
+    sail.foot *
+    MAX_DRAFT_FRACTION *
+    (1 - collapsedFraction(alpha)) *
+    pressureFactor(dynamicPressure(apparent.speed)) *
+    sin(alpha)
+  );
+}
+
+// --- The jib's foot as cloth, not as a spar ---------------------------------
+
+/**
+ * How far the clew lies from the tack when the foot has bellied out — the
+ * **chord of a circular arc** of fixed cloth length and given depth.
+ *
+ * ## Why an arc, and why exactly a circular one
+ *
+ * A sail has no bending stiffness, so it carries no load along itself and its
+ * tension is constant from tack to clew. Balancing that tension against the
+ * pressure across the cloth gives `T / R = Δp`, and with `T` constant and `Δp`
+ * uniform, `R` is constant too. A curve of constant radius is a circular arc.
+ * That is not a modelling convenience — it is the shape, and it is the same
+ * result every circular-arc sail theory starts from.
+ *
+ * ## The relation, and why it needs no solver at runtime
+ *
+ * For a half-angle `θ`, an arc of length `L` has
+ *
+ * ```text
+ *   chord c = L · sin θ / θ        depth f = L · (1 − cos θ) / (2θ)
+ * ```
+ *
+ * Both are monotone in `θ`, so `f/L` fixes `θ` and `θ` fixes `c/L`. The whole
+ * relation is one dimensionless curve — no boat dimensions in it — so it is
+ * inverted by a fixed bisection on `θ` and nothing about the answer depends on
+ * the frame it was asked in. **There is no equilibrium to iterate toward here:**
+ * the depth arrives from the pressure model above, and the geometry does the
+ * rest.
+ *
+ * ## What it changes
+ *
+ * The foot stops being a rigid bar. A full jib's chord is materially shorter
+ * than its cloth — 2.6% at a camber ratio of 0.10, 16% at 0.27 — which pulls the
+ * clew *forward*, toward the mast, exactly as it does on the water. Before this,
+ * depth and chord were two independent numbers and `camberDepth` could report a
+ * belly no 7'6" of cloth could make at that chord.
+ *
+ * A depth beyond `L/π` describes a curve that has closed past a half circle and
+ * has no chord; it is clamped, and the clamp is unreachable in practice —
+ * `MAX_DRAFT_FRACTION` is 0.16 of the foot against a limit of 0.318.
+ */
+export function chordForArc(cloth: Meters, depth: Meters): Meters {
+  const belly = Math.abs(depth);
+  if (!(belly > 0) || !(cloth > 0)) return cloth;
+  const ratio = Math.min(belly / cloth, 1 / Math.PI);
+
+  // f/L = (1 − cos θ)/(2θ) rises monotonically from 0 to 1/π across (0, π].
+  let low = 0;
+  let high = Math.PI;
+  // Fixed count rather than a tolerance: 60 halvings take the bracket below a
+  // float's resolution, and a loop that cannot spin is worth more here than the
+  // few iterations it wastes when the answer was easy.
+  for (let i = 0; i < 60; i += 1) {
+    const mid = (low + high) / 2;
+    if ((1 - cos(mid)) / (2 * mid) < ratio) low = mid;
+    else high = mid;
+  }
+  const theta = (low + high) / 2;
+  if (!(theta > 0)) return cloth;
+  return (cloth * sin(theta)) / theta;
+}
+
+/**
+ * The mast's half-thickness, as the jib's foot meets it.
+ *
+ * `RB 13.01` caps the mast partner at 4 inches fore and aft, so the spar is
+ * about a 4-inch section and this is half of it. Drawn larger than that
+ * (`render/hull.ts` uses 0.11 m, about 2.2× life size) because a dot has to be
+ * seen; what the cloth fouls is the real spar, so the real figure is used here.
+ */
+const MAST_HALF_THICKNESS: Meters = feetToMeters(2 / 12);
+
+/**
+ * The half-angle of the mast's shadow, seen from the jib's tack: **1.47°**.
+ *
+ * The run from tack to clew passes `J · sin(a)` from the mast's centre, so
+ * inside this angle it would be running through the spar.
+ */
+
+/**
+ * The clew's bearing, kept out of the mast.
+ *
+ * The foot cannot pass through the spar. Where the straight run from tack to
+ * clew would, the cloth fetches up on the mast and goes round it — so the run
+ * is tangent to the spar rather than through it, and the clew's bearing is
+ * pushed to the edge of the shadow on whichever side it was already passing.
+ *
+ * **The band this bites in is narrow, and saying so is honest rather than
+ * discouraging.** The run passes `J · sin(a)` from the mast centre, so with a
+ * 2-inch spar it fouls only inside {@link MAST_SHADOW} — about **1.5°** — of
+ * dead astern of the tack. At any ordinary sheeting angle nothing here engages,
+ * and the *geometric* correction where it does is a fraction of an inch. What it
+ * buys is topological, not metric: the cloth goes round the spar instead of
+ * through it.
+ *
+ * It earns its place in the band it does bite: dead astern of the tack is
+ * exactly where the clew passes when the jib **backs or is tacked**, and that is
+ * the one manoeuvre where the old model swept the whole foot straight through
+ * the spar. A cambered foot bulges to leeward and clears the mast on its own
+ * when the sail is *drawing*; it is the backed sail, bellying the other way,
+ * that needs this.
+ */
+export const MAST_SHADOW: Radians = (() => {
+  const toMast = magnitude(subtract(STATIONS.mast, STATIONS.jibTack));
+  return asin(Math.min(MAST_HALF_THICKNESS / toMast, 1));
+})();
+
+export function clearMast(jibAngle: Radians, incumbent: number): Radians {
+  if (Math.abs(jibAngle) >= MAST_SHADOW) return jibAngle;
+  // Inside the shadow the cloth would be running through the spar. Put it back
+  // on the tangent — the side it was already going round, so a clew crossing
+  // does not double back on itself.
+  const side = jibAngle === 0 ? Math.sign(incumbent) || 1 : Math.sign(jibAngle);
+  return side * MAST_SHADOW;
 }
 
 /**
@@ -343,11 +536,16 @@ export function naturalJibAngle(
   sheet: Meters,
   side: number,
   apparent: ApparentWind,
+  chord: Meters = JIB.foot,
 ): Radians {
   const car = { x: side * JIB_CAR.x, y: JIB_CAR.y };
   const w = subtract(car, STATIONS.jibTack);
   const d = magnitude(w);
-  const foot = JIB.foot;
+  // **The chord, not the cloth.** A bellied foot spans less than its own length
+  // ({@link chordForArc}), so the circle the clew rides shrinks as the sail
+  // fills — which is what pulls the clew forward, toward the mast, instead of
+  // leaving it swinging on a rigid 7'6" bar.
+  const foot = chord;
 
   // The clew nearest the car: chord bearing straight at it, so a₀ = π − β.
   const centre = sailChordBearing(angleOfVector(w));
@@ -364,7 +562,8 @@ export function naturalJibAngle(
 
   const half = acos(cosine);
   const gap = normalizeSigned(weathervane - centre);
-  return normalizeSigned(centre + Math.min(Math.max(gap, -half), half));
+  const settled = normalizeSigned(centre + Math.min(Math.max(gap, -half), half));
+  return clearMast(settled, side);
 }
 
 /**
@@ -376,9 +575,21 @@ export function naturalJibAngle(
  * one gesture that both changes sheets and sets the new one's length, which is
  * "cast off one and haul the other" with no second control.
  */
-export function jibSheetFor(clewAngle: Radians, side: number): Meters {
+export function jibSheetFor(clewAngle: Radians, side: number, chord: Meters = JIB.foot): Meters {
   const car = { x: side * JIB_CAR.x, y: JIB_CAR.y };
-  return magnitude(subtract(jibClewPosition(clewAngle), car));
+  return magnitude(subtract(jibClewPosition(clewAngle, chord), car));
+}
+
+/**
+ * The jib's chord right now: how far its clew stands from its tack, once the
+ * cloth has bellied.
+ *
+ * The one place the two halves meet — {@link camberDepth} says how full the sail
+ * is, {@link chordForArc} says what that costs in span. Everything else takes
+ * the answer as a number.
+ */
+export function jibChord(jibAngle: Radians, apparent: ApparentWind): Meters {
+  return chordForArc(JIB.foot, camberDepth(JIB, jibAngle, apparent));
 }
 
 /**
