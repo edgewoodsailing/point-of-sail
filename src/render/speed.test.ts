@@ -292,7 +292,7 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     // literal — so raising it in `scene.css` left the suite green, `speed.ts`'s
     // comment stale, and the round cap a little further through the viewport
     // edge. Parsing it means the CSS cannot move on its own.
-    expect(SPEED_STROKE).toEqual({ minPx: 1.6, vminPercent: 0.45, maxPx: 4 });
+    expect(SPEED_STROKE).toEqual({ minPx: 2.2, vminPercent: 0.6, maxPx: 7 });
     // And the property this parsed is the one `.pos-speed-mark` actually paints
     // with. Matching `stroke-width: var(--pos-rule-speed)` anywhere in the file
     // would be satisfied by a dead rule, or by a different element using the
@@ -323,8 +323,18 @@ describe("the speed arrow never leaves the viewBox (pos-w4v)", () => {
     ];
     // 160 px is the *current* scaffolding strip — seven rows of controls — and
     // so more than §5's eventual strip will ever want. Worst case across all of
-    // it is 0.060 m, on a 568x320 landscape phone, where the strip leaves only
-    // 160 px of surface. Portrait never exceeds 0.030 m.
+    // it is 0.0635 m, on a 568x320 landscape phone, where the strip leaves only
+    // 160 px of surface and the stroke is on its floor. Portrait never exceeds
+    // 0.032 m.
+    //
+    // Both figures moved with pos-8pu's heavier weights, and re-measuring them
+    // is the point of the tripwire above: the landscape case went 0.0462 →
+    // 0.0635 m, so the bound below keeps about 10% headroom where it had 50%.
+    // That is still a guard rather than a spec — what actually has to hold is
+    // the second assertion — but it is close enough that the next weight rise
+    // should re-derive rather than assume. (The 0.060 m this comment used to
+    // quote was itself stale by then: measured against the old clamp it was
+    // 0.0462, the scene having changed under it.)
     for (const viewport of viewports) {
       for (const stripPx of [0, 100, 160]) {
         const overhang = halfStrokeMeters(viewport, stripPx);

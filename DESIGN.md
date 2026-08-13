@@ -2343,21 +2343,56 @@ drawing — the mast dot, a sail's camber. **A *line weight* is in CSS pixels**
 and scales with the viewport. What lets the two coexist inside a metre-valued
 viewBox is `vector-effect: non-scaling-stroke`, which takes stroke width out of
 user space. Set it as an *attribute*, not only in CSS: if support for the
-property were ever missing, `1.4px` would be read as 1.4 *metres*, which is a
+property were ever missing, `1.9px` would be read as 1.9 *metres*, which is a
 loud enough failure to be worth the belt as well as the braces.
 
-The weights themselves are `clamp()` on `vmin`, e.g. `clamp(1.4px, 0.4vmin, 4px)`
+The weights themselves are `clamp()` on `vmin`, e.g. `clamp(1.9px, 0.54vmin, 7px)`
 for the hull. `vmin` is the viewport rather than the drawing surface, but §6.2
 gives the simulator the whole viewport, so the two differ only by the control
-strip — across real layouts that expression holds at ~0.88% of the drawn boat's
-length from a 320 px phone to a 1440 px desktop. (`cqmin` would make it exact,
-but it starts at Safari 16, above our floor.)
+strip — across real layouts that expression holds at **~0.85% of the drawn
+boat's length** from a 320 px phone to about a 1300 px desktop. (`cqmin` would
+make it exact, but it starts at Safari 16, above our floor.)
 
 Worth recording *why* the clamp rather than plain proportional scaling, since
 proportional is the free behaviour of a scaled viewBox and the two agree within
 about 10% across mainstream devices: the clamp earns its keep at exactly the two
 ends this section names — the floor, so a phone never goes hairline, and the
 ceiling, so a classroom TV or projector doesn't turn the boat into a cartoon.
+
+#### Where the ceiling was, and why it was the wrong way round (pos-8pu)
+
+Reported as *lines look thinner on retina displays*, which it was not. Measured
+in Chrome at DPR 2, a 4 CSS px non-scaling stroke paints **8 device pixels** —
+identical to a plain user-unit stroke of the same intended width — so nothing
+here is being resolved in device pixels, and CSS px are density-independent as
+specified.
+
+What was actually happening is that the old `0.4vmin` hit its 4px cap at
+**vmin 1000**, which is below every desktop. Past the cap the drawing goes on
+growing and the line does not, so the weight decays as a fraction of the boat:
+
+| viewport (vmin) | hull weight | as % of drawn hull |
+| --- | --- | --- |
+| 320 (phone) | 1.4px, on the floor | 0.69% |
+| 480 – 1000 | on the slope | 0.63% |
+| 1104 | 4px, capped | 0.57% |
+| 1440 | 4px | 0.44% |
+| 1800 | 4px | 0.35% |
+
+A ceiling whose stated job is to stop the boat cartooning on a big screen was
+instead making it *fainter* there — the failure this section guards against at
+the other end. The ceilings now sit at roughly 13× the slope's own `vmin`, so
+they engage around 1300 rather than 1000, and every weight is up about a third
+on the customer's eye. The earlier "~0.88%" figure in this section was stale on
+its own terms: measured against the old clamp the slope held 0.63%.
+
+**A CSS pixel is not a physical length**, and this is the one sense in which
+density was ever involved. `px` is nominally 1/96", but real displays run about
+90–140 CSS px per physical inch with dense panels at the top — a 14" MacBook is
+~126, a 24" 1080p monitor ~92 — so the same weight is around a third physically
+thinner on the laptop. CSS cannot express its way out of that: `mm` and `in` are
+defined off the same nominal pixel. It is a reason to keep the weights generous
+rather than a thing to correct for.
 
 ---
 
