@@ -28,10 +28,28 @@
  *
  * ## What this module deliberately does not do
  *
- * No hit-testing and no drag. pos-bwd.2 owns the gesture, and it wants a hit
- * band far wider than the drawn line — the ring's job here is to show where that
- * band is. Nothing below sets `pointer-events`, so the drawn geometry stays
- * grabbable and the band pos-bwd.2 adds can sit alongside it.
+ * No hit-testing and no drag. The gesture lives in `input/gestures.ts`, which
+ * claims a band 22 CSS px either side of `windRingRadius` — far wider than the
+ * drawn line, whose job here is to show where that band is. Hit-testing is
+ * geometric and never reads an event's target, so nothing below needs to set
+ * `pointer-events` in either direction: the drawn track is not what makes the
+ * ring grabbable, and hiding it from the pointer would not make it ungrabbable.
+ *
+ * ## Why a wind drag is drawn here and not in `scene.ts`
+ *
+ * §1 asks that turning the boat and shifting the wind *feel* like different
+ * events although they change the same number, and this module is one half of
+ * how that is true. The wind layer carries no transform: a wind drag rewrites
+ * the arrow and the graduations in place while `boatTransform` is untouched, so
+ * the marks sweep and the boat holds still. A hull drag does the exact opposite.
+ *
+ * The mistake to guard against is not rotating this group. That would be a fair
+ * economy — the ring does turn rigidly — and it would still move the right half
+ * of the picture. It is orienting the *world* to the wind: draw the arrow at a
+ * fixed bearing and turn everything else beneath it, and a wind shift becomes a
+ * boat that swings, which is pixel for pixel what a hull drag does.
+ * `input/gestures.test.ts` pins that the two gestures move disjoint halves of
+ * the drawing, so that cannot be taken by accident.
  */
 
 import type { SimState } from "../model/simulation.ts";

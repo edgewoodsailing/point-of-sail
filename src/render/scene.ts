@@ -215,9 +215,11 @@ export interface SceneLayers {
    * crosses the ring, and it should pass behind rather than through it.
    *
    * That is the aesthetic half. The structural half is `pointer-events: none` on
-   * `.pos-speed` in `scene.css`, which is what actually stops the overrunning
-   * arrow intercepting a drag pos-bwd.2 means for the ring. Do not mistake the
-   * ordering for the guard.
+   * `.pos-speed` in `scene.css`, so the overrunning arrow cannot intercept a
+   * drag meant for the ring. Do not mistake the ordering for the guard — and
+   * note that the guard is belt to the braces of `input/gestures.ts` arbitrating
+   * geometrically rather than by event target, which is what actually decides
+   * the case today.
    */
   readonly wind: SVGGElement;
   /**
@@ -270,7 +272,7 @@ export interface Scene {
    * off the boat group's CTM instead would bury it in the DOM.
    */
   toWorld(clientX: number, clientY: number): Vec2;
-  /** How many metres a CSS pixel is worth right now — for pos-bwd's touch-target sizes. */
+  /** How many metres a CSS pixel is worth right now — for §5's touch-target sizes. */
   pixelsToMeters(pixels: number): Meters;
 
   /** Stops observing the host. */

@@ -16,6 +16,22 @@
  *    enough to be worth the belt as well as the braces.
  */
 
+/*
+ * The wind's own hue, deliberately outside everything on the boat: the hull's
+ * ink is 250° at a chroma of 0.03, and §4.2's trim ramp runs 30° to 145°. A
+ * saturated blue at 235° belongs to neither, so the ring reads as an annotation
+ * about the world rather than as part of the rig.
+ *
+ * Declared on `.pos-sim` rather than inside the drawing with the rest of the
+ * ink, because the wind is the one thing that appears on both sides of the
+ * scene's edge: the ring is drawn in it, and §5's wind speed slider down in the
+ * control strip is tinted with it (`shell.css`), which is what says the two
+ * controls are two halves of one subject. One declaration, so they cannot drift.
+ */
+.pos-sim {
+  --pos-wind-ink: oklch(62% 0.13 235deg);
+}
+
 .pos-sim .pos-scene {
   display: block;
   width: 100%;
@@ -79,14 +95,6 @@
   --pos-rule-speed: clamp(1.6px, 0.45vmin, 4px);
   --pos-ink: oklch(38% 0.03 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
-
-  /*
-   * The wind's own hue, deliberately outside everything on the boat: the hull's
-   * ink is 250° at a chroma of 0.03, and §4.2's trim ramp runs 30° to 145°. A
-   * saturated blue at 235° belongs to neither, so the ring reads as an
-   * annotation about the world rather than as part of the rig.
-   */
-  --pos-wind-ink: oklch(62% 0.13 235deg);
 }
 
 .pos-sim .pos-hull-outline {
@@ -182,10 +190,11 @@
 
 /*
  * The speed indicator is a readout, never a control, and above hull speed it
- * runs past `contentRadius` and crosses the ring — which pos-bwd.2 makes a drag
- * target. Transparent to the pointer, so that overlap can never intercept a drag
- * meant for the wind. This is the structural half of the decision; the paint
- * order in `scene.ts` is only the visible half.
+ * runs past `contentRadius` and crosses the ring, which is a drag target (§5).
+ * Transparent to the pointer, so that overlap can never intercept a drag meant
+ * for the wind. This is the structural half of the decision; the paint order in
+ * `scene.ts` is only the visible half — and both are belt to the braces of
+ * `input/gestures.ts` hit-testing in metres rather than by event target.
  */
 .pos-sim .pos-speed {
   pointer-events: none;

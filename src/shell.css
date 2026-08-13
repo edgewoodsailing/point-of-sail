@@ -43,7 +43,8 @@ body {
  * pointer event instead of speculatively treating a drag as a scroll or a
  * zoom — and it removes the double-tap-to-zoom delay as a side effect.
  * Scoped to the surface, not the page: the control strip (§5) keeps normal
- * touch handling for its future switches and slider.
+ * touch handling, which is what its slider needs and what pos-740.3's switches
+ * will need.
  */
 .pos-sim .surface {
   flex: 1 1 auto;
@@ -56,8 +57,8 @@ body {
    * which paints a highlight over the boat and swallows the rest of the
    * gesture. `input/pointer.ts` calls `preventDefault` on a touchdown it
    * claims, which handles the drags that begin a gesture; this covers the ones
-   * that do not — on open water, which pos-bwd.2 will claim and this bead
-   * deliberately leaves alone.
+   * that do not — the open water between the boat and the ring, and the water
+   * outside the ring's hit band, both of which claim nothing on purpose (§5).
    *
    * Prefixed as well as standard, which is the one place in this stylesheet a
    * prefix earns its keep: unprefixed `user-select` begins at Safari 17, well
@@ -71,10 +72,54 @@ body {
   user-select: none;
 }
 
-/* Minimal control strip (§5) — empty until pos-740.3 fills it with the
-   apparent-wind and jib switches. Everything a student manipulates is on the
-   boat itself (§5), so nothing else is ever coming here. */
+/* Minimal control strip (§5). It carries the wind speed slider, and pos-740.3's
+   apparent-wind and jib switches are still to come beside it. Nothing else is:
+   everything else a student manipulates is a direct manipulation of the boat. */
 .pos-sim .controls {
   flex: 0 0 auto;
   padding: 0.5rem 1rem;
+}
+
+/*
+ * The wind speed control (§5) — the one quantity that is set here rather than
+ * dragged on the drawing, for the reason `input/windSpeed.ts` gives.
+ *
+ * `--pos-wind-ink` comes from `render/scene.css`, which declares it on `.pos-sim`
+ * precisely so this row and the ring out on the perimeter are the same blue. The
+ * two are halves of one subject, and a student who has just dragged the ring
+ * should be able to see where its other half is without being told.
+ */
+.pos-sim .wind-speed {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font: 0.9rem/1.6 system-ui, sans-serif;
+  color: var(--pos-wind-ink);
+}
+
+.pos-sim .wind-speed-caption {
+  flex: 0 0 auto;
+}
+
+.pos-sim .wind-speed > input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  /*
+   * Tints the track and thumb the browser draws, so the control matches the
+   * ring without any of it being redrawn by hand. `accent-color` begins at
+   * Safari 15.4, which is exactly §4.4's support floor — the one place in this
+   * project where a property lands precisely on it rather than above or below.
+   * Below the floor it is ignored and the control is the platform's own blue,
+   * which is a colour mismatch and not a broken control.
+   */
+  accent-color: var(--pos-wind-ink);
+}
+
+/* Tabular figures and a fixed box, so the row does not twitch sideways as the
+   reading goes from 9 kt to 10 kt while a thumb is moving. */
+.pos-sim .wind-speed-value {
+  flex: 0 0 3.5rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
