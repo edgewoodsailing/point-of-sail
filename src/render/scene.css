@@ -30,6 +30,20 @@
  */
 .pos-sim {
   --pos-wind-ink: oklch(62% 0.13 235deg);
+
+  /*
+   * The same hue, dark enough to be *text*. 62% lightness on the shell's
+   * oklch(99% …) is 3.45:1 — fine for the ring, which is a line rather than
+   * prose, and short of WCAG AA's 4.5:1 for the 0.9rem caption and knots
+   * readout beside the slider. 52% gives 5.13:1.
+   *
+   * A second token rather than darkening the one above, because the two are
+   * answering different questions. The ring's lightness was chosen against the
+   * drawing — §4.2's trim ramp and the hull's ink, on a light water tint, seen
+   * across a table — and darkening it to satisfy a contrast rule for text it is
+   * not would be letting the wrong constraint pick the colour.
+   */
+  --pos-wind-text: oklch(52% 0.13 235deg);
 }
 
 .pos-sim .pos-scene {

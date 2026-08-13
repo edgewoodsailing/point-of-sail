@@ -2018,37 +2018,61 @@ disjoint halves of the drawing, so that cannot be taken by accident.
 
 ### The ring as a target
 
-The drawn line is a **1 px hairline** and nothing could be dragged by it. What is
-draggable is a band **22 CSS px either side of `windRingRadius`** — §5's 44 px
-target, measured across a band rather than across a disc. On a 390 px phone that
-is a 44 px-wide track 1154 px around; on an iPad, 2467 px around. There is no
-gesture in the simulator with a larger target, which is the point of putting the
+The drawn line is a **hairline** — `--pos-rule-wind` clamps it to 1.1 px on a
+phone and 2.5 px on a desktop — and nothing could be dragged by it. What is
+draggable is an annulus, and it is deliberately **not symmetric about the drawn
+ring**.
+
+**Outward it reaches 22 CSS px**, half the 44 px target the clew discs below are
+sized against. **Inward it reaches the arrow's own tip**, 1.2 m in at
+`ARROW_REACH` in `render/wind.ts`. The asymmetry is the arrowhead: the arrow is
+the mark a student reaches for — it carries the hull's stroke weight for exactly
+that reason ([§4.5](#45-rendering-constraints)) — and a symmetric 22 px band
+would leave most of it dead. It starts at 4.97 m on a phone and 5.33 m on an
+iPad, against an arrow reaching in to 4.45 m with its barb tips at 4.81 m: 17 px
+of its 39 px missed on the one and 61 px of its 83 px on the other, the whole
+arrowhead in both. A student's first instinct is to grab the arrowhead, and it
+would have been discarded in silence. Outward there is nothing to reach for, so
+22 px is enough.
+
+The result is still an enormous target: on a phone it is 61 px across a track
+1154 px around, and on an iPad 105 px across a track 2467 px around. There is no
+gesture in the simulator with a larger one, which is the point of putting the
 wind out here.
 
-The band is **symmetric, rather than claiming everything outside the ring**. The
-generous reading is tempting — nothing else is out there to want the touch, and
-on the short axis the ring is only 11 px inside the viewport edge, so the outward
-half of the band is clipped by the screen. It is rejected for the case this
-section opens with: an iPad flat on a table, three students leaning over it,
-collects resting palms at the screen edges. A target belongs to one pointer at a
-time, so the first palm to land would own the wind, and every deliberate ring
-drag after it would get nothing at all until the hand moved. Leaving the outer
-water unclaimed means a resting hand claims nothing and blocks nothing.
+**Outward 22 px, rather than claiming everything beyond the ring.** The generous
+reading is tempting, since nothing else is out there to want the touch. It is
+rejected for the case this section opens with: an iPad flat on a table, three
+students leaning over it, collects resting palms at the screen edges. A target
+belongs to one pointer at a time, so the first palm to land would own the wind,
+and every deliberate ring drag after it would get nothing at all until the hand
+moved.
 
-**It cannot reach the boat**, and that is derived rather than arranged. The boat
-sweeps 3.590 m from the pivot at any heading and any legal trim (`SCENE.boatRadius`,
-measured in `render/scene.ts`), and a touchdown can claim a clew from a further
-`grab` out — so the innermost point that may belong to the wind is
-`boatRadius + grab`, and the band takes whatever is left of the ring's 2.060 m of
-headroom above it: `min(22px, windRingRadius − boatRadius − grab)`. The same
-shape of rule as `min(22px, gap / 2)` above, for the same reason: a target stated
-in pixels grows in metres as the display shrinks, so left uncapped it eventually
-reaches something it must not. With both terms at their 22 px cap that is 44 px
-against 2.060 m, so **the clamp is slack on any surface whose short axis is
-257 px or more** and binds at 256 px. On a phone the two targets are 23 px of
-open water apart, and that water claims nothing — as does the water outside the
-band. Neither is unfinished: a touch given to the nearest anything is how a
-student ends up turning a boat they meant to miss.
+**That protection is real on two edges of four**, and the arithmetic is easy to
+get backwards, so: the scene is scaled off the *short* axis, which puts the ring
+24 px inside the short edge on an 834 px iPad and 11 px inside it on a 390 px
+phone — closer than the band is wide. Along the short axis the viewport therefore
+ends inside the band and there is no outer water to leave unclaimed either way.
+It is the **long** axis that gains, and it gains a lot: an iPad in landscape has
+182 px of unclaimed water beyond the band at each of the left and right edges,
+which are the edges a hand actually rests on. So the choice buys two edges and
+the alternative buys none.
+
+**The inward reach cannot touch the boat**, and that is derived rather than
+arranged. The boat sweeps 3.590 m from the pivot at any heading and any legal
+trim (`SCENE.boatRadius`, measured in `render/scene.ts`), and a touchdown can
+claim a clew from a further `grab` out — so the innermost point that may belong
+to the wind is `boatRadius + grab`, and that is a floor under the arrow's tip:
+`max(boatRadius + grab, ARROW_REACH)`. The same shape of rule as the
+`min(22px, gap / 2)` that sizes the clew discs — see [grab points](#grab-points-the-clews)
+below — and for the same reason: a target stated in pixels grows in metres as the
+display shrinks, so left uncapped it eventually reaches something it must not.
+**The floor is slack down to a 308 px short axis** and binds below it, taking the
+arrowhead first. On a phone the two targets are 6 px of open water apart — thinner
+than the 23 px a symmetric band would have left, which is what the arrowhead
+costs — and that water claims nothing, as does the water outside the band.
+Neither is unfinished: a touch given to the nearest anything is how a student
+ends up turning a boat they meant to miss.
 
 ### Wind speed: the one control that is not a manipulation
 

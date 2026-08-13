@@ -84,17 +84,23 @@ body {
  * The wind speed control (§5) — the one quantity that is set here rather than
  * dragged on the drawing, for the reason `input/windSpeed.ts` gives.
  *
- * `--pos-wind-ink` comes from `render/scene.css`, which declares it on `.pos-sim`
- * precisely so this row and the ring out on the perimeter are the same blue. The
- * two are halves of one subject, and a student who has just dragged the ring
+ * Both blues come from `render/scene.css`, which declares them on `.pos-sim`
+ * precisely so this row and the ring out on the perimeter are the same colour.
+ * The two are halves of one subject, and a student who has just dragged the ring
  * should be able to see where its other half is without being told.
+ *
+ * The *text* takes the darker of the two. The ring's own lightness gives 3.45:1
+ * on this background, which is a fine line and a poor paragraph — WCAG AA wants
+ * 4.5:1 for text at this size, and `--pos-wind-text` is 5.13:1. This is the one
+ * number §5 argues a student has to be able to read, on a device §4.2's premise
+ * has three of them squinting at from an angle.
  */
 .pos-sim .wind-speed {
   display: flex;
   gap: 0.75rem;
   align-items: center;
   font: 0.9rem/1.6 system-ui, sans-serif;
-  color: var(--pos-wind-ink);
+  color: var(--pos-wind-text);
 }
 
 .pos-sim .wind-speed-caption {
@@ -112,6 +118,10 @@ body {
    * project where a property lands precisely on it rather than above or below.
    * Below the floor it is ignored and the control is the platform's own blue,
    * which is a colour mismatch and not a broken control.
+   *
+   * The ring's own ink here rather than the text colour above: this is a UI
+   * component, which WCAG asks 3:1 of, and 3.45:1 clears that. Matching the ring
+   * exactly is the point — the thumb and the arrow are the same wind.
    */
   accent-color: var(--pos-wind-ink);
 }

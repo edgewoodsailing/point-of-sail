@@ -13,6 +13,8 @@ import {
   vectorFromAngle,
 } from "../model/units.ts";
 import { SCENE, SHORT_SPAN } from "../render/scene.ts";
+import { ARROW_REACH } from "../render/wind.ts";
+import { GRAB_RADIUS_PX } from "./gestures.ts";
 import type { PointerScene, StateAccess } from "./pointer.ts";
 import { bindPointers } from "./pointer.ts";
 
@@ -235,9 +237,22 @@ describe("which touchdowns bindPointers accepts (DESIGN.md §5)", () => {
     expect(app.surface.captured.has(2)).toBe(true);
   });
 
+  /**
+   * The water between the boat's reach and the wind's, which belongs to neither.
+   *
+   * On this phone scale that is 4.267 m to 4.450 m — the outermost a clew disc
+   * can be claimed from, up to the arrow's tip where the wind's band begins —
+   * so the radius is taken as the midpoint of the two rather than written down.
+   * Six pixels is too narrow a gap to name a number inside by hand and still be
+   * sure it is there for the right reason.
+   */
   it("leaves the water between the boat and the ring alone", () => {
     const app = bound();
-    const water = pointerEvent("pointerdown", 1, clientOf({ x: 4.5, y: 0 }, 0));
+    const boatReach = SCENE.boatRadius + GRAB_RADIUS_PX * METERS_PER_PIXEL;
+    const between = (boatReach + ARROW_REACH) / 2;
+    expect(boatReach).toBeLessThan(ARROW_REACH);
+
+    const water = pointerEvent("pointerdown", 1, clientOfWorld(vectorFromAngle(deg(90), between)));
     app.surface.send(water);
     expect(app.surface.captured.size).toBe(0);
     // Not consumed either: an unclaimed touchdown must stay available.
@@ -255,18 +270,22 @@ describe("which touchdowns bindPointers accepts (DESIGN.md §5)", () => {
    * buys and what a single-capture implementation would fail.
    */
   it("takes the wind ring with a second finger while a sail is held", () => {
-    const app = bound();
+    // A non-zero opening trim, deliberately: at `mainAngle: 0` the "the sail did
+    // not move" assertion below is the fixture's own initial value and would be
+    // satisfied by an implementation that reset the trim to zero. It is still
+    // satisfied by one that never re-applies the held finger at all — which is
+    // the *correct* behaviour here, since a wind shift moves nothing on the boat
+    // — so this pins the value and not the mechanism.
+    const app = bound(openState({ mainAngle: deg(-40) }));
     const from = app.state().wind.from;
-    app.surface.send(pointerEvent("pointerdown", 1, clientOf(mainClewPosition(0), 0)));
+    app.surface.send(pointerEvent("pointerdown", 1, clientOf(mainClewPosition(deg(-40)), 0)));
     app.surface.send(pointerEvent("pointerdown", 2, clientOnRing(from)));
     expect(app.surface.captured.has(1)).toBe(true);
     expect(app.surface.captured.has(2)).toBe(true);
 
     app.surface.send(pointerEvent("pointermove", 2, clientOnRing(from + deg(30))));
     expect(radiansToDegrees(normalizeSigned(app.state().wind.from - from))).toBeCloseTo(30, 6);
-    // The held sail stays where it is: a wind shift moves nothing on the boat,
-    // so the re-application of the stationary finger has nothing to do.
-    expect(app.trim()).toBeCloseTo(0, 9);
+    expect(app.trim()).toBeCloseTo(-40, 9);
     expect(app.heading()).toBeCloseTo(0, 12);
   });
 

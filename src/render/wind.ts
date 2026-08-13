@@ -29,11 +29,12 @@
  * ## What this module deliberately does not do
  *
  * No hit-testing and no drag. The gesture lives in `input/gestures.ts`, which
- * claims a band 22 CSS px either side of `windRingRadius` — far wider than the
- * drawn line, whose job here is to show where that band is. Hit-testing is
- * geometric and never reads an event's target, so nothing below needs to set
- * `pointer-events` in either direction: the drawn track is not what makes the
- * ring grabbable, and hiding it from the pointer would not make it ungrabbable.
+ * claims an annulus running from {@link ARROW_REACH} out to 22 CSS px beyond
+ * `windRingRadius` — far wider than the drawn line, whose job here is to show
+ * where that band is. Hit-testing is geometric and never reads an event's
+ * target, so nothing below needs to set `pointer-events` in either direction:
+ * the drawn track is not what makes the ring grabbable, and hiding it from the
+ * pointer would not make it ungrabbable.
  *
  * ## Why a wind drag is drawn here and not in `scene.ts`
  *
@@ -76,6 +77,24 @@ const ARROW_LENGTH: Meters = 1.2;
 /** Barb length and how far the barbs splay back from the tip. */
 const ARROW_BARB: Meters = 0.4;
 const ARROW_SPREAD: Radians = degreesToRadians(28);
+
+/**
+ * The innermost radius the drawn arrow reaches — its tip, at 4.45 m.
+ *
+ * Exported because it is the **inner edge of the wind's hit band** (§5), not
+ * merely a drawing dimension. The arrow is the mark a student reaches for, and a
+ * band sized only in pixels about the ring leaves most of it outside: a
+ * symmetric 22 px band starts at 4.97 m on a phone and 5.33 m on an iPad, which
+ * misses 17 px of the arrow's 39 px on the one and 61 px of its 83 px on the
+ * other — the whole arrowhead in both cases, since the barb tips stand at
+ * 4.807 m. `input/gestures.ts` reads this so the target follows the drawing
+ * instead of a number that has to be remembered when the drawing changes.
+ *
+ * The barbs cannot be the binding point: they splay *back* from the tip toward
+ * the ring, so the tip is the minimum by construction, and `wind.test.ts`
+ * measures the path data to say so rather than taking it on trust.
+ */
+export const ARROW_REACH: Meters = SCENE.windRingRadius - ARROW_LENGTH;
 
 /**
  * How far each graduation reaches in from the ring.
