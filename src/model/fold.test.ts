@@ -449,9 +449,11 @@ describe("what is left, and where it lives", () => {
  * Small enough to be inside the linear stretch around zero, and far enough out
  * to clear the residue of the bisection below. Forty halvings take a one-degree
  * bracket to about 1e-12 of a degree, and the drive moves some 2 N per degree of
- * TWA there, so the drive left at rest is around 2e-12 N — while a
- * ten-thousandth of a knot against the shallowest drive slope in the model,
- * 3.5 N/(m/s), reads 1.8e-4 N. Eight orders of margin.
+ * TWA there, so the drive left at rest is around 2e-12 N. Against that, a
+ * ten-thousandth of a knot reads 1.46e-5 N at the *shallowest* drive slope
+ * anywhere a fold is found — 0.283 N/(m/s), at the half-knot bottom of
+ * {@link BOUND_WINDS}, since the slope scales with the wind. Seven orders of
+ * margin at the worst case and nine at the 15.95 N/(m/s) top of the range.
  */
 const REST_PROBE_KNOTS = 1e-4;
 
@@ -471,13 +473,14 @@ const OUTWARD_GROWTH = 1.2;
  *
  * The only sampled axis left in this search, and the one place it could still
  * miss something — a pair of sign changes inside one degree would read as none.
- * Checked rather than assumed: against a scan twenty times finer, over the same
- * 4332 settings this search visits, the two agree on the number of sign changes
- * at all but twelve. All twelve are at trim −2°, and in every one of them it is
- * the *coarse* scan finding an extra rather than the fine one finding something
- * the coarse missed — see {@link noGoBoundaries} on the collapsed plateau, where
- * "the angle at which the drive changes sign" is not a well-posed question and
- * nothing is hiding either way.
+ * Checked rather than assumed: against a scan twenty times finer, over every rig
+ * and trim this search visits and at six winds apiece, 4332 settings in all, the
+ * two agree on the number of sign changes at all but twelve. Those twelve are
+ * one setting — trim −2°, counted once per rig and wind — and in every one of
+ * them it is the *coarse* scan finding an extra rather than the fine one finding
+ * something the coarse missed. See {@link noGoBoundaries} on the collapsed
+ * plateau, where "the angle at which the drive changes sign" is not a well-posed
+ * question and nothing is hiding either way.
  */
 const BOUNDARY_SCAN_DEGREES = 1;
 
@@ -690,7 +693,8 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * water drags are quadratic, so they contribute no slope at rest at all, and
    * the sign of the drive's own slope is left to decide the stability of rest
    * unopposed. At the upwind boundary that slope is positive at every wind and
-   * both rigs, 3.5 to 15.4 N/(m/s).
+   * both rigs — 0.283 N/(m/s) at the bottom of the wind sweep up to 15.95 at the
+   * 13 kt knee, scaling with the wind below it and falling away above.
    *
    * **What is defended is that nothing sailing has two answers.** Across §5's
    * whole wind slider at a tenth of a knot, both rigs and every trim from flat to
@@ -867,8 +871,8 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
     expect(chordSlope(1e-3) / chordSlope(1e-4), linear).toBeCloseTo(10, 1);
     expect(chordSlope(1e-4) / chordSlope(1e-5), linear).toBeCloseTo(10, 1);
 
-    // Which puts it four orders under the smallest drive slope measured at any
-    // no-go boundary, 3.5 N/(m/s), by a hundredth of a knot of boat speed.
+    // Which puts it nearly three orders under the shallowest drive slope found
+    // at any folding boundary, 0.283 N/(m/s), by a hundred-thousandth of a knot.
     expect(chordSlope(1e-5), "the water has a slope at rest after all").toBeLessThan(1e-3);
   });
 });
