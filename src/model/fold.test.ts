@@ -257,7 +257,13 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
       const found = worstFold(wind);
       expect(found.width, `${wind} kt true: fold at ${found.where}`).toBe(0);
     }
-  }, 60_000);
+  // 120 s, raised from 60 when the sheet model landed. `settle` now eases the
+  // boom toward its natural angle on every step as well as integrating the
+  // speed, so a sweep of this size costs materially more than it did — it
+  // passes in about 70 s alone and was tipping over the old budget only when
+  // vitest ran it alongside the other suites. A hang detector, still, rather
+  // than a performance assertion.
+  }, 120_000);
 
   /**
    * The same claim in the terms the bug was reported in, which is worth having
@@ -309,7 +315,13 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
         }
       }
     }
-  }, 60_000);
+  // 120 s, raised from 60 when the sheet model landed. `settle` now eases the
+  // boom toward its natural angle on every step as well as integrating the
+  // speed, so a sweep of this size costs materially more than it did — it
+  // passes in about 70 s alone and was tipping over the old budget only when
+  // vitest ran it alongside the other suites. A hang detector, still, rather
+  // than a performance assertion.
+  }, 120_000);
 
   /**
    * The bug as the human found it in the running app: main alone, TWA 90 in

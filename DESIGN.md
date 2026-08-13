@@ -74,16 +74,34 @@ interface SimState {
   // Boat: where the bow points, and the signed speed — negative is astern
   motion: BoatMotion;         // { heading: Radians, speed: MetersPerSecond }
 
-  // Trim: sail chord angle relative to boat centerline, positive = clew to
-  // starboard, zero = on the centerline. Plus whether the jib is set at all,
-  // which defaults false — main alone (§3.7).
-  trim: RigTrim;              // { mainAngle, jibAngle: Radians, jibSet: boolean }
+  // Trim: where the sails ARE, and what the sheets will LET them do (§3.4).
+  // The angles are chord angles relative to the boat's centreline, positive =
+  // clew to starboard; they are state that evolves, not inputs that are held.
+  // The sheets are the inputs, and they are limits.
+  trim: RigTrim;              // { mainAngle, jibAngle: Radians
+                              //   mainSheet: Radians   — how far out the boom may go
+                              //   jibSheet: Meters     — car-to-clew length
+                              //   jibSheetSide: -1|+1  — which car is working
+                              //   jibSet: boolean }    — main alone (§3.7)
 
   // Is the user physically forcing a sail against the wind right now?
   mainHeld: boolean;
   jibHeld: boolean;
 }
 ```
+
+**The two kinds of field in `trim` are worth telling apart**, because the
+distinction is the whole of [§3.4](#34-backing-a-sail). `mainSheet`, `jibSheet`
+and `jibSheetSide` are what a student sets: rope, and which rope. `mainAngle` and
+`jibAngle` are where the wind has put the sails given those settings — they
+change every frame with no input at all, which is what makes the boat tack its
+own mainsail. A caller that wants to place the sails *and have them stay* has to
+set both, which is what `cleatedAt()` in `model/sail.ts` is for: trim to here,
+then cleat it.
+
+Note `jibSheet` is a **length in metres**, not an angle. That is what the student
+holds, and the map from it to an angle is the two-circle geometry of §3.4 rather
+than anything linear.
 
 The first three fields are **not** new types invented for the state. `TrueWind`
 and `BoatMotion` come from `model/wind.ts` and `RigTrim` from `model/sail.ts`,
@@ -602,6 +620,91 @@ physical event.
 The jib backs by the same mechanism, which is the other classic way off a
 mooring.
 
+#### The sheet sets a limit, not an angle
+
+Everything above is now a *consequence* rather than a mechanism, and the change
+that made it so is the most load-bearing one in this document.
+
+**A mainsheet is a length of rope.** A rope cannot tell the boom which side to be
+on and cannot push it anywhere — it can only stop it going further out. Which
+side, and how far in, is the wind's business. Modelling the sheet as an absolute
+angle asserts the opposite: that the boom holds whatever bearing it was left at
+however the boat turns under it, which is the one thing a real boom
+conspicuously does not do.
+
+So `RigTrim` carries `mainSheet` — the limit — and `mainAngle` becomes state that
+evolves. With no hand on it the boom is a weathervane: it comes to rest where the
+cloth lies along the flow, which is angle of attack zero, which by the geometry of
+[§3.2](#32-sail-forces) is exactly `−awa`. The sheet then clamps it:
+
+```text
+  natural = clamp(−awa, −sheet, +sheet)
+```
+
+**Everything falls out of that one expression, and none of it is special-cased:**
+
+- **Sailing.** Close hauled, `|−awa|` still exceeds the sheet, so the boom sits
+  *on its stop* and the sheet is what sets the angle of attack. True at every
+  point of sail a student uses — which is why the old absolute-angle model got
+  this case right and survived as long as it did.
+- **Easing too far.** Ease past `|awa|` and the clamp stops binding: the boom
+  reaches the weathervane, α goes to zero and the sail flogs. And then a genuine
+  feedback loop nobody wrote appears — the boat slows, the apparent wind swings
+  *aft*, the clamp starts binding again and the sail refills. Measured: eased in
+  a 66° apparent wind the boat fell from 5.01 kt to 4.35 while the wind moved
+  −63.4° → −66.5°.
+- **Tacking and gybing, unassisted.** Turn the boat and `awa` changes sign; the
+  clamp changes side with it and the boom crosses on its own. Measured through a
+  tack the boat loses 0.4 kt; through a gybe the boom holds at its stop until the
+  apparent wind crosses dead downwind, then slams **through the centreline** to
+  the other stop in about half a second.
+- **The swing-back above, derived rather than animated.** Push the boom to
+  windward and let go: the sheet is `|angle|`, the wind is on the other side, so
+  the natural angle is its mirror. "Same trim, other side" is what the clamp
+  says; there is no swing-back mechanism and there does not need to be.
+
+`mainHeld` — in the state and inert since it was added — is what the hand uses:
+while it is set the boom does not move, because a hand on it outranks the wind.
+
+#### The jib: the same sentence, a differently shaped stop
+
+A boom pivots on the mast, so its sheet limits an *angle*. A jib's clew is a
+corner of cloth on a rope: it can be anywhere the foot allows — a circle about
+the tack — and anywhere the sheet allows, a circle about the car. It sits where
+those two cross, and the wind picks which crossing.
+
+Written out, that collapses back into the same formula. With `β` the bearing from
+tack to car and `d` their distance,
+
+```text
+  cos(b − β) = (chord² + d² − sheet²) / (2·chord·d)
+  natural = clamp(−awa, a₀ − h, a₀ + h)
+      a₀ = the angle whose clew lies nearest the car (12.6°, toward that car)
+      h  = acos of the above
+```
+
+**So the jib is the main with the interval shifted off centre**, and the main is
+the special case where the car sits on the centreline, `a₀ = 0`, and the interval
+is symmetric.
+
+**That asymmetry is the real one on the water.** Because the jib's interval is
+not centred on zero, tacking the boat does not tack the jib: sheeted to starboard
+at 1.0 m the clew may lie anywhere in −12.2°…+37.4°, so putting the wind on the
+starboard bow clamps it at −12.2° and it stops there, to windward, aback — while
+the main has crossed on its own. **The main tacks itself and the jib has to be
+tacked.** Measured through a tack: main +15° → −15°, jib +27.3° → −2.1°, and the
+boat 0.3 kt slower for the backed headsail until someone tends it.
+
+**The car is chosen, not measured**, because there is nothing to measure it
+against: the class rules control the mast, boom, spinnaker pole, standing
+rigging, sails, keel and rudder and say *nothing* about jib sheeting. It sits
+midway between the lower chainplate and the centreline, at that chainplate's
+station. The figure to check it against is not its coordinates but what it makes
+a bar-taut jib do — **12.6°** off the centreline, which is about where a Rhodes
+19's jib sits sheeted flat. Adjustable cars are deliberately not modelled: they
+mostly change *twist*, and [§7](#7-deliberately-out-of-scope) does not model
+twist, so a movable car would be a control with nothing on the other end.
+
 **This manoeuvre is inside the model's domain, and it is worth saying so because
 the section that follows gives a reason to wonder.**
 [§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
@@ -1059,9 +1162,9 @@ the sloop numbers too and so has to recalibrate against this table.
 
 **This table is one wind speed, and the model knows it.**
 [§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
-[§5](#5-direct-manipulation) gives the wind a slider without saying where it
-stops — today's scaffolding offers 0–30 kt — so the three qualitative lessons
-have to survive a range the table says nothing about. `pos-lcz` narrowed the
+[§5](#5-direct-manipulation) lets the wind be set anywhere from 0 to 20 kt — the
+top of the range the school teaches in — so the three qualitative lessons have to
+survive a range the table says nothing about. `pos-lcz` narrowed the
 drift to where the same bounds hold across the whole opening range, and
 `pos-d7u`'s depowering then stopped the *pointing angle* drifting above it:
 
@@ -1226,15 +1329,33 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Main** — the boom drawn as a straight line from mast to clew (the chord),
   with the sail bulging leeward of it as a Bézier arc.
 - **Jib** — no boom, so just a curve from its tack to the clew. Absent entirely
-  when `jibSet` is false.
-- **Standing rigging** — **not drawn.** See below.
+  when `jibSet` is false. Its clew rides the **chord**, not the cloth: a bellied
+  foot spans less than its own 7'6", and the difference pulls the clew forward.
+  See [the jib's foot is cloth](#the-jibs-foot-is-cloth-not-a-bar) below.
+- **Standing rigging** — **six deck dots**, one where each stay lands. See
+  [the six stays](#the-six-stays-as-deck-dots) below.
+- **Telltale** — yarn in the rigging, streaming with the **apparent** wind. One
+  only: whichever of the two uppers and the backstay lies furthest upwind. See
+  [the telltale](#the-telltale-the-apparent-wind-without-chrome) below.
 - **Wind ring** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)):
-  a thin full circle marking the whole draggable track, an arrow at the wind
-  bearing with its tail on the ring and its head flying inward the way the wind
-  blows, and seven short graduations every 45°.
+  a thin full circle, seven short graduations every 45°, and an arrow at the wind
+  bearing whose **tail sits on the ring and whose length is the wind's speed**,
+  flying inward the way the wind blows and reaching the mast at the top of the
+  range. Drawn translucent and above the boat, because at a strong wind it
+  crosses the sails on purpose.
 - **Speed arrow** — a little clear of the bow, or of the stern when speed is
-  negative. Length grows with speed; colored per [§4.3](#43-the-speed-arrow).
+  negative. Its length is the boat's speed **on the same scale as the wind
+  arrow**, so the two compose; colored per [§4.3](#43-the-speed-arrow).
 - **Apparent wind overlay** — only when toggled on.
+
+**Two of those are velocities and they are drawn to one scale.** The wind arrow
+and the speed arrow both measure metres per second, and until they shared a scale
+the drawing showed three separate readouts rather than one picture — worse, the
+boat's arrow was the longer per knot, so a 5 kt boat out-drew the 5 kt wind
+pushing it. `VELOCITY_SCALE` in `render/scene.ts` is the single constant both
+read. What that buys is the thing the diagram is for: a student can *see* that
+the wind is three times the boat, and the arrows are then the two sides of a
+vector triangle rather than two gauges that happen to sit near each other.
 
 Camber depth is a function of trim and apparent wind pressure. When the collapsed
 fraction is non-zero, a traveling sine wave is superimposed on the collapsed
@@ -1271,7 +1392,24 @@ keeps [§4.2](#42-the-traffic-light)'s two red states apart, since undertrimmed 
 red and fluttering while overtrimmed is red and dead still — so a still crinkle
 still says "this sail has let go" with nothing on the page moving.
 
-#### How the camber is drawn
+#### How the camber is drawn — and, for the jib, felt
+
+**The depth is no longer only a drawing.** It lives in `model/sail.ts` now,
+because for the jib it sets the chord (see
+[the jib's foot is cloth](#the-jibs-foot-is-cloth-not-a-bar)), the chord sets
+where the clew is, and that sets the angle of attack and therefore the force. For
+the **main** it remains purely visual — a boom is a spar and holds its chord at
+`E` whatever the cloth does — so this section's reasoning is unchanged for the
+sail it was written about, and load-bearing for the other one.
+
+One consequence worth flagging rather than leaving to be discovered: `sin α`
+makes the sail flattest at the *small* angles of attack it sees upwind — about
+4.6% camber close hauled. That was a defensible drawing choice when nothing read
+it; it is a questionable *physical* one now, because a real jib's camber comes
+from its cut and its sheet tension rather than from its incidence, and a
+close-hauled jib is cut full. Changing it would move the whole force model and
+wants recalibrating against [§3.6](#36-calibration-targets), so it has not been
+touched.
 
 The offset from the chord runs along `perpendicular(chordDirection)` — 90°
 clockwise of tack→clew — scaled by a signed depth:
@@ -1438,7 +1576,7 @@ attribute loses to any CSS rule that later touches the same property. `display:
 none` is also genuinely absent from painting, hit-testing and the accessibility
 tree, which is what "absent entirely" has to mean.
 
-#### Why no standing rigging
+#### Why no standing rigging *spans*
 
 An earlier version of this section drew the headstay, on the argument that it
 kept the boat reading as a sloop with its jib struck rather than as a different
@@ -1455,17 +1593,108 @@ rakes aft as it climbs and so sits half a foot abaft the stem. Drawing to the
 tack leaves a gap that looks like a bug; drawing to the stem invites "why is
 that one line here and not the others?"
 
-So the stays come out, and the sloop-reads-as-a-sloop worry goes with them: a
+So the *spans* come out, and the sloop-reads-as-a-sloop worry goes with them: a
 hull with a mast well forward and a boom is not going to be mistaken for
 anything else.
 
-If they come back it should be as **deck attachment points for all six** — dots,
-not spans, which is what a deck-level drawing can honestly show. The *lowers*
-are the ones that would earn their place, because they are what the boom fetches
-up on and therefore what sets `SWING_LIMIT` ([§5](#5-direct-manipulation));
-showing where they land would make the boom's travel limit visible rather than
-merely enforced. That's a real design question and it deserves its own decision
-rather than being smuggled in as a line on a hull.
+#### The six stays, as deck dots
+
+**The decision that section anticipated has been taken: all six are drawn, as
+deck attachment points.** Dots, not spans, which is what a deck-level drawing can
+honestly show — where a stay *lands* is a fact about the deck, where it *goes* is
+a fact about a vertical the drawing has no axis for.
+
+They earn their place twice over, and neither reason was available when the
+question was first asked. The **lowers** are what the boom fetches up on and so
+what sets `SWING_LIMIT`, which means showing where they land makes the boom's
+travel limit visible rather than merely enforced. The **uppers and the backstay**
+are where the yarn is tied, so the telltale below has somewhere to stream from;
+a mark that is also an anchor is no longer decoration. Only the headstay has no
+job of its own, and it costs nothing because it lands exactly where the jib's
+tack already is.
+
+**Drawn six inches inboard of the truth**, which is the same half-foot the jib's
+tack already carries. That inset is not a fudge for its own sake: it is what
+makes the headstay's dot and the jib's tack *the same point* rather than two
+marks a few pixels apart arguing about which is right. And this being a top-down
+drawing of a three-dimensional boat, no single deck coordinate is the truth
+anyway — a chainplate is a fitting on a near-vertical topside. Pulling the dots
+in clears the sheer line, so each reads as hardware on the deck rather than as a
+lump in the hull's outline.
+
+**The stations are measured, not guessed.** `RB 20.05` puts the forward
+chainplate no more than 83 inches from the headstay's attachment, which lands it
+one inch *forward* of the mast — a surprising answer, and the right one: the
+uppers land almost exactly abeam the mast, which is what makes a single spreader
+bisect their angle. `RB 20.06` puts the aft chainplate 13–15 inches abaft it.
+They live in `model/boat.ts` as `CHAINPLATES`, because they are measurements of
+a boat; how far *outboard* each dot sits is read off the drawn sheer instead, so
+a refaired hull moves the dots with it rather than leaving them floating.
+
+**Which pair takes which chainplate is an assumption**, flagged rather than
+buried: the rules give two chainplates a side without saying which shroud takes
+each. The uppers go forward (spreader geometry) and the lowers aft (where they
+resist the mast bending forward under headstay load). Being wrong about it moves
+a dot fourteen inches and nothing else.
+
+**Small and definite, rather than large and faint.** A first attempt drew them at
+0.07 m in a lightened ink and they read as *dirt on* the deck rather than
+hardware *on* it. The fix runs both dials together, and they are one decision: a
+chainplate is a place a wire lands, so it wants to be nearly dimensionless — and
+being small is exactly what lets it take the hull's ink at full strength without
+competing with the mast. A faint mark reads as a mistake; a tiny sharp one reads
+as a fitting. The ranking against the mast dot is therefore carried by size
+alone, which is the honest way round for two marks that are the same kind of
+thing and differ only in importance.
+
+#### The telltale: the apparent wind, without chrome
+
+Apparent wind is what this simulator exists to teach ([§3.1](#31-apparent-wind))
+and for a long time **nothing on the drawing showed it**. The ring shows the
+*true* wind, and a student watching only that misreads every sail on the boat.
+
+The fix arrives through the channel the real boat uses: a piece of yarn. It costs
+no label, no toggle and no chrome — it is a physical object that happens to be an
+instrument, which fits [§7](#7-deliberately-out-of-scope)'s no-scaffolding
+position better than any overlay could, and what a student learns from it
+transfers to the water without translation.
+
+**One telltale, not three.** The school ties yarn to both uppers and the
+backstay, and the instruction is to read *whichever is furthest upwind*, because
+it has the cleanest air. Drawing only that one teaches the rule by demonstration
+instead of stating it, and keeps two yarns' worth of clutter off an already
+abstract drawing. The selection has no special cases: in the boat frame, how far
+into the wind an anchor lies is `dot(anchor, unitVector(apparent.angle))` — the
+angle is the direction the wind blows *from*, so that expression *is* its
+upwindness. Take the maximum of three. It gives the starboard upper on starboard
+tack, the port upper on port, and the backstay off the wind, without a branch,
+and it hands over at an apparent wind angle of about **103°** — just abaft the
+beam, which is where a sailor would switch.
+
+**It moves, and the motion is most of the point.** A telltale is easy to miss and
+this one has to catch an eye across a table, so it flicks. Two things about how:
+most of the movement is a **sweep about the tie** rather than a transverse
+ripple, because a ripple wobbles a line that keeps pointing the same way — which
+reads as a drawn effect — while swinging the free end reads as *blowing*; and the
+amplitude is deliberately small, because on a mark whose entire content is a
+bearing, **flutter amplitude is an error bar**. Liveliness and precision pull
+against each other here and the bearing wins once the motion has done its job of
+drawing the eye.
+
+**Three edge cases settled rather than discovered.** The switchover carries a 10°
+dead band, so the yarn does not flick between anchors as the apparent wind
+wanders. Head to wind the two uppers tie exactly, and the incumbent keeps it, so
+the tie breaks deterministically rather than on a rounding difference. And a
+**calm draws the yarn at 30% length** — a becalmed telltale hangs straight *down*,
+and this is a drawing from above, so limp is not a shorter piece of yarn but the
+same yarn foreshortened. Modelling it as a length that collapses is what makes a
+calm read as limp rather than as a missing mark.
+
+**Hull ink, not the wind's blue**, and that is the whole argument. The blue
+belongs to the true wind — the ring and its graduations — and a mark whose entire
+job is to *disagree* with the ring must not look like part of it. The
+disagreement is the lesson, and it lands harder for the two being told apart at a
+glance.
 
 The tack/stemhead distinction still matters to the *model* even with nothing
 drawn, because the jib's clew swings about the tack. It lives in
@@ -1476,6 +1705,88 @@ tack, half a foot abaft the stem, and not at the bow. Drawing it from the bow
 would put the curve on the wrong radius and leave a gap at the wrong end — the
 same half foot that would have looked like a bug on a forestay looks like one on
 a sail.
+
+#### The jib's foot is cloth, not a bar
+
+The jib's clew used to swing on a circle of radius `JIB.foot` about its tack,
+which is the geometry of a **jib boom** — a spar the boat does not have. A sail's
+foot is a length of cloth: bellied out it spans less across than it measures
+along, and the clew comes forward as it fills.
+
+**The shape is a circular arc, and that is not an approximation.** A sail has no
+bending stiffness, so it carries no load along itself and its tension is constant
+from tack to clew. Balancing that tension against the pressure across the cloth
+gives `T/R = Δp`, and with both constant, `R` is constant — a curve of constant
+radius is a circular arc. Every circular-arc sail theory starts here.
+
+The geometry then costs nothing at runtime. For a half-angle `θ`, an arc of
+length `L` has chord `L·sin θ/θ` and depth `L·(1−cos θ)/(2θ)`, both monotone in
+`θ` — so the depth fixes `θ` and `θ` fixes the chord. It is one dimensionless
+curve with no boat dimensions in it, tabulated once at load. **There is no
+equilibrium to iterate toward**: the depth arrives from the pressure model and
+the geometry does the rest.
+
+**This makes camber and chord one quantity where they were two.** Before it,
+`camberDepth` could report a belly no 7'6" of cloth could make at that chord. It
+also moved that function from `render/` into `model/`: while a sail's depth was
+only ever *drawn* it could live in the renderer, but the depth now sets the
+chord, the chord sets where the clew is, and that sets the angle of attack and
+therefore the force. The old claim that "camber affects no force" stopped being
+true the day this landed.
+
+**And the mast is in the way.** The foot cannot pass through the spar, so the
+clew's bearing is kept out of the mast's shadow — 1.47°, from a 4-inch section at
+the tack's distance. The band is narrow and the metric correction inside it is a
+fraction of an inch; what it buys is topological. A cambered foot bulges to
+leeward and clears the spar on its own while the sail is *drawing*. It is the
+**backed** jib, bellying the other way, that needs the guard — and backing is
+exactly the manoeuvre where the old geometry swept the whole foot through the
+mast.
+
+#### The ring's radius is solved, not chosen
+
+`SCENE.windRingRadius` was 5.65 m because someone picked 5.65. It is now derived,
+and the derivation is worth stating because it fixes the scale of the whole
+drawing.
+
+Both velocity arrows have a natural maximum that lands on something already
+drawn. The **wind** arrow hangs its tail on the ring and flies inward; its
+longest useful length is the one that puts the tip on the centre, since further
+would take the radial control's handle through the origin where a bearing stops
+existing. The **speed** arrow starts at the bow and flies outward; its longest
+useful length is the one that puts the tip on the ring. Requiring one scale
+through both leaves the radius as the only unknown:
+
+```text
+  R / V_wind = (R − R_tail) / V_hull
+  R = R_tail · V_wind / (V_wind − V_hull)   = 4.348 m
+```
+
+`shortRadius` follows it out to the viewport, so `SHORT_SPAN` drops from 12.0 m
+to 9.24 m and **the whole drawing zooms 1.30×** — the boat's swept disc goes from
+60% of the half-short-axis to 78%. That is the space the wind gave up by becoming
+an overlay instead of a reservation, spent on the boat rather than on water.
+
+Two consequences, both intended:
+
+- **`contentRadius` and the ring are now the same circle.** The band reserved for
+  the speed arrow's tip at hull speed *is* the ring, because the ring is solved
+  from that very statement. The reservation and the mark it was reserving for
+  have collapsed into one thing, which is what says the derivation has the right
+  shape.
+- **Hull speed puts the speed arrow's tip exactly on the ring**, so the ring has
+  become a live hull-speed gauge. It takes a breeze, a beam reach *and* good trim
+  to push the tip past it, which makes the crossing something earned rather than
+  something displayed. Note this sits against the reasoning recorded in
+  [§4.3](#43-the-speed-arrow) for *not* marking hull speed; it is a landmark that
+  arrived by coincidence rather than by drawing, and it is worth revisiting
+  deliberately rather than inheriting.
+
+**One coupling to know about**, because nothing else in the drawing has it: the
+radius is now sensitive to hull speed and to §5's wind ceiling. As `V_wind`
+approaches `V_hull` it runs to infinity, and lowering the teaching ceiling from
+20 kt to 15 would resize the boat by 13%. A *pedagogical* decision now moves the
+scale of the drawing, which is principled but must not be a surprise.
 
 #### The coordinate story
 
@@ -1658,18 +1969,28 @@ The length law is linear:
 length = SPEED_REACH · |speed| / HULL.hullSpeed
 ```
 
-`SPEED_REACH` is derived rather than declared — it is what is left of
-`contentRadius` once the bow and the gap below are accounted for, ≈ 2.08 m, and
-the same figure astern because the pivot is amidships. So a full-length arrow
-means *hull speed*, which is a thing worth recognising, rather than merely
-meaning "the biggest arrow". Above hull speed the arrow overruns and crosses the
-wind ring; see [§4.1](#41-whats-drawn) for why that is allowed and what makes it
-safe.
+`SPEED_REACH` is derived rather than declared, and **the direction of that
+derivation reversed.** It used to be what was left of `contentRadius` once the
+bow and the gap were accounted for — a length chosen to fill a band. It is now
+`VELOCITY_SCALE × hull speed`, because the two velocity arrows share one scale
+([§4.1](#41-whats-drawn)) and the ring's radius is solved so that hull speed
+lands exactly on it. So a full-length arrow still means *hull speed*, which is a
+thing worth recognising; what changed is that the length now also means
+*comparable to the wind arrow*, which is the more valuable of the two.
+
+**The arrow shrank about 1.30× at hull speed**, 2.08 m to 1.60 m. That is not a
+regression: the boat genuinely *is* several times slower than the top of the wind
+range, and the proportions being true is the entire point. What the drawing lost
+in the boat's arrow it more than got back in the 1.30× zoom the same derivation
+bought.
+
+Above hull speed the arrow overruns and crosses the wind ring; see
+[§4.1](#41-whats-drawn) for why that is allowed and what makes it safe.
 
 #### The one place it is not linear
 
-The law above governs every speed out to the wind ring, which the tip reaches at
-6.87 kt. Past the ring it bends, easing asymptotically onto a limit 0.1 m inside
+The law above governs every speed out to hull speed, where the tip reaches the
+ring. Past it the law bends, easing asymptotically onto a limit 0.1 m inside
 `shortRadius`:
 
 ```text
@@ -1695,25 +2016,37 @@ model can reach to 8.9 kt, putting 0.4 m of arrow outside the box on any
 square-or-portrait viewport.
 
 Three choices were on the table — clamp, compress, or accept the clip — and the
-bend is placed **at the ring rather than at hull speed** deliberately, which is
-what makes it invisible: every speed out to 6.87 kt draws exactly what it drew
-before. What compresses is only the band between the ring and the edge, the one
-part of the drawing nothing else uses — the ring's graduations are drawn
-*inward* from it for the same reason this stops short of the edge, that a mark
-clipped by the viewport reads as a rendering fault. Bending at hull speed
-instead would have shortened the arrow across 5.6–8 kt, where the boat actually
-sails, and pushed the ring crossing out to 7.6 kt — moving the one landmark a
-student can see the arrow cross, since `contentRadius` is a budget rather than a
-drawn circle.
+bend used to be placed **at the ring rather than at hull speed** deliberately,
+so that every speed out to 6.87 kt drew exactly what it drew before. Bending at
+hull speed instead, the argument ran, would shorten the arrow across 5.6–8 kt
+where the boat actually sails.
+
+**That argument has been overruled, and by geometry rather than by preference.**
+`SPEED_KNEE` is the length whose tip reaches the ring; the ring is now solved so
+that hull speed's tip reaches it too ([§4.1](#41-whats-drawn)). The two are
+therefore *the same number* and the knee lands exactly on hull speed. The linear
+band runs out where the boat starts sailing hard rather than past it.
+
+The cost is real and small: at the model's fastest, 6.38 kt, the arrow draws
+1.333 m against a linear 1.391 — about 4% short. The shared scale is exact from
+rest to hull speed, and compresses only above it. That was judged worth paying
+for two arrows a student can actually compare, but it is a trade rather than a
+free lunch and the next person to touch this should know which way it went.
 
 One consequence to record before someone finds this and thinks it is dead
-weight. Depowering the rig in a breeze (pos-d7u) drops the fastest reachable
-speed to about 6.4 kt, which is *below* the 6.87 kt ring crossing — so in normal
-use the knee never engages and the arrow is linear across the whole range the
-boat can reach. It stays anyway, for the same reason it was not tuned to a measured
-top speed to begin with: nothing guarantees a future model, a retuned constant
-or a raised wind control stays under the ring. The drawing declines to depend on
-the model's range at all. Measure the invariant, not the reachable speeds.
+weight. The knee's *purpose* is unchanged: the drawing is finite and the linear
+law is not, so something must bound it at any speed including `Infinity`. It
+stays for the same reason it was not tuned to a measured top speed to begin
+with — nothing guarantees a future model, a retuned constant or a raised wind
+control stays inside the box. The drawing declines to depend on the model's range
+at all. Measure the invariant, not the reachable speeds.
+
+**And the ring has quietly become a hull-speed gauge.** With the crossing now at
+hull speed rather than at an unreachable 6.87 kt, the tip passes the ring from
+about 11 kt of wind upward — but only on a reach, and only with good trim, so the
+crossing is *earned* rather than displayed. Set against that: the reasoning below
+for declining a hull-speed landmark still stands, and this one arrived by
+coincidence rather than by decision. It is worth taking deliberately.
 
 What the bend guarantees, and why it is a curve rather than a clamp: the length
 is **bounded** at every speed there is, including ones no boat reaches, so no
@@ -1730,10 +2063,11 @@ keep resolving speed inside a finite box forever.
 The arrow starts **0.2 m clear of the bow**, not at it. Anchored to the stem it
 reads as a bowsprit — part of the boat rather than a thing said about it — and
 at the stern, where the layer paints below the hull, it would appear to slide
-out from under the transom. That clear water comes out of the *arrow's* budget
-rather than being added on top of the band: the gap is a drawing decision and
-`contentRadius` is a reservation, so taking it from the reach is what keeps the
-tip landing exactly on the band at hull speed.
+out from under the transom. That clear water is now part of the
+*derivation* rather than a trim taken off a budget: `ARROW_TAIL_RADIUS` — bow to
+pivot, plus the gap — is one of the two lengths the ring's radius is solved from
+([§4.1](#the-rings-radius-is-solved-not-chosen)), which is what makes the tip
+land exactly on the ring at hull speed.
 
 The head is a constant size in metres down to about 2.2 kt, below which it
 shrinks with the shaft, so **length** stays the thing that encodes speed rather
@@ -1958,10 +2292,14 @@ state exists**, touch targets must be large, and targets will overlap.
 | Element | Gesture | Notes |
 | --- | --- | --- |
 | Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
-| Wind direction | Drag anywhere on the perimeter ring | Large target, never overlaps the boat |
-| Wind speed | Slider, 0–20 kt | Separate control; easier than dragging arrow length on a phone |
-| Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
-| Jib | Drag the clew | Same; absent when the jib is struck |
+| Wind | Drag **anywhere the boat is not** | One radial control: round sets the bearing, in and out sets the speed |
+| Main | Drag the clew | Sets how far the **sheet** lets the boom go, not where it is |
+| Jib | Drag the clew | Same; the side you release on chooses the working sheet |
+
+**The wind's is the gesture that changed most, and it is the one worth reading
+the rest of this section against.** It is no longer a bearing on a thin ring plus
+a slider for the speed: the whole water is a single radial control, and the two
+quantities come off one finger.
 
 Two settings sit outside the drawing, in a minimal control strip: **apparent
 wind** ([§3.1](#31-apparent-wind)) and **jib on/off**
@@ -1970,11 +2308,11 @@ manipulations, both are things a student sets once and forgets, and neither
 belongs on the boat. Striking the jib by dragging it overboard would be
 charming and undiscoverable.
 
-The wind speed slider shares the strip with them, for a different reason —
-argued below, under [wind speed](#wind-speed-the-one-control-that-is-not-a-manipulation).
-Unlike the two switches it is something a student changes *while* playing; it is
-out here because the alternative gesture would spoil the one on the ring, not
-because it is a setting.
+The wind speed slider shares the strip with them, for a reason that has since
+changed — see [wind speed](#wind-speed-also-a-manipulation-after-all). It was out
+here because the alternative gesture would have spoiled the one on the ring; that
+is no longer true, and the slider stays now only because it is the simulator's
+one keyboard-operable control.
 
 Striking the jib also *helps* the hardest interaction problem below — with one
 sail there is nothing to disambiguate close hauled — which means the Level 1
@@ -2019,70 +2357,89 @@ disjoint halves of the drawing, so that cannot be taken by accident.
 ### The ring as a target
 
 The drawn line is a **hairline** — `--pos-rule-wind` clamps it to 1.1 px on a
-phone and 2.5 px on a desktop — and nothing could be dragged by it. What is
-draggable is an annulus, and it is deliberately **not symmetric about the drawn
-ring**.
+phone and 2.5 px on a desktop — and nothing could be dragged by it. **What is
+draggable is all the water the boat is not standing on.**
 
-**Outward it reaches 22 CSS px**, half the 44 px target the clew discs below are
-sized against. **Inward it reaches the arrow's own tip**, 1.2 m in at
-`ARROW_REACH` in `render/wind.ts`. The asymmetry is the arrowhead: the arrow is
-the mark a student reaches for — it carries the hull's stroke weight for exactly
-that reason ([§4.5](#45-rendering-constraints)) — and a symmetric 22 px band
-would leave most of it dead. It starts at 4.97 m on a phone and 5.33 m on an
-iPad, against an arrow reaching in to 4.45 m with its barb tips at 4.81 m: 17 px
-of its 39 px missed on the one and 61 px of its 83 px on the other, the whole
-arrowhead in both. A student's first instinct is to grab the arrowhead, and it
-would have been discarded in silence. Outward there is nothing to reach for, so
-22 px is enough.
+An earlier design gave the wind an *annulus*: 22 CSS px outward from the drawn
+ring and inward as far as the arrow's tip, deliberately asymmetric so that the
+arrowhead — the mark a student's first instinct is to grab — fell inside its own
+target. That band was carefully derived and it is gone, so the argument that
+built it is answered here rather than deleted.
 
-The result is still an enormous target: on a phone it is 61 px across a track
-1154 px around, and on an iPad 105 px across a track 2467 px around. There is no
-gesture in the simulator with a larger one, which is the point of putting the
-wind out here.
+**What replaced it.** Arbitration is a fall-through: the clews first, then the
+hull silhouette, then *everything else is the wind*. There is no band because
+there is no edge — nothing is left over to be nobody's. The display and the
+manipulation come apart: the wind's marks paint **above** the boat and
+translucent, so a strong wind's arrow crosses the sails, while the region a
+finger claims sits conceptually **beneath** it, taking whatever the boat did not.
+That split costs nothing structurally, because hit-testing here is geometric and
+never reads an event's target — paint order and arbitration order were always
+independent facts, and only one of them decides.
 
-**Outward 22 px, rather than claiming everything beyond the ring.** The generous
-reading is tempting, since nothing else is out there to want the touch. It is
-rejected for the case this section opens with: an iPad flat on a table, three
-students leaning over it, collects resting palms at the screen edges. A target
-belongs to one pointer at a time, so the first palm to land would own the wind,
-and every deliberate ring drag after it would get nothing at all until the hand
-moved.
+**The palm problem, which the annulus existed to solve, is solved differently.**
+The old reasoning was sound: an iPad flat on a table collects resting palms at
+the screen edges, and *because a target belongs to one pointer at a time*, the
+first palm down would own the wind and every deliberate drag after it would get
+nothing. Claiming the whole surface makes that worse, not better — unless the
+premise goes. **So the premise goes: the wind is not exclusive.** Every pointer
+that asks for it gets it, and only the one that *moves* moves it. A palm that
+rests changes nothing; a finger that drags is never blocked. `reapply`
+re-references the still pointers instead of re-applying them, which is what stops
+two fingers fighting over one bearing.
 
-**That protection is real on two edges of four**, and the arithmetic is easy to
-get backwards, so: the scene is scaled off the *short* axis, which puts the ring
-24 px inside the short edge on an 834 px iPad and 11 px inside it on a 390 px
-phone — closer than the band is wide. Along the short axis the viewport therefore
-ends inside the band and there is no outer water to leave unclaimed either way.
-It is the **long** axis that gains, and it gains a lot: an iPad in landscape has
-182 px of unclaimed water beyond the band at each of the left and right edges,
-which are the edges a hand actually rests on. So the choice buys two edges and
-the alternative buys none.
+That exception is the wind's alone. The sails and the hull stay exclusive, for
+the reason they always were: two fingers on one heading is not a gesture, it is a
+tug of war.
 
-**The inward reach cannot touch the boat**, and that is derived rather than
-arranged. The boat sweeps 3.590 m from the pivot at any heading and any legal
-trim (`SCENE.boatRadius`, measured in `render/scene.ts`), and a touchdown can
-claim a clew from a further `grab` out — so the innermost point that may belong
-to the wind is `boatRadius + grab`, and that is a floor under the arrow's tip:
-`max(boatRadius + grab, ARROW_REACH)`. The same shape of rule as the
-`min(22px, gap / 2)` that sizes the clew discs — see [grab points](#grab-points-the-clews)
-below — and for the same reason: a target stated in pixels grows in metres as the
-display shrinks, so left uncapped it eventually reaches something it must not.
-**The floor is slack down to a 308 px short axis** and binds below it, taking the
-arrowhead first. On a phone the two targets are 6 px of open water apart — thinner
-than the 23 px a symmetric band would have left, which is what the arrowhead
-costs — and that water claims nothing, as does the water outside the band.
-Neither is unfinished: a touch given to the nearest anything is how a student
-ends up turning a boat they meant to miss.
+**And the arrowhead argument survives its own conclusion.** The band reached
+inward to cover the arrowhead because a student reaches for it. Now the whole
+water is the target, so the arrowhead is inside it trivially — and the arrow's
+tip is also the radial control's *handle*, so reaching for it does exactly what
+reaching for it should.
 
-### Wind speed: the one control that is not a manipulation
+### Wind speed: also a manipulation, after all
 
-Everything else a student sets is a direct manipulation of the drawing, and wind
-speed deliberately is not. The obvious gesture — drag the arrow's length — puts a
-one-dimensional target inside a two-dimensional one: the same finger on the same
-ring would mean *bearing* when it moved around and *speed* when it moved in and
-out, which on a phone is the pairing guaranteed to make both worse. So the ring
-keeps the bearing and the speed goes to the control strip, beside the switches,
-where it cannot be missed.
+This section used to argue the opposite, and the argument was good enough that
+overturning it deserves stating rather than quietly rewriting.
+
+**The old case.** Dragging the arrow's length puts a one-dimensional target
+inside a two-dimensional one: the same finger on the same ring would mean
+*bearing* going round and *speed* going in and out, which on a phone is the
+pairing guaranteed to make both worse. So the ring kept the bearing and the speed
+went to a slider in the control strip.
+
+**What was wrong with it** was not the reasoning but the premise. The conflict is
+real only while the target is a *thin ring*, where the radial axis has almost no
+travel to work in and every drag is mostly tangential by construction. Give the
+gesture the whole water and the radial axis has the full radius, and the coupling
+turns out to be mild in the hand for a reason that is geometric rather than
+lucky: **motion along a circle about the origin is pure bearing, and motion along
+a radius is pure speed.** A hand drawing an arc does the first without being
+asked to. Measured on the running model, a mostly-radial drag moved the speed
+from 6 kt to 15.3 kt while the bearing shifted 200° → 204°.
+
+**And the imprecision is affordable here in a way it would not be elsewhere.**
+Wind is fickle; a student setting 11 kt rather than 12 has not made an error the
+simulator needs to protect them from. That is a claim about *this* quantity, not
+a general licence — the same coupling on a sail's trim would be unacceptable,
+which is why the sails keep single-axis gestures.
+
+**Two things about the radial axis that could not be settled on paper.** The
+arrow's tail stays on the ring and its **tip** moves, so the tip is the handle —
+which means *dragging inward makes more wind*. That tracks (your finger is the
+arrowhead) but reverses what a dial teaches, and the alternative has the
+arrowhead moving opposite to the hand, which is usually the worse mistake. And
+a drag can reference itself *relatively*, preserving the length it grabbed, or
+*absolutely*, snapping the tail to the finger. Relative is the default, because
+it matches every other gesture here and because it is what makes a stray touch
+cost nothing — a finger that lands on the water and does not move changes no
+wind at all, which is the old objection to giving the water away, answered.
+
+**The wind speed slider remains** in the control strip. It is now redundant
+rather than load-bearing, and it is worth keeping while the radial gesture is
+still new: it is the only keyboard-operable control in the simulator
+([§6](#6-architecture) and the accessibility bead), and removing it before the
+app-wide keyboard route exists would trade one gap for another.
 
 **The range is 0 to 20 knots**, in whole-knot steps, and both ends are chosen
 rather than inherited. Zero has to be reachable: a boat that will not stop is a
@@ -2118,6 +2475,35 @@ boat speed, trim quality — which is what they are meant to read off the drawin
 ### Grab points: the clews
 
 **Sails are dragged by their clews**, and nothing else on the sail is draggable.
+
+**What the drag sets is the sheet, not the angle** — see
+[§3.4](#34-backing-a-sail), where the model behind that lives. While a finger is
+down the sail is where the finger says, because a hand on a boom outranks the
+wind; when it lifts, the angle it was being held at becomes the **limit** the
+sheet will allow, and the wind decides where inside that limit the sail settles.
+Usually that is exactly where it was left, which is why the gesture feels
+unchanged. Occasionally it is not, and those cases are the lesson: ease past the
+apparent wind and the sail flogs where it was left; drag it across to windward
+and it swings to the mirror the moment you let go.
+
+For the jib the release does one thing more. **The side you release on chooses
+the working sheet** — dragging the clew across and letting go on the new side is
+a single gesture that casts off one sheet and hauls the other, which is the real
+foredeck action and needs no second control. That is also why the side is *state*
+rather than something derived from where the clew happens to be: past about half
+a metre of sheet the clew can cross the centreline, which is an ordinary trim,
+and "whichever car the clew is nearest" would then flip every frame.
+
+**No ring is drawn at the clew any more.** One was, on the argument that with no
+labels anywhere the grab points must announce themselves and a small ring reads
+as boat hardware rather than as UI chrome. It came out, and the reason is a units
+mismatch rather than taste: the ring is sized as *hardware*, in metres, while the
+target is sized as a *touch*, in pixels, and the two are nowhere near each other
+— on a phone the invisible disc is several times the visible ring. The mark
+advertised an affordance at a size the geometry never honoured, which is worse
+than not advertising it. The corner of a sail marks its own clew, and with the
+rings gone the deck carries only the mast and the six stay dots — which is what
+makes *those* legible as the hardware they are.
 
 This dissolves the overlap problem at any normal trim, because the clews are
 attached to different parts of the boat: the main clew rides the end of the
@@ -2548,9 +2934,10 @@ one. Several are worth revisiting *after* v1 works.
   actual heeling moment was tried and makes a worse boat, and had it been the
   better boat nothing here would have forbidden it
 
-**Telltales in the rigging are a different instrument, and are planned rather
-than declined** (pos-32n). An earlier draft of this section listed "telltales"
-flat, which collapsed two things that have almost nothing to do with each other.
+**Telltales in the rigging are a different instrument, and are now drawn** —
+see [§4.1](#the-telltale-the-apparent-wind-without-chrome), which is where the
+design lives. An earlier draft of this section listed "telltales" flat, which
+collapsed two things that have almost nothing to do with each other.
 Yarn on the port and starboard uppers and on the backstay — which is what the
 school's own boats carry — shows the apparent wind's *direction*, and nothing
 in the drawing shows that today: the wind ring shows the **true** wind, and a
