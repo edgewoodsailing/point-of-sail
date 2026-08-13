@@ -1,6 +1,7 @@
 import "./shell.css";
 
 import { bindPointers } from "./input/pointer.ts";
+import { knotsFromWindSpeed, WIND_SPEED_KT, windSpeedFromKnots } from "./input/windSpeed.ts";
 import { clampTrim } from "./model/boat.ts";
 import type { CollapseEdge } from "./model/sail.ts";
 import { rigForce } from "./model/sail.ts";
@@ -22,11 +23,17 @@ import { createWindLayer } from "./render/wind.ts";
 
 // Shell bootstrap. Every drawn layer mounts through the scene, onto the named
 // group it belongs to; the pointer layer binds to `surface` rather than to the
-// SVG, for the reason `input/pointer.ts` gives. What is still to come is the
-// settings controls onto .controls (§5, pos-740.3). (DESIGN.md §6)
+// SVG, for the reason `input/pointer.ts` gives. The control strip carries §5's
+// wind speed slider, and pos-740.3's two switches are what is still to come
+// beside it. (DESIGN.md §6)
 const surface = document.querySelector<HTMLElement>(".pos-sim .surface");
 if (surface === null) {
   throw new Error("Page shell is missing the drawing surface (.pos-sim .surface)");
+}
+
+const controls = document.querySelector<HTMLElement>(".pos-sim .controls");
+if (controls === null) {
+  throw new Error("Page shell is missing the control strip (.pos-sim .controls)");
 }
 
 /**
@@ -82,6 +89,85 @@ scene.layers.sails.append(sails.element);
 const clews = createClewLayer();
 scene.layers.handles.append(clews.element);
 
+// --- The control strip ------------------------------------------------------
+
+/**
+ * §5's wind speed slider, and the readout beside it.
+ *
+ * The one quantity a student sets that is *not* a direct manipulation of the
+ * drawing, for the reason `input/windSpeed.ts` gives: the alternative is
+ * dragging the arrow's length, which would make the same finger on the same ring
+ * mean two different things. The range and both conversions live in that module
+ * so they can be tested; what is here is the element.
+ *
+ * Built rather than written into `index.html` because the readout has to be kept
+ * in step with the state, so the element and the code that feeds it belong
+ * together. The strip itself is markup, and stays there.
+ *
+ * The value is shown. That is not the scaffolding §7 rules out — §7 is about not
+ * handing the student the *answer*, and the wind is the question. A student poses
+ * a situation and needs to know which one they posed; what stays unlabelled is
+ * everything downstream, the boat speed and the trim quality, which are what
+ * they are meant to work out from the drawing.
+ */
+function createWindSpeedControl(host: HTMLElement, of: SimState): (next: SimState) => void {
+  const row = document.createElement("label");
+  row.className = "wind-speed";
+
+  const caption = document.createElement("span");
+  caption.className = "wind-speed-caption";
+  caption.textContent = "Wind";
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = String(WIND_SPEED_KT.min);
+  input.max = String(WIND_SPEED_KT.max);
+  input.step = String(WIND_SPEED_KT.step);
+  input.value = String(knotsFromWindSpeed(of.wind.speed));
+  // setAttribute, not the `ariaLabel` property: ARIA reflection starts at Safari
+  // 16.4, above the floor `vite.config.ts` pins (§4.4). Below it the property is
+  // a silent expando and the control has no accessible name at all — and the
+  // wrapping label cannot supply one either, since its text is "Wind", which is
+  // the direction as much as the speed.
+  input.setAttribute("aria-label", "Wind speed in knots");
+
+  const value = document.createElement("output");
+  value.className = "wind-speed-value";
+  // Hidden from assistive technology, not from the eye. `<output>` maps to
+  // `role="status"`, which is a polite live region — so dragging the thumb from
+  // 0 to 20 would announce the wind twenty times *on top of* the range
+  // input announcing exactly the same number as its own value. The readout is a
+  // visual duplicate of the slider's value, and the slider already says it.
+  value.setAttribute("aria-hidden", "true");
+
+  input.addEventListener("input", () => {
+    commit({ ...state, wind: { ...state.wind, speed: windSpeedFromKnots(Number(input.value)) } });
+  });
+
+  row.append(caption, input, value);
+  host.append(row);
+
+  /**
+   * Follows the state, so the console handle below — and pos-740's randomised
+   * opening state (§2.1) — cannot leave the control lying about the wind it is
+   * showing. A stale thumb is worse than no control, because the next touch of
+   * it jumps the wind to wherever the thumb was sitting.
+   *
+   * Guarded on the string rather than assigned every frame. Writing the same
+   * value back to a `range` while a thumb is being dragged is not reliably a
+   * no-op across browsers, and this runs sixty times a second.
+   */
+  return (next: SimState): void => {
+    const knots = knotsFromWindSpeed(next.wind.speed);
+    const shown = String(knots);
+    if (input.value !== shown) input.value = shown;
+    const text = `${knots} kt`;
+    if (value.textContent !== text) value.textContent = text;
+  };
+}
+
+const windSpeed = createWindSpeedControl(controls, state);
+
 /**
  * Everything that reads state, in one place, so nothing can forget a layer.
  *
@@ -89,6 +175,11 @@ scene.layers.handles.append(clews.element);
  * should walk a registered layer list and hand each one a derived bundle
  * computed once, and asks that it not be answered speculatively. Four layers is
  * the point at which that becomes worth weighing, which is pos-793's to weigh.
+ *
+ * The wind speed control is on the list and is not a layer: it is HTML, it lives
+ * outside the scene, and it reads one number. Worth noting for pos-793, because
+ * a registry of things that take a `SimState` is a slightly different shape from
+ * a registry of drawn layers, and this is the first member of the difference.
  */
 function draw(next: SimState): void {
   scene.render(next);
@@ -96,6 +187,7 @@ function draw(next: SimState): void {
   speed.update?.(next);
   sails.update?.(next);
   clews.update?.(next);
+  windSpeed(next);
 }
 
 // --- The frame loop ---------------------------------------------------------
@@ -190,11 +282,15 @@ bindPointers(surface, scene, { read: () => state, write: commit });
 // off a picture is guesswork. `report()` prints all of them at once, in the
 // degrees a sailor would quote.
 //
-// It is also, until pos-bwd.2 lands the wind ring, the only way to set the wind
-// at all: the sliders went with the strip, and dragging is trim and heading
-// only. Retire it when pos-bwd.2 has landed and someone judges the console
-// handle no longer worth its weight — the drag gestures are not going to grow a
-// way to reach `wind.speed`, so that is a real decision rather than a cleanup.
+// **The argument that kept it has now been spent, and it is still here.** Until
+// this bead, the console was the only way to set the wind at all; the ring and
+// the slider above have taken that job, so `pos.set` is no longer load-bearing.
+// What remains is the half that was always the better reason: every quantity
+// below is derived, none of it is drawn, and no gesture will ever expose it. A
+// diagnostic that prints what the picture cannot say is worth its weight
+// independently of whether anything else can reach the state, so it stays —
+// stated here so the next reader does not have to re-derive it from a comment
+// that has stopped being true.
 //
 // Note that `report()` overstates the rig force above 13 kt of true wind, since
 // it calls `rigForce` directly and §3.2's depowering is applied in

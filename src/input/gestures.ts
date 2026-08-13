@@ -9,7 +9,7 @@
  *
  * ## Every gesture is a rotation about a centre
  *
- * All three targets turn out to be the same gesture with a different centre and
+ * All four targets turn out to be the same gesture with a different centre and
  * a different thing to write:
  *
  * | Target | Centre | Frame | Writes |
@@ -17,12 +17,25 @@
  * | Main | `STATIONS.mast` | boat | `trim.mainAngle` |
  * | Jib | `STATIONS.jibTack` | boat | `trim.jibAngle` |
  * | Hull | the pivot | **world** | `motion.heading` |
+ * | Wind | the pivot | **world** | `wind.from` |
  *
  * The frame column is the one thing that is not symmetric, and it is not an
  * accident. A sail angle is measured *against the boat*, so its bearing has to
  * be taken in the boat frame; a heading is what relates the boat frame to the
  * world, so taking its bearing in the boat frame would feed the rotation back
  * into its own input and the boat would run away from the finger.
+ *
+ * **The hull and the wind share a row of that table down to the last column,
+ * and that is §1 rather than a shortcut.** Rotating the hull and rotating the
+ * wind are the same operation — only the angle between them enters the model —
+ * so the arithmetic here is deliberately identical, and forcing the two apart
+ * in this module would invent a difference the design says is not there. What
+ * §1 requires is that they *feel* like different events, and that is a property
+ * of the drawing, not of the bearing: `motion.heading` turns the boat group
+ * while the graduations hold still, and `wind.from` sweeps the arrow and the
+ * graduations while the boat holds still. `gestures.test.ts` pins both halves,
+ * so routing the wind through the boat's transform — the one change that would
+ * collapse them into one animation — cannot pass silently.
  *
  * A consequence worth having on purpose: with two fingers down, one turning the
  * hull and one holding a clew, the clew stays under its finger while the boat
@@ -60,6 +73,8 @@ import {
   ZERO_VECTOR,
 } from "../model/units.ts";
 import { cubicPoint, HULL_OUTLINE } from "../render/hull.ts";
+import { SCENE } from "../render/scene.ts";
+import { ARROW_REACH } from "../render/wind.ts";
 
 // --- Frames -----------------------------------------------------------------
 
@@ -106,12 +121,60 @@ export const GRAB_RADIUS_PX = 22;
  */
 export const DEAD_ZONE_PX = 24;
 
-/** §5's two pixel sizes, converted to metres at the scene's live scale. */
+/**
+ * How far *outside* the drawn wind ring still counts as the wind, in CSS pixels.
+ *
+ * A separate constant from the clew radius, though they are the same number for
+ * the same reason, because the two are bounded by different things: the disc's
+ * cap gives way to half the clew gap, and this one gives way to the water
+ * between the ring and the boat. Sharing a name would tie them together at the
+ * point where they stop agreeing.
+ *
+ * **The band is not symmetric**, and the reason is the arrow. Inward it runs to
+ * `render/wind.ts`'s `ARROW_REACH` — the arrowhead is the mark a student reaches
+ * for, and a symmetric 22 px band would leave most of it dead: 17 px of its
+ * 39 px on a 390 px phone, 61 px of 83 px on an iPad, the whole arrowhead in
+ * both. Outward there is nothing to reach for, so 22 px is enough.
+ *
+ * **Outward, rather than claiming everything beyond the ring.** The generous
+ * reading is tempting, since nothing else is out there to want the touch, and it
+ * will look like an obvious improvement to whoever reads this next. It is
+ * rejected for the case §5 designs for: an iPad flat on a table collects resting
+ * palms at the screen edges, and because a target belongs to one pointer at a
+ * time (§5, multi-touch), the first palm to land would own the wind and every
+ * deliberate ring drag after it would get nothing at all.
+ *
+ * Worth spelling out because of how that failure would arrive: not as a bug
+ * anyone could diagnose, but as "the wind control sometimes doesn't work" —
+ * intermittent, dependent on where someone's hand happened to be resting, and
+ * gone by the time anyone looked.
+ *
+ * **That protection is real on two edges of four, not on all of them**, which is
+ * worth stating because the arithmetic is easy to get backwards. The scene is
+ * scaled off the *short* axis, so the ring sits 24 px inside the short edge on
+ * an 834 px iPad and 11 px inside it on a 390 px phone — closer than the band is
+ * wide, so along the short axis the viewport ends inside the band and there is
+ * no outer water to leave unclaimed anyway. It is the **long** axis that gains:
+ * an iPad in landscape has 182 px of unclaimed water beyond the band at each of
+ * the left and right edges, which are the edges a hand actually rests on. So the
+ * choice buys the two long edges and the alternative buys none of the four.
+ */
+export const WIND_BAND_PX = 22;
+
+/** §5's pixel sizes, converted to metres at the scene's live scale. */
 export interface TouchScale {
   /** Radius of each clew's grab disc — {@link GRAB_RADIUS_PX}, or half the clew gap. */
   readonly grab: Meters;
   /** Radius of the dead zone about a rotation's centre — {@link DEAD_ZONE_PX}. */
   readonly deadZone: Meters;
+  /** The annulus that belongs to the wind, as radii from the scene origin. */
+  readonly windRing: WindRing;
+}
+
+/** The wind's hit band, as an annulus rather than a half-width — it is not symmetric. */
+export interface WindRing {
+  readonly inner: Meters;
+  readonly outer: Meters;
 }
 
 /**
@@ -139,9 +202,55 @@ export function touchScale(
 ): TouchScale {
   const cap = pixelsToMeters(GRAB_RADIUS_PX);
   const gap = clewGap(state);
+  const grab = gap === null ? cap : Math.min(cap, gap / 2);
   return {
-    grab: gap === null ? cap : Math.min(cap, gap / 2),
+    grab,
     deadZone: pixelsToMeters(DEAD_ZONE_PX),
+    windRing: windRingFor(grab, pixelsToMeters(WIND_BAND_PX)),
+  };
+}
+
+/**
+ * The annulus that belongs to the wind, kept clear of anything the boat can
+ * claim.
+ *
+ * **Outward** is the easy half: 22 px beyond the drawn ring, and nothing out
+ * there competes for it.
+ *
+ * **Inward** runs to the arrow's own tip, {@link ARROW_REACH}, so that the mark
+ * a student reaches for is inside the target that moves it. That is a distance
+ * in metres rather than in pixels, because the arrow is a dimension *of the
+ * drawing* (§4.1's first rule) and the target should follow it.
+ *
+ * It is then **floored off the boat**, the same shape of rule as
+ * `min(22px, gap / 2)` in {@link touchScale}, and for the same reason: a target
+ * eventually meets something it must not. `SCENE.boatRadius` is the disc the
+ * boat sweeps at *any* heading and any legal trim, 3.590 m, and a touchdown can
+ * claim a clew from a further `grab` out — so the innermost point that may
+ * belong to the wind is `boatRadius + grab`.
+ *
+ * **The floor is slack down to a 308 px short axis** — that is where
+ * `boatRadius + 22px` reaches the arrow's tip — and binds below it, taking the
+ * arrowhead first and the rest of the arrow after. Both sides are tested, since
+ * a guard that only ever passes says nothing about its own resolution. On a
+ * 390 px phone the band runs in to 4.450 m against a clew disc reaching out to
+ * 4.267 m: 6 px of open water between the two targets. That is thinner than the
+ * 23 px a symmetric band left, and it is the price of the arrowhead — the two
+ * targets still cannot overlap, which is the property that matters.
+ *
+ * **There is deliberately no 22 px floor under the inward reach**, and a draft
+ * of this had one. It would have kept the band 44 px across on a display too
+ * small for the arrow to be 22 px long — and it is unreachable, which is how it
+ * was caught: mutation-testing it left all 450 tests green. For that floor to
+ * bind, `band` must exceed the arrow's 1.2 m, which needs a short axis under
+ * 220 px; but `grab` is the same 22 px, so `boatRadius + grab` is then over
+ * 4.79 m and the `max` below has already won. It could never change an answer,
+ * so it is gone rather than left as a guard nothing can test.
+ */
+function windRingFor(grab: Meters, band: Meters): WindRing {
+  return {
+    inner: Math.max(SCENE.boatRadius + grab, ARROW_REACH),
+    outer: SCENE.windRingRadius + band,
   };
 }
 
@@ -222,7 +331,7 @@ export function insideHull(point: Vec2): boolean {
 // --- Targets ----------------------------------------------------------------
 
 /** What a pointer has hold of. */
-export type GrabTarget = "main" | "jib" | "hull";
+export type GrabTarget = "main" | "jib" | "hull" | "wind";
 
 /**
  * A pointer's claim on a target, and where it grabbed it.
@@ -298,6 +407,24 @@ function axisFor(target: GrabTarget, state: SimState): Axis {
           motion: { ...of.motion, heading: normalizeSigned(angle) },
         }),
       };
+    case "wind":
+      return {
+        // The ring is concentric with the world origin (`render/wind.ts` draws
+        // it at cx=0, cy=0 on an untransformed layer), so the bearing that
+        // grabs it and the bearing it *is* are the same measurement.
+        centre: ZERO_VECTOR,
+        boatFrame: false,
+        angle: state.wind.from,
+        // The arrow's tail stands on the ring at the bearing the wind blows
+        // *from*, so a pointer's bearing about the centre is `wind.from`
+        // directly. The identity here is the whole reason the arrow tracks a
+        // finger laid on it.
+        fromBearing: (bearing) => bearing,
+        apply: (of, angle) => ({
+          ...of,
+          wind: { ...of.wind, from: normalizeSigned(angle) },
+        }),
+      };
   }
 }
 
@@ -319,21 +446,36 @@ function reference(grab: Grab, state: SimState, world: Vec2, deadZone: Meters): 
   };
 }
 
+/** Whether a **world-frame** point lies in the wind ring's hit band. */
+export function onWindRing(world: Vec2, ring: WindRing): boolean {
+  const radius = magnitude(world);
+  return radius >= ring.inner && radius <= ring.outer;
+}
+
 /**
  * What a touchdown at `world` claims, or `null` if it claims nothing.
  *
- * The order is §5's, and both of its rules are here:
+ * The order is §5's, and all of its rules are here:
  *
  * 1. **The clews first, nearer one wins.** A disc that another pointer already
  *    owns is not a candidate, so two fingers can never land on one sail — and
  *    it does not become hull either, for the reason given at the fall-through
  *    below.
  * 2. **Then the hull silhouette**, which is everything else the boat is.
+ * 3. **Then the wind ring's band**, the annulus from the arrow's tip out to a
+ *    touch target's worth of water beyond the drawn ring.
  *
- * Anything else — open water, the wind ring, a sail's cloth away from its clew
- * — returns `null` and the pointer is left alone. That is deliberate rather
- * than unfinished: pos-bwd.2 claims the perimeter for the wind, and a `null`
- * here is what leaves it free to.
+ * The order is legible rather than load-bearing between 2 and 3: `windRingFor`
+ * keeps the band clear of every point a clew disc or the hull can reach, so no
+ * touchdown is a candidate for both. Stating it in this order says which one the
+ * single tangent point belongs to on a display too small for the two to be
+ * strictly separated, and nothing else.
+ *
+ * Anything else — the open water between the boat and the ring, the water
+ * outside the band, a sail's cloth away from its clew — returns `null` and the
+ * pointer is left alone. That is deliberate rather than unfinished: a touch
+ * given to the nearest anything is how a student ends up turning a boat they
+ * meant to miss.
  *
  * The tie-break is load-bearing on a phone and cheap everywhere else. Sizing
  * the discs at half the clew gap already stops them overlapping, so in practice
@@ -381,8 +523,22 @@ export function beginGrab(
   // drag the first student's sail around under their own stationary finger.
   // Blocking is the quiet answer: the finger that landed on a held sail does
   // nothing, and moves a centimetre.
-  if (reserved || taken.has("hull") || !insideHull(point)) return null;
-  return reference({ target: "hull", offset: null }, state, world, scale.deadZone);
+  if (reserved) return null;
+
+  if (!taken.has("hull") && insideHull(point)) {
+    return reference({ target: "hull", offset: null }, state, world, scale.deadZone);
+  }
+
+  // The ring is measured in the world frame — it belongs to the world, not to
+  // the boat, which is the whole of §5's argument for putting the wind out
+  // here. A second finger reaches it while a first holds a sail, because the
+  // band and the clew discs are disjoint by construction and `wind` is a target
+  // of its own for the exclusivity rule.
+  if (!taken.has("wind") && onWindRing(world, scale.windRing)) {
+    return reference({ target: "wind", offset: null }, state, world, scale.deadZone);
+  }
+
+  return null;
 }
 
 /**
@@ -432,8 +588,13 @@ export interface Held {
  * One pass is enough, and that is a property rather than an optimism. Each
  * gesture is idempotent in the state it does not write: re-applying a sail
  * reads the heading and its own world point, neither of which another sail can
- * touch; re-applying the hull reads its world point and nothing else. So no
- * re-application can invalidate one already done.
+ * touch; re-applying the hull or the wind reads its world point and nothing
+ * else. So no re-application can invalidate one already done.
+ *
+ * The wind is the one target that needs no re-application at all — it is a
+ * world-frame bearing about a fixed centre, so nothing another finger can do
+ * moves it under its own. It goes through the same pass anyway, because the
+ * alternative is a special case that has to stay true as the model grows.
  */
 export function reapply(
   state: SimState,

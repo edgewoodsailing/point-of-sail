@@ -15,11 +15,15 @@ import {
   degreesToRadians,
   knotsToMetersPerSecond,
   magnitude,
+  normalizeSigned,
   radiansToDegrees,
   rotateVector,
   subtract,
+  vectorFromAngle,
 } from "../model/units.ts";
-import { SHORT_SPAN } from "../render/scene.ts";
+import { trueWindAngle } from "../model/wind.ts";
+import { boatTransform, SCENE, SHORT_SPAN } from "../render/scene.ts";
+import { ARROW_REACH, windArrowPathData, windTickPathData } from "../render/wind.ts";
 import type { GrabTarget, TouchScale } from "./gestures.ts";
 import {
   beginGrab,
@@ -28,9 +32,11 @@ import {
   dragTo,
   GRAB_RADIUS_PX,
   insideHull,
+  onWindRing,
   reapply,
   toBoatPoint,
   touchScale,
+  WIND_BAND_PX,
 } from "./gestures.ts";
 
 const deg = degreesToRadians;
@@ -87,6 +93,33 @@ const desktopPixelsToMeters = (pixels: number): Meters => (pixels * SHORT_SPAN) 
 
 function scaleOn(state: SimState, pixelsToMeters: (pixels: number) => Meters): TouchScale {
   return touchScale(state, pixelsToMeters);
+}
+
+/** A world point at a bearing and radius from the scene origin. */
+function ringPoint(bearingDegrees: number, radius: Meters): Vec2 {
+  return vectorFromAngle(deg(bearingDegrees), radius);
+}
+
+/**
+ * The radii of every point the drawn wind arrow is made of, read out of its own
+ * path data.
+ *
+ * Measured rather than assumed, because the band's inner edge is chosen to cover
+ * the arrow and "the arrow reaches 4.45 m" is exactly the kind of claim that
+ * stops being true when someone changes a barb. Parsing the `d` string is ugly
+ * and it is the only way to ask the *drawing* rather than the constant.
+ */
+function arrowPathRadii(from: Radians): readonly Meters[] {
+  const numbers = windArrowPathData(from)
+    .replace(/[ML]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map(Number);
+  const radii: Meters[] = [];
+  for (let i = 0; i < numbers.length; i += 2) {
+    radii.push(magnitude({ x: numbers[i], y: numbers[i + 1] }));
+  }
+  return radii;
 }
 
 /** Every legal trim pair, at a resolution finer than a finger. */
@@ -201,6 +234,128 @@ describe("clew grab discs (DESIGN.md §5)", () => {
     });
   });
 
+  /**
+   * The ring's band, sized by the same shape of rule as the discs above: a
+   * figure that would grow without bound, capped by a geometric fact so it can
+   * never reach what it must not. Here the fact is the boat.
+   *
+   * The band is **not symmetric**, and the reason is the arrow. The whole point
+   * of the wind being out here is that it has a mark you reach for; a band 22 px
+   * either side of the drawn ring would put most of that mark outside the target
+   * that moves it — see the two tests below, which measure exactly how much.
+   */
+  it("reaches out 22 px beyond the drawn ring on a phone", () => {
+    const state = stateWith({ mainAngle: 0, jibAngle: 0 });
+    const ring = scaleOn(state, phonePixelsToMeters).windRing;
+    expect((ring.outer - SCENE.windRingRadius) / phoneMetersPerPixel).toBeCloseTo(
+      WIND_BAND_PX,
+      9,
+    );
+  });
+
+  /**
+   * The arrow inside the target, which is the whole reason the band is
+   * asymmetric — and the measurement of what a symmetric one would have cost.
+   *
+   * `ARROW_REACH` is read from `render/wind.ts` rather than written down here,
+   * so lengthening the arrow moves the target with it. The uncovered figures are
+   * the ones the shape of the band was chosen against.
+   */
+  it("reaches in far enough to cover the whole arrow, arrowhead included", () => {
+    const state = stateWith({ mainAngle: 0, jibAngle: 0 });
+    for (const [label, toMeters] of [
+      ["phone", phonePixelsToMeters],
+      ["desktop", desktopPixelsToMeters],
+    ] as const) {
+      const ring = scaleOn(state, toMeters).windRing;
+      expect(`${label}: ${(ring.inner <= ARROW_REACH).toString()}`).toBe(`${label}: true`);
+      // Every point of the drawn arrow, at any bearing, is inside the band —
+      // pushed out by one attribute quantum first, because the tip sits exactly
+      // on the inner edge and `svg.ts` rounds path data to four decimals, so the
+      // *drawn* tip can land a twentieth of a millimetre inside the *computed*
+      // one. That is 0.002 px and it is a formatting artefact rather than a gap
+      // a finger could fall into, but `>=` does not care.
+      const quantum = 1e-4;
+      for (let bearing = 0; bearing < 360; bearing += 30) {
+        for (const radius of arrowPathRadii(deg(bearing))) {
+          expect(onWindRing(ringPoint(bearing, radius + quantum), ring)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("measures what a symmetric band would have missed, which is most of the arrow", () => {
+    const state = stateWith({ mainAngle: 0, jibAngle: 0 });
+    const symmetricInner = SCENE.windRingRadius - phonePixelsToMeters(WIND_BAND_PX);
+    // The arrowhead first: the barb tips stand at 4.807 m, outside it.
+    const radii = arrowPathRadii(0);
+    expect(Math.min(...radii)).toBeCloseTo(ARROW_REACH, 12);
+    expect(Math.max(...radii)).toBeCloseTo(SCENE.windRingRadius, 12);
+    expect(symmetricInner).toBeGreaterThan(4.8);
+
+    // And 17 px of the arrow's 39 px on a phone.
+    expect((symmetricInner - ARROW_REACH) / phoneMetersPerPixel).toBeCloseTo(17.0, 1);
+    expect((SCENE.windRingRadius - ARROW_REACH) / phoneMetersPerPixel).toBeCloseTo(39.0, 1);
+
+    // The shipped band covers it, which is the pair that makes the figure above
+    // a cost that was paid rather than one that was merely quoted.
+    expect(scaleOn(state, phonePixelsToMeters).windRing.inner).toBeCloseTo(ARROW_REACH, 12);
+  });
+
+  /**
+   * The separation, derived and then swept for a counterexample.
+   *
+   * The derivation is one inequality — the band's inner edge must clear the
+   * furthest out a clew disc can reach — and it holds at every trim because both
+   * terms are bounded independently of it. The sweep can only look for a
+   * counterexample, which is all a sweep can ever do.
+   */
+  it("never reaches a point the boat can claim, at any legal trim or scale", () => {
+    for (const toMeters of [phonePixelsToMeters, desktopPixelsToMeters]) {
+      sweepTrims(3, (mainAngle, jibAngle) => {
+        const scale = scaleOn(stateWith({ mainAngle, jibAngle }), toMeters);
+        expect(scale.windRing.inner).toBeGreaterThanOrEqual(SCENE.boatRadius + scale.grab);
+      });
+    }
+  });
+
+  it("leaves 6 px of open water between the two targets on a phone", () => {
+    const scale = scaleOn(stateWith({ mainAngle: 0, jibAngle: 0 }), phonePixelsToMeters);
+    const clear = scale.windRing.inner - (SCENE.boatRadius + scale.grab);
+    expect(clear / phoneMetersPerPixel).toBeCloseTo(5.9, 1);
+    // Thinner than a symmetric band's 22.9 px, and that is the trade: the
+    // arrowhead is worth more than water nothing can be aimed at.
+    expect(clear).toBeGreaterThan(0);
+  });
+
+  /**
+   * The cap, checked from both sides of the display size where it starts to
+   * bind — a guard that only ever passes says nothing about its own resolution.
+   *
+   * The jib is struck so that `grab` is the 22 px cap rather than half a clew
+   * gap, which is the worst case and the one the threshold is derived at: the
+   * cap bites when `boatRadius + 22px` reaches the arrow's tip, which is at
+   * 307.1 px of short axis, so 308 is the first integer that is slack.
+   */
+  it("is slack at a 308 px short axis and capped at 307", () => {
+    const state = stateWith({ jibSet: false });
+    const at = (shortSidePx: number): TouchScale =>
+      scaleOn(state, (pixels) => (pixels * SHORT_SPAN) / shortSidePx);
+
+    const slack = at(308);
+    expect(slack.windRing.inner).toBeCloseTo(ARROW_REACH, 12);
+    expect(slack.windRing.inner).toBeGreaterThan(SCENE.boatRadius + slack.grab);
+
+    const capped = at(307);
+    expect(capped.windRing.inner).toBeGreaterThan(ARROW_REACH);
+    expect(capped.windRing.inner).toBeCloseTo(SCENE.boatRadius + capped.grab, 12);
+
+    // What the cap costs when it binds: the arrow's tip, and nothing more than
+    // the tip. Sub-pixel here, which is why 307 rather than something coarser is
+    // the honest place to say the cap begins.
+    expect((capped.windRing.inner - ARROW_REACH) / (SHORT_SPAN / 307)).toBeLessThan(1);
+  });
+
   it("keeps the dead zone a pure pixel size, independent of the trim", () => {
     const tight = scaleOn(stateWith({ mainAngle: SWING_LIMIT }), phonePixelsToMeters);
     const flat = scaleOn(stateWith({ mainAngle: 0 }), phonePixelsToMeters);
@@ -229,7 +384,7 @@ describe("the hull silhouette as a hit target (DESIGN.md §5)", () => {
     expect(insideHull({ x: 0, y: STATIONS.stern.y + 0.02 })).toBe(false);
     expect(insideHull({ x: 0, y: STATIONS.stern.y - 0.05 })).toBe(true);
 
-    // Open water, where pos-bwd.2's wind ring will live.
+    // Open water, out where the wind ring lives.
     expect(insideHull({ x: 4, y: 0 })).toBe(false);
   });
 
@@ -280,8 +435,28 @@ describe("touchdown arbitration (DESIGN.md §5)", () => {
     expect(grabAt(state, midpoint)).toBe("hull");
   });
 
-  it("gives open water to nobody, so pos-bwd.2 can have the perimeter", () => {
-    expect(grabAt(stateWith({}), { x: 4.5, y: 0 })).toBeNull();
+  /**
+   * The water between the boat and the ring still claims nothing.
+   *
+   * This is the gap the two targets are separated by, and the point is that it
+   * belongs to neither rather than being handed to whichever is nearer. The
+   * The gap is narrow now that the band reaches in to the arrow's tip: on a
+   * phone it runs from 4.267 m to 4.450 m, about six pixels of it. The point is
+   * taken as the midpoint of that gap rather than written down, because a
+   * hand-picked radius six pixels wide is one refairing away from being on the
+   * wrong side of a boundary and passing for the wrong reason.
+   */
+  it("gives the water between the boat and the ring to nobody", () => {
+    const state = stateWith({});
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const boatReach = SCENE.boatRadius + scale.grab;
+    const gap = scale.windRing.inner - boatReach;
+    expect(gap / phoneMetersPerPixel).toBeCloseTo(5.9, 1);
+
+    const at = ringPoint(90, boatReach + gap / 2);
+    expect(insideHull(toBoatPoint(at, state.motion.heading))).toBe(false);
+    expect(onWindRing(at, scale.windRing)).toBe(false);
+    expect(beginGrab(state, at, scale, new Set())).toBeNull();
   });
 
   it("does not offer a sail another pointer already holds", () => {
@@ -380,7 +555,11 @@ describe("touchdown arbitration (DESIGN.md §5)", () => {
     const main = mainClewPosition(state.trim.mainAngle);
     const jib = jibClewPosition(state.trim.jibAngle);
     const gap = clewGap(state) ?? 0;
-    const overlapping: TouchScale = { grab: gap, deadZone: phonePixelsToMeters(DEAD_ZONE_PX) };
+    const overlapping: TouchScale = {
+      grab: gap,
+      deadZone: phonePixelsToMeters(DEAD_ZONE_PX),
+      windRing: scaleOn(state, phonePixelsToMeters).windRing,
+    };
 
     // A point 40% of the way from the jib clew to the main clew: inside both
     // discs, nearer the jib. Then the mirror of it.
@@ -398,6 +577,114 @@ describe("touchdown arbitration (DESIGN.md §5)", () => {
       expect(magnitude(subtract(between(fraction), main))).toBeLessThan(overlapping.grab);
       expect(magnitude(subtract(between(fraction), jib))).toBeLessThan(overlapping.grab);
     }
+  });
+});
+
+// --- The wind ring ----------------------------------------------------------
+
+describe("touching the wind ring (DESIGN.md §5)", () => {
+  const state = stateWith({ heading: deg(35), mainAngle: deg(-40), jibAngle: deg(25) });
+  const scale = scaleOn(state, phonePixelsToMeters);
+  const claim = (world: Vec2, taken: ReadonlySet<GrabTarget> = new Set()): GrabTarget | null =>
+    beginGrab(state, world, scale, taken)?.target ?? null;
+
+  /**
+   * §5's "drag anywhere on the perimeter ring", as the thing it actually says:
+   * not near the arrow, not near a graduation — anywhere.
+   */
+  it("claims the ring at every bearing, not only where the arrow is", () => {
+    for (let bearing = 0; bearing < 360; bearing += 15) {
+      expect(claim(ringPoint(bearing, SCENE.windRingRadius))).toBe("wind");
+    }
+  });
+
+  /**
+   * Both edges of the band, and both directions across each of them. A test that
+   * only ever lands inside the band would pass just as well against a band of
+   * infinite width, which is the mistake the outward edge exists to rule out.
+   */
+  it("stops at the band's edges, inward and outward", () => {
+    const ring = scale.windRing;
+    const bearing = 20;
+    const step = 0.005;
+    for (const [edge, outward] of [
+      [ring.inner, false],
+      [ring.outer, true],
+    ] as const) {
+      const inside = edge + (outward ? -step : step);
+      const outside = edge + (outward ? step : -step);
+      expect(claim(ringPoint(bearing, inside))).toBe("wind");
+      expect(claim(ringPoint(bearing, outside))).toBeNull();
+      // The predicate the arbitration reads, so a change to either is visible.
+      expect(onWindRing(ringPoint(bearing, inside), ring)).toBe(true);
+      expect(onWindRing(ringPoint(bearing, outside), ring)).toBe(false);
+    }
+    // The two edges are genuinely apart rather than a degenerate annulus, which
+    // the four assertions above would also be satisfied by.
+    expect(ring.outer - ring.inner).toBeGreaterThan(1);
+  });
+
+  /**
+   * The water outside the band claims nothing, which is the deliberate half of
+   * choosing an outward band over "everything outside the ring".
+   *
+   * §5's reason is the table: an iPad flat with students leaning over it collects
+   * resting palms at the screen edges, and a target belongs to one pointer at a
+   * time — so a palm that claimed the wind would lock every deliberate ring drag
+   * out of it for as long as the hand stayed there.
+   *
+   * The radii are chosen to be reachable rather than merely far away. On a
+   * phone the band's outer edge is 6.327 m, and a portrait 390 px phone shows
+   * ±12.98 m down its long axis — so the first radius is a whisker outside the
+   * band rather than out in space where any implementation would return null,
+   * and the last is the far edge of the glass.
+   */
+  it("leaves the water outside the band alone, so a resting palm claims nothing", () => {
+    expect(scale.windRing.outer).toBeCloseTo(6.327, 3);
+    for (const radius of [scale.windRing.outer + 0.005, 9, 12.9]) {
+      expect(claim(ringPoint(200, radius))).toBeNull();
+    }
+  });
+
+  /**
+   * The bead's own acceptance criterion: a second finger reaches the wind while
+   * a first is already on a sail.
+   *
+   * It works because the band and the clew discs are disjoint by construction
+   * and `wind` is a target of its own for the exclusivity rule — so neither the
+   * held sail nor the clew-disc reservation is in the way.
+   */
+  it("gives the ring to a second finger while a sail is held", () => {
+    const onRing = ringPoint(120, SCENE.windRingRadius);
+    expect(claim(onRing, new Set<GrabTarget>(["main"]))).toBe("wind");
+    expect(claim(onRing, new Set<GrabTarget>(["main", "jib"]))).toBe("wind");
+    expect(claim(onRing, new Set<GrabTarget>(["hull"]))).toBe("wind");
+  });
+
+  it("does not offer the wind to a second pointer, any more than the hull", () => {
+    expect(claim(ringPoint(120, SCENE.windRingRadius), new Set<GrabTarget>(["wind"]))).toBeNull();
+  });
+
+  /**
+   * The fall-through the restructured `beginGrab` opened up: a touchdown on the
+   * deck while the hull is held no longer returns early, it goes on to try the
+   * wind. It must still come back null, and it does — not by a second guard but
+   * because the band cannot reach inside the hull. Pinned because the guard was
+   * removed on purpose and the reason it is safe is a separate invariant.
+   */
+  it("does not hand a held hull's deck to the wind on the way past", () => {
+    const onDeck: Vec2 = { x: 0.7, y: STATIONS.pivot.y };
+    expect(insideHull(onDeck)).toBe(true);
+    const world = worldPoint(onDeck, state.motion.heading);
+    expect(onWindRing(world, scale.windRing)).toBe(false);
+    expect(claim(world, new Set<GrabTarget>(["hull"]))).toBeNull();
+  });
+
+  it("does not hand a held clew's disc to the wind either", () => {
+    const clew = mainClewPosition(state.trim.mainAngle);
+    const world = worldPoint(clew, state.motion.heading);
+    expect(claim(world)).toBe("main");
+    expect(claim(world, new Set<GrabTarget>(["main"]))).toBeNull();
   });
 });
 
@@ -567,6 +854,291 @@ describe("dragging the hull (DESIGN.md §5)", () => {
   });
 });
 
+describe("dragging the wind ring (DESIGN.md §5)", () => {
+  /** Touch down at one world point on the ring and drag to another. */
+  function dragRing(state: SimState, from: Vec2, to: Vec2): SimState {
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const grab = beginGrab(state, from, scale, new Set());
+    if (grab?.target !== "wind") throw new Error(`touchdown claimed ${String(grab?.target)}`);
+    return dragTo(state, grab, to, scale.deadZone).state;
+  }
+
+  it("turns the wind by the angle the finger swept around the ring", () => {
+    const state = stateWith({ heading: deg(35) });
+    const from = radiansToDegrees(state.wind.from);
+    const next = dragRing(
+      state,
+      ringPoint(from, SCENE.windRingRadius),
+      ringPoint(from + 40, SCENE.windRingRadius),
+    );
+    expect(radiansToDegrees(normalizeSigned(next.wind.from))).toBeCloseTo(
+      radiansToDegrees(normalizeSigned(state.wind.from + deg(40))),
+      ANGLE_PRECISION,
+    );
+  });
+
+  /**
+   * **The half that makes "drag anywhere on the ring" mean anything.**
+   *
+   * Grabbing the track 90° away from the arrow must rotate the wind by what the
+   * finger sweeps, not snap the arrow round to meet the finger — which is the
+   * same grab-offset rule the clews live by, and the same mutation is available
+   * here. Three implementations, three different answers:
+   *
+   * | Implementation | Wind from |
+   * | --- | --- |
+   * | Grab offset preserved (shipped) | **240°** |
+   * | Snapped to the finger — `+ grab.offset` dropped | 330° |
+   * | Offset subtracted rather than added | 60° |
+   *
+   * The middle row is the mutation actually available in `dragTo`, and it would
+   * jump the arrow a quarter turn under a finger that had barely moved. An
+   * earlier version of this table put 160° in the third row, which is reachable
+   * only from a sign flip inside `fromBearing`, not from anything the offset
+   * term can do — corrected rather than deleted, because a mutant table that
+   * names the wrong mutant is worse than none.
+   */
+  it("rotates the wind from where it was, however far from the arrow you grabbed", () => {
+    const state = stateWith({});
+    expect(radiansToDegrees(state.wind.from)).toBeCloseTo(200, ANGLE_PRECISION);
+
+    const grabbedAt = 200 + 90;
+    const next = dragRing(
+      state,
+      ringPoint(grabbedAt, SCENE.windRingRadius),
+      ringPoint(grabbedAt + 40, SCENE.windRingRadius),
+    );
+    expect(radiansToDegrees(normalizeSigned(next.wind.from))).toBeCloseTo(240 - 360, 6);
+    // The two answers this is not, stated so the assertion cannot be satisfied
+    // by a mutant that happens to be close.
+    expect(radiansToDegrees(normalizeSigned(next.wind.from))).not.toBeCloseTo(330 - 360, 1);
+    expect(radiansToDegrees(normalizeSigned(next.wind.from))).not.toBeCloseTo(60, 1);
+  });
+
+  it("works the same at a radius anywhere in the band, not only on the drawn line", () => {
+    const state = stateWith({});
+    const from = radiansToDegrees(state.wind.from);
+    const ring = scaleOn(state, phonePixelsToMeters).windRing;
+    for (const radius of [
+      ring.inner + 0.005,
+      ARROW_REACH + 0.3,
+      SCENE.windRingRadius,
+      ring.outer - 0.005,
+    ]) {
+      const next = dragRing(state, ringPoint(from, radius), ringPoint(from + 25, radius));
+      expect(radiansToDegrees(normalizeSigned(next.wind.from))).toBeCloseTo(
+        radiansToDegrees(normalizeSigned(state.wind.from + deg(25))),
+        ANGLE_PRECISION,
+      );
+    }
+  });
+
+  /**
+   * The bearing stays inside (−π, π], however many times the ring is dragged
+   * round.
+   *
+   * Uncovered until a review looked for it, because every other wind assertion
+   * in this file and in `pointer.test.ts` wraps its *actual* in
+   * `normalizeSigned` before comparing — so all of them pass against an `apply`
+   * that never normalises. Nothing in the model minds an unbounded bearing, and
+   * that is exactly why it needs saying here: `pos.report()` would print 560°,
+   * and §6.3's `?wind=` serialisation would carry it into a URL.
+   *
+   * The hull's identical guard was equally uncovered and is checked alongside,
+   * since the two share the mechanism and would be broken by the same edit.
+   *
+   * **A grab offset well away from zero is the whole trick**, and a first draft
+   * of this test did not have one. `angleOfVector` already returns (−π, π], so a
+   * touchdown *on* the arrow gives an offset of zero and every later bearing is
+   * normalised before `apply` ever sees it — the test passed against the mutant.
+   * Grabbing 90° round from the arrow makes the offset 110°, and a bearing near
+   * +180° then sums past π with nothing but this guard to bring it back.
+   */
+  it("keeps both world bearings normalised, whatever the grab offset", () => {
+    const state = stateWith({ heading: deg(170) });
+    const scale = scaleOn(state, phonePixelsToMeters);
+
+    // Wind from 200° — that is −160° signed — grabbed at bearing 90°.
+    const windGrab = beginGrab(state, ringPoint(90, SCENE.windRingRadius), scale, new Set())!;
+    expect(windGrab.target).toBe("wind");
+    expect(radiansToDegrees(windGrab.offset!)).toBeCloseTo(110, 6);
+
+    const windy = dragTo(state, windGrab, ringPoint(179, SCENE.windRingRadius), scale.deadZone)
+      .state;
+    // 179 + 110 = 289, which is what an unnormalised `apply` would store.
+    expect(radiansToDegrees(windy.wind.from)).toBeCloseTo(289 - 360, 6);
+    expect(windy.wind.from).toBeGreaterThan(-Math.PI);
+    expect(windy.wind.from).toBeLessThanOrEqual(Math.PI);
+
+    // The hull, the same way: heading 170° grabbed at bearing 20° is an offset
+    // of 150°, and 179 + 150 = 329 needs folding just as much.
+    const hullGrab = beginGrab(state, ringPoint(20, 1.5), scale, new Set())!;
+    expect(hullGrab.target).toBe("hull");
+    expect(radiansToDegrees(hullGrab.offset!)).toBeCloseTo(150, 6);
+
+    const turned = dragTo(state, hullGrab, ringPoint(179, 1.5), scale.deadZone).state;
+    expect(radiansToDegrees(turned.motion.heading)).toBeCloseTo(329 - 360, 6);
+    expect(turned.motion.heading).toBeGreaterThan(-Math.PI);
+    expect(turned.motion.heading).toBeLessThanOrEqual(Math.PI);
+  });
+
+  it("leaves the heading, the trims and the speed exactly where they were", () => {
+    const state = stateWith({ heading: deg(35), mainAngle: deg(-40), jibAngle: deg(25) });
+    const from = radiansToDegrees(state.wind.from);
+    const next = dragRing(
+      state,
+      ringPoint(from, SCENE.windRingRadius),
+      ringPoint(from + 40, SCENE.windRingRadius),
+    );
+    expect(next.motion.heading).toBe(state.motion.heading);
+    expect(next.motion.speed).toBe(state.motion.speed);
+    expect(next.trim.mainAngle).toBe(state.trim.mainAngle);
+    expect(next.trim.jibAngle).toBe(state.trim.jibAngle);
+    expect(next.wind.speed).toBe(state.wind.speed);
+  });
+
+  /**
+   * A finger that grabbed the ring and wandered into the middle of the scene.
+   *
+   * Pointer capture means the drag follows it there, so unlike the hull — where
+   * the dead zone is about a student putting a finger on the pivot in the first
+   * place — this one is reached by an ordinary drag going somewhere odd. Same
+   * answer: hold the bearing, re-reference on the way out, no jump.
+   */
+  it("holds the wind rather than following noise when a finger crosses the centre", () => {
+    const state = stateWith({});
+    const scale = scaleOn(state, phonePixelsToMeters);
+    const from = radiansToDegrees(state.wind.from);
+    let grab = beginGrab(state, ringPoint(from, SCENE.windRingRadius), scale, new Set())!;
+    expect(grab.target).toBe("wind");
+
+    const middle = ringPoint(0, scale.deadZone * 0.5);
+    const held = dragTo(state, grab, middle, scale.deadZone);
+    expect(held.state).toBe(state);
+    expect(held.grab.offset).toBeNull();
+    grab = held.grab;
+
+    // Back out at a bearing 150° from where the drag began: the re-reference
+    // move changes nothing, so the wind does not jump to meet the finger.
+    const out = ringPoint(from + 150, SCENE.windRingRadius);
+    const back = dragTo(held.state, grab, out, scale.deadZone);
+    expect(back.state).toBe(state);
+    // `typeof`, not `not.toBeNull()`: the negative form passes on `undefined`
+    // too, which is the shape a dropped re-reference would most plausibly take.
+    expect(typeof back.grab.offset).toBe("number");
+
+    // And from there it turns by what the finger sweeps, off the new reference.
+    const swept = dragTo(
+      back.state,
+      back.grab,
+      ringPoint(from + 170, SCENE.windRingRadius),
+      scale.deadZone,
+    ).state;
+    expect(radiansToDegrees(normalizeSigned(swept.wind.from))).toBeCloseTo(
+      radiansToDegrees(normalizeSigned(state.wind.from + deg(20))),
+      ANGLE_PRECISION,
+    );
+  });
+});
+
+/**
+ * §1's whole argument, as the one property a test can actually establish.
+ *
+ * "Rotating the hull and rotating the wind are the same operation — only the
+ * angle between them enters the model. We keep them as two distinct gestures
+ * anyway, because they are two completely different experiences on the water."
+ * Both halves of that are checkable: the *same* is the true wind angle, and the
+ * *different* is which half of the drawing moves.
+ *
+ * What no test here establishes is whether they actually feel different to a
+ * student, which is a question for a person in front of the screen.
+ */
+describe("the two rotations: same number, different events (DESIGN.md §1)", () => {
+  const state = stateWith({ heading: deg(35), mainAngle: deg(-40), jibAngle: deg(25) });
+  const scale = scaleOn(state, phonePixelsToMeters);
+
+  /**
+   * The state after turning the hull by `by` degrees about the pivot.
+   *
+   * The touchdown is 1.5 m dead ahead of the pivot in the boat frame, which puts
+   * it on the world bearing of the heading itself — so the grab offset is zero
+   * and dragging to `heading + by` turns the boat by exactly `by`.
+   */
+  function turnHull(by: number): SimState {
+    const heading = radiansToDegrees(state.motion.heading);
+    const touchdown = worldPoint({ x: STATIONS.pivot.x, y: STATIONS.pivot.y - 1.5 }, deg(heading));
+    expect(radiansToDegrees(angleOfVector(touchdown))).toBeCloseTo(heading, 9);
+
+    const grab = beginGrab(state, touchdown, scale, new Set())!;
+    expect(grab.target).toBe("hull");
+    return dragTo(state, grab, ringPoint(heading + by, 1.5), scale.deadZone).state;
+  }
+
+  /** The state after dragging the wind the same 30° the same way round. */
+  function shiftWind(by: number): SimState {
+    const from = radiansToDegrees(state.wind.from);
+    const grab = beginGrab(state, ringPoint(from, SCENE.windRingRadius), scale, new Set())!;
+    expect(grab.target).toBe("wind");
+    return dragTo(state, grab, ringPoint(from + by, SCENE.windRingRadius), scale.deadZone).state;
+  }
+
+  /**
+   * The *same*: 30° of hull and 30° of wind move the true wind angle by 30° in
+   * opposite directions. That is not two gestures that happen to be related — it
+   * is one number reached from either side, which is what §1 says the student is
+   * meant to work out.
+   */
+  it("changes the same underlying number, in opposite senses", () => {
+    const before = trueWindAngle(state.wind, state.motion);
+    const turned = turnHull(30);
+    const shifted = shiftWind(30);
+
+    const byHull = radiansToDegrees(
+      normalizeSigned(trueWindAngle(turned.wind, turned.motion) - before),
+    );
+    const byWind = radiansToDegrees(
+      normalizeSigned(trueWindAngle(shifted.wind, shifted.motion) - before),
+    );
+
+    expect(Math.abs(byHull)).toBeCloseTo(30, 6);
+    expect(Math.abs(byWind)).toBeCloseTo(30, 6);
+    expect(Math.sign(byHull)).toBe(-Math.sign(byWind));
+  });
+
+  /**
+   * The *different*: the two gestures move disjoint halves of the drawing.
+   *
+   * `boatTransform` is every pixel of the boat and its sails; the two wind paths
+   * are every pixel of the ring. A hull drag rewrites the first and leaves the
+   * second character for character, and a wind drag does the reverse. Asserted
+   * on the drawn output rather than on the state fields, because the mistake
+   * worth catching is a *rendering* one — orienting the world to the wind, so
+   * that a wind shift swings the boat and the two gestures become pixel for
+   * pixel the same animation.
+   */
+  it("moves disjoint halves of the drawing", () => {
+    const boatBefore = boatTransform(state.motion.heading);
+    const ringBefore = [
+      windTickPathData(state.wind.from),
+      windArrowPathData(state.wind.from),
+    ].join(" ");
+
+    const turned = turnHull(30);
+    expect(boatTransform(turned.motion.heading)).not.toBe(boatBefore);
+    expect(turned.wind.from).toBe(state.wind.from);
+    expect(
+      [windTickPathData(turned.wind.from), windArrowPathData(turned.wind.from)].join(" "),
+    ).toBe(ringBefore);
+
+    const shifted = shiftWind(30);
+    expect(
+      [windTickPathData(shifted.wind.from), windArrowPathData(shifted.wind.from)].join(" "),
+    ).not.toBe(ringBefore);
+    expect(shifted.motion.heading).toBe(state.motion.heading);
+    expect(boatTransform(shifted.motion.heading)).toBe(boatBefore);
+  });
+});
+
 describe("the dead zone about a rotation's centre", () => {
   /**
    * Both sails eased right out, so the pivot is deck rather than a clew disc.
@@ -603,7 +1175,7 @@ describe("the dead zone about a rotation's centre", () => {
     const out: Vec2 = { x: STATIONS.pivot.x, y: STATIONS.pivot.y - 1.5 };
     const first = dragTo(state, grab, worldPoint(out, state.motion.heading), scale.deadZone);
     expect(first.state).toBe(state);
-    expect(first.grab.offset).not.toBeNull();
+    expect(typeof first.grab.offset).toBe("number");
     grab = first.grab;
 
     // And the next move rotates by what the finger swept from there.

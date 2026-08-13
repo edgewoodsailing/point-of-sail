@@ -28,10 +28,29 @@
  *
  * ## What this module deliberately does not do
  *
- * No hit-testing and no drag. pos-bwd.2 owns the gesture, and it wants a hit
- * band far wider than the drawn line — the ring's job here is to show where that
- * band is. Nothing below sets `pointer-events`, so the drawn geometry stays
- * grabbable and the band pos-bwd.2 adds can sit alongside it.
+ * No hit-testing and no drag. The gesture lives in `input/gestures.ts`, which
+ * claims an annulus running from {@link ARROW_REACH} out to 22 CSS px beyond
+ * `windRingRadius` — far wider than the drawn line, whose job here is to show
+ * where that band is. Hit-testing is geometric and never reads an event's
+ * target, so nothing below needs to set `pointer-events` in either direction:
+ * the drawn track is not what makes the ring grabbable, and hiding it from the
+ * pointer would not make it ungrabbable.
+ *
+ * ## Why a wind drag is drawn here and not in `scene.ts`
+ *
+ * §1 asks that turning the boat and shifting the wind *feel* like different
+ * events although they change the same number, and this module is one half of
+ * how that is true. The wind layer carries no transform: a wind drag rewrites
+ * the arrow and the graduations in place while `boatTransform` is untouched, so
+ * the marks sweep and the boat holds still. A hull drag does the exact opposite.
+ *
+ * The mistake to guard against is not rotating this group. That would be a fair
+ * economy — the ring does turn rigidly — and it would still move the right half
+ * of the picture. It is orienting the *world* to the wind: draw the arrow at a
+ * fixed bearing and turn everything else beneath it, and a wind shift becomes a
+ * boat that swings, which is pixel for pixel what a hull drag does.
+ * `input/gestures.test.ts` pins that the two gestures move disjoint halves of
+ * the drawing, so that cannot be taken by accident.
  */
 
 import type { SimState } from "../model/simulation.ts";
@@ -58,6 +77,24 @@ const ARROW_LENGTH: Meters = 1.2;
 /** Barb length and how far the barbs splay back from the tip. */
 const ARROW_BARB: Meters = 0.4;
 const ARROW_SPREAD: Radians = degreesToRadians(28);
+
+/**
+ * The innermost radius the drawn arrow reaches — its tip, at 4.45 m.
+ *
+ * Exported because it is the **inner edge of the wind's hit band** (§5), not
+ * merely a drawing dimension. The arrow is the mark a student reaches for, and a
+ * band sized only in pixels about the ring leaves most of it outside: a
+ * symmetric 22 px band starts at 4.97 m on a phone and 5.33 m on an iPad, which
+ * misses 17 px of the arrow's 39 px on the one and 61 px of its 83 px on the
+ * other — the whole arrowhead in both cases, since the barb tips stand at
+ * 4.807 m. `input/gestures.ts` reads this so the target follows the drawing
+ * instead of a number that has to be remembered when the drawing changes.
+ *
+ * The barbs cannot be the binding point: they splay *back* from the tip toward
+ * the ring, so the tip is the minimum by construction, and `wind.test.ts`
+ * measures the path data to say so rather than taking it on trust.
+ */
+export const ARROW_REACH: Meters = SCENE.windRingRadius - ARROW_LENGTH;
 
 /**
  * How far each graduation reaches in from the ring.

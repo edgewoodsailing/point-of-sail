@@ -97,8 +97,9 @@ export function bindPointers(
     const current = state.read();
     const world = scene.toWorld(event.clientX, event.clientY);
     const grab = beginGrab(current, world, touchScale(current, scene.pixelsToMeters), taken());
-    // Nothing here claims open water or the perimeter. Leaving the event
-    // untouched is what keeps it available to pos-bwd.2's wind ring.
+    // Open water still claims nothing — the arbitration in `gestures.ts` covers
+    // the boat, the clews and the wind ring's band, and everything else is left
+    // alone rather than given to the nearest target.
     if (grab === null) return;
 
     // Capture *then* claim, not the other way round. The two lines look

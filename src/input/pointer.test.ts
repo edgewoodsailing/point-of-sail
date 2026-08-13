@@ -6,11 +6,15 @@ import type { Meters, Radians, Vec2 } from "../model/units.ts";
 import {
   degreesToRadians,
   knotsToMetersPerSecond,
+  normalizeSigned,
   radiansToDegrees,
   rotateVector,
   subtract,
+  vectorFromAngle,
 } from "../model/units.ts";
-import { SHORT_SPAN } from "../render/scene.ts";
+import { SCENE, SHORT_SPAN } from "../render/scene.ts";
+import { ARROW_REACH } from "../render/wind.ts";
+import { GRAB_RADIUS_PX } from "./gestures.ts";
 import type { PointerScene, StateAccess } from "./pointer.ts";
 import { bindPointers } from "./pointer.ts";
 
@@ -136,13 +140,22 @@ const scene: PointerScene = {
   pixelsToMeters: (pixels: number): Meters => pixels * METERS_PER_PIXEL,
 };
 
-/** The inverse, so a test can say where on the boat a finger lands. */
-function clientOf(boat: Vec2, heading: Radians): { x: number; y: number } {
-  const world = rotateVector(subtract(boat, STATIONS.pivot), heading);
+/** The inverse, so a test can say where in the world a finger lands. */
+function clientOfWorld(world: Vec2): { x: number; y: number } {
   return {
     x: ORIGIN.x + world.x / METERS_PER_PIXEL,
     y: ORIGIN.y + world.y / METERS_PER_PIXEL,
   };
+}
+
+/** The same, for a point given on the boat at a heading. */
+function clientOf(boat: Vec2, heading: Radians): { x: number; y: number } {
+  return clientOfWorld(rotateVector(subtract(boat, STATIONS.pivot), heading));
+}
+
+/** A finger on the wind ring, at a bearing about the scene origin. */
+function clientOnRing(bearing: Radians): { x: number; y: number } {
+  return clientOfWorld(vectorFromAngle(bearing, SCENE.windRingRadius));
 }
 
 // --- Harness ----------------------------------------------------------------
@@ -224,13 +237,56 @@ describe("which touchdowns bindPointers accepts (DESIGN.md §5)", () => {
     expect(app.surface.captured.has(2)).toBe(true);
   });
 
-  it("leaves open water alone, so the perimeter stays free for pos-bwd.2", () => {
+  /**
+   * The water between the boat's reach and the wind's, which belongs to neither.
+   *
+   * On this phone scale that is 4.267 m to 4.450 m — the outermost a clew disc
+   * can be claimed from, up to the arrow's tip where the wind's band begins —
+   * so the radius is taken as the midpoint of the two rather than written down.
+   * Six pixels is too narrow a gap to name a number inside by hand and still be
+   * sure it is there for the right reason.
+   */
+  it("leaves the water between the boat and the ring alone", () => {
     const app = bound();
-    const water = pointerEvent("pointerdown", 1, clientOf({ x: 4.5, y: 0 }, 0));
+    const boatReach = SCENE.boatRadius + GRAB_RADIUS_PX * METERS_PER_PIXEL;
+    const between = (boatReach + ARROW_REACH) / 2;
+    expect(boatReach).toBeLessThan(ARROW_REACH);
+
+    const water = pointerEvent("pointerdown", 1, clientOfWorld(vectorFromAngle(deg(90), between)));
     app.surface.send(water);
     expect(app.surface.captured.size).toBe(0);
     // Not consumed either: an unclaimed touchdown must stay available.
     expect(water.defaultPrevented).toBe(false);
+  });
+
+  /**
+   * The bead's acceptance criterion at the plumbing level: a second finger takes
+   * the ring while a first is already on a sail.
+   *
+   * `gestures.test.ts` pins the arbitration that makes this possible; what is
+   * checked here is the half that lives in this module — that the second
+   * touchdown is captured rather than refused, and that the two claims coexist
+   * on the one element, which is what `setPointerCapture` being per-`pointerId`
+   * buys and what a single-capture implementation would fail.
+   */
+  it("takes the wind ring with a second finger while a sail is held", () => {
+    // A non-zero opening trim, deliberately: at `mainAngle: 0` the "the sail did
+    // not move" assertion below is the fixture's own initial value and would be
+    // satisfied by an implementation that reset the trim to zero. It is still
+    // satisfied by one that never re-applies the held finger at all — which is
+    // the *correct* behaviour here, since a wind shift moves nothing on the boat
+    // — so this pins the value and not the mechanism.
+    const app = bound(openState({ mainAngle: deg(-40) }));
+    const from = app.state().wind.from;
+    app.surface.send(pointerEvent("pointerdown", 1, clientOf(mainClewPosition(deg(-40)), 0)));
+    app.surface.send(pointerEvent("pointerdown", 2, clientOnRing(from)));
+    expect(app.surface.captured.has(1)).toBe(true);
+    expect(app.surface.captured.has(2)).toBe(true);
+
+    app.surface.send(pointerEvent("pointermove", 2, clientOnRing(from + deg(30))));
+    expect(radiansToDegrees(normalizeSigned(app.state().wind.from - from))).toBeCloseTo(30, 6);
+    expect(app.trim()).toBeCloseTo(-40, 9);
+    expect(app.heading()).toBeCloseTo(0, 12);
   });
 
   it("claims nothing when capture is refused, rather than stranding the target", () => {

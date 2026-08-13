@@ -55,8 +55,10 @@ the simulator's main jobs.
 
 This has a rendering consequence: **the boat stays fixed in the frame and the
 wind rotates around it.** When the student drags the hull, the hull rotates. When
-they drag the wind, the wind arrow rotates. Both change the same underlying
-number, but the animation makes them feel like different events.
+they drag the wind, the wind arrow rotates — and the points-of-sail graduations
+sweep with it, since they are anchored to the wind's own bearing
+([§5](#5-direct-manipulation)). Both change the same underlying number, but the
+animation makes them feel like different events.
 
 ---
 
@@ -1957,7 +1959,7 @@ state exists**, touch targets must be large, and targets will overlap.
 | --- | --- | --- |
 | Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
 | Wind direction | Drag anywhere on the perimeter ring | Large target, never overlaps the boat |
-| Wind speed | Slider | Separate control; easier than dragging arrow length on a phone |
+| Wind speed | Slider, 0–20 kt | Separate control; easier than dragging arrow length on a phone |
 | Main | Drag the clew | Past natural side = backing ([§3.4](#34-backing-a-sail)) |
 | Jib | Drag the clew | Same; absent when the jib is struck |
 
@@ -1967,6 +1969,12 @@ wind** ([§3.1](#31-apparent-wind)) and **jib on/off**
 manipulations, both are things a student sets once and forgets, and neither
 belongs on the boat. Striking the jib by dragging it overboard would be
 charming and undiscoverable.
+
+The wind speed slider shares the strip with them, for a different reason —
+argued below, under [wind speed](#wind-speed-the-one-control-that-is-not-a-manipulation).
+Unlike the two switches it is something a student changes *while* playing; it is
+out here because the alternative gesture would spoil the one on the ring, not
+because it is a setting.
 
 Striking the jib also *helps* the hardest interaction problem below — with one
 sail there is nothing to disambiguate close hauled — which means the Level 1
@@ -1993,6 +2001,119 @@ That the graduations move with the wind and not with the boat is the whole
 lesson §1 is after, drawn rather than said: turn the boat and the marks hold
 still while the bow sweeps across them; shift the wind and the marks sweep while
 the bow holds still. Same number changing, two different events.
+
+**That is also the whole of how the two gestures are kept distinct**, and it is
+worth saying that no further mechanism is wanted. The arithmetic behind a hull
+drag and a wind drag is deliberately identical — a bearing taken about the scene
+origin in the world frame, differing only in which field it writes — because §1
+says they *are* the same operation. Inventing a difference there would teach the
+wrong thing. What must differ is which half of the drawing moves, and that falls
+out of the layer split: the heading turns the boat group while the ring holds
+still, and the wind bearing rewrites the arrow and the graduations while the boat
+holds still. The failure mode to guard against is not sharing the bearing code —
+it is orienting the *world* to the wind, drawing the arrow at a fixed bearing and
+turning everything else beneath it, which would make a wind shift and a turn the
+same animation. `input/gestures.test.ts` asserts that the two gestures move
+disjoint halves of the drawing, so that cannot be taken by accident.
+
+### The ring as a target
+
+The drawn line is a **hairline** — `--pos-rule-wind` clamps it to 1.1 px on a
+phone and 2.5 px on a desktop — and nothing could be dragged by it. What is
+draggable is an annulus, and it is deliberately **not symmetric about the drawn
+ring**.
+
+**Outward it reaches 22 CSS px**, half the 44 px target the clew discs below are
+sized against. **Inward it reaches the arrow's own tip**, 1.2 m in at
+`ARROW_REACH` in `render/wind.ts`. The asymmetry is the arrowhead: the arrow is
+the mark a student reaches for — it carries the hull's stroke weight for exactly
+that reason ([§4.5](#45-rendering-constraints)) — and a symmetric 22 px band
+would leave most of it dead. It starts at 4.97 m on a phone and 5.33 m on an
+iPad, against an arrow reaching in to 4.45 m with its barb tips at 4.81 m: 17 px
+of its 39 px missed on the one and 61 px of its 83 px on the other, the whole
+arrowhead in both. A student's first instinct is to grab the arrowhead, and it
+would have been discarded in silence. Outward there is nothing to reach for, so
+22 px is enough.
+
+The result is still an enormous target: on a phone it is 61 px across a track
+1154 px around, and on an iPad 105 px across a track 2467 px around. There is no
+gesture in the simulator with a larger one, which is the point of putting the
+wind out here.
+
+**Outward 22 px, rather than claiming everything beyond the ring.** The generous
+reading is tempting, since nothing else is out there to want the touch. It is
+rejected for the case this section opens with: an iPad flat on a table, three
+students leaning over it, collects resting palms at the screen edges. A target
+belongs to one pointer at a time, so the first palm to land would own the wind,
+and every deliberate ring drag after it would get nothing at all until the hand
+moved.
+
+**That protection is real on two edges of four**, and the arithmetic is easy to
+get backwards, so: the scene is scaled off the *short* axis, which puts the ring
+24 px inside the short edge on an 834 px iPad and 11 px inside it on a 390 px
+phone — closer than the band is wide. Along the short axis the viewport therefore
+ends inside the band and there is no outer water to leave unclaimed either way.
+It is the **long** axis that gains, and it gains a lot: an iPad in landscape has
+182 px of unclaimed water beyond the band at each of the left and right edges,
+which are the edges a hand actually rests on. So the choice buys two edges and
+the alternative buys none.
+
+**The inward reach cannot touch the boat**, and that is derived rather than
+arranged. The boat sweeps 3.590 m from the pivot at any heading and any legal
+trim (`SCENE.boatRadius`, measured in `render/scene.ts`), and a touchdown can
+claim a clew from a further `grab` out — so the innermost point that may belong
+to the wind is `boatRadius + grab`, and that is a floor under the arrow's tip:
+`max(boatRadius + grab, ARROW_REACH)`. The same shape of rule as the
+`min(22px, gap / 2)` that sizes the clew discs — see [grab points](#grab-points-the-clews)
+below — and for the same reason: a target stated in pixels grows in metres as the
+display shrinks, so left uncapped it eventually reaches something it must not.
+**The floor is slack down to a 308 px short axis** and binds below it, taking the
+arrowhead first. On a phone the two targets are 6 px of open water apart — thinner
+than the 23 px a symmetric band would have left, which is what the arrowhead
+costs — and that water claims nothing, as does the water outside the band.
+Neither is unfinished: a touch given to the nearest anything is how a student
+ends up turning a boat they meant to miss.
+
+### Wind speed: the one control that is not a manipulation
+
+Everything else a student sets is a direct manipulation of the drawing, and wind
+speed deliberately is not. The obvious gesture — drag the arrow's length — puts a
+one-dimensional target inside a two-dimensional one: the same finger on the same
+ring would mean *bearing* when it moved around and *speed* when it moved in and
+out, which on a phone is the pairing guaranteed to make both worse. So the ring
+keeps the bearing and the speed goes to the control strip, beside the switches,
+where it cannot be missed.
+
+**The range is 0 to 20 knots**, in whole-knot steps, and both ends are chosen
+rather than inherited. Zero has to be reachable: a boat that will not stop is a
+boat whose speed looks like a property of the boat rather than of the wind, and
+the drift to a halt is the cheapest demonstration in the simulator that it is
+not.
+
+**Twenty is roughly where the school stays ashore**, and that is the whole
+reason for it: above 20 kt, with new sailors, the experience turns bad and
+equipment starts to break. So the top of the slider is the top of the range a
+student is being taught to sail in, which is the only range this simulator is
+for. It lands well: [§3.2](#32-sail-forces)'s depowering begins at exactly 13 kt,
+so the top third of the slider sits inside the regime where the rig is shedding
+force — run it up and the boat visibly *stops* gaining speed, which is what that
+end of the range is for.
+
+**It is a teaching limit**, not a model limit and not a UI convenience, and the
+distinction is worth keeping because a bare ceiling invites the next person to
+raise it. The physics is sound well past 20 kt and
+[§3.6](#36-calibration-targets) is where the question of how far it stays honest
+belongs; what is claimed here is only that a wind the school would not go out in
+is not a wind worth putting under a student's thumb. Recorded because several
+comments across the model appealed to "the wind slider" without this section ever
+saying where it stopped, and for four beads the answer was whatever the throwaway
+scaffolding happened to offer.
+
+The value is shown in knots beside the slider. That is not the scaffolding
+[§7](#7-deliberately-out-of-scope) rules out: §7 is about not handing the student
+the *answer*, and the wind is the question. A student poses a situation and needs
+to know which one they posed. What stays unlabelled is everything downstream —
+boat speed, trim quality — which is what they are meant to read off the drawing.
 
 ### Grab points: the clews
 
@@ -2040,9 +2161,10 @@ What remains:
    never coincide — the ~22% of LOA minimum above. Touchdown still tie-breaks on
    the nearer clew, and a sail already captured by another pointer isn't a
    candidate.
-5. **Anything else claims nothing.** Open water, the perimeter, a sail's cloth
-   away from its clew: the touchdown is left alone rather than given to the
-   nearest anything. That is what leaves the ring free for the wind
+5. **Anything else claims nothing.** The open water between the boat and the
+   ring, the water outside the ring's band, a sail's cloth away from its clew:
+   the touchdown is left alone rather than given to the nearest anything. That
+   is what keeps the wind's target and the boat's from ever meeting
    ([§4.1](#41-whats-drawn)), and it is why the input layer never consults an
    event's `target` — the sailcloth is a painted path and does receive the
    event, so hit-testing is geometric from the touchdown point in metres.
@@ -2159,8 +2281,14 @@ makes hit-testing a touchdown-only concern.
 
 **A target belongs to one pointer at a time.** A second finger landing on a sail
 another finger already holds is given nothing, rather than a shared claim; the
-same goes for the hull, since two fingers fighting over one heading is a tug of
-war rather than a gesture.
+same goes for the hull and for the wind, since two fingers fighting over one
+bearing is a tug of war rather than a gesture.
+
+The wind is a target of its own for that rule, which is what makes "drag the ring
+with a second finger already on a sail" work rather than merely not break: the
+band and the clew discs are disjoint by construction, so the second touchdown is
+not competing for anything, and the sail being held does not put the wind out of
+reach.
 
 **And a clew's disc is reserved whether or not its sail is available**, which is
 the part that is easy to get wrong, because at ordinary trim *both* clews lie
