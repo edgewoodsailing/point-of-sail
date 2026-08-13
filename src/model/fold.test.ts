@@ -184,32 +184,39 @@ function worstFold(windKnots: number): { width: Knots; where: string } {
 
 describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
   /**
-   * **The instrument check, and it is not a formality.** Every assertion below
-   * is of the form "the sweep found nothing", which passes just as readily when
-   * the sweep is incapable of finding anything. So: give the model back the
-   * curve it had before pos-i4o — an attached limb with no maximum of its own,
-   * blending at the old 20° — and require the detector to see the fold that is
-   * known to be there.
+   * **The instrument check, and it has to graze the threshold to be worth
+   * anything.** Every assertion below is of the form "the sweep found nothing",
+   * which passes just as readily when the sweep is incapable of finding
+   * anything — so the grid has to be shown finding something first.
    *
-   * `maxLift` is raised rather than removed, since the shape has no "off"
-   * switch: at 40 the saturation is inert below 90° of incidence, which is the
-   * unbounded linear limb §3.2 used to have.
+   * *Which* something is the whole question. Restoring the pre-pos-i4o curve
+   * and catching its 2.90 kt fold proves only that the sweep is not inert: that
+   * fold is enormous and a grid twenty times coarser than this one still finds
+   * it, including the 1° trim grid the header above blames for three false
+   * clean results. So this restores **only** the blend width, and only to 31° —
+   * one degree inside the 32° boundary where folds begin. What is there to find
+   * is then the *narrowest fold this model makes at all*, a 0.9 kt one at 4 kt
+   * of wind occupying a single-digit number of grid cells.
+   *
+   * A blatant fold tests that the instrument works. A threshold-grazing one
+   * tests that it is sharp enough to be believed when it reports nothing, which
+   * is the only claim this file actually makes. And it does discriminate: run
+   * this case at a 1° trim grid — the one the header blames — and **it fails**,
+   * at 0.5° and 0.25° it passes. The old blatant-fold version passed at every
+   * step size tried, which is what made it worthless.
    */
-  it("can see a fold that is really there", () => {
-    const foil = FOIL as { maxLift: number; stallBlendWidth: number };
-    const saved = [foil.maxLift, foil.stallBlendWidth] as const;
-    foil.maxLift = 40;
-    foil.stallBlendWidth = deg(20);
+  it("can see the narrowest fold this model makes", () => {
+    const foil = FOIL as { stallBlendWidth: number };
+    const saved = foil.stallBlendWidth;
+    foil.stallBlendWidth = deg(31);
 
     try {
-      const found = worstFold(10);
-      // The pre-pos-i4o model folded by 2.90 kt at 10 kt of wind. Asserted as a
-      // floor rather than a value: this is a lower bound on what the instrument
-      // must be able to resolve, not a figure anyone should tune towards.
-      expect(found.width).toBeGreaterThan(2);
+      // 31° folds at 2, 3 and 4 kt and is clean by 5 — light air is where the
+      // last of it survives, because there the wall is not yet damping anything.
+      const found = worstFold(4);
+      expect(found.width, "a fold at 31° of blend went unseen").toBeGreaterThan(0);
     } finally {
-      foil.maxLift = saved[0];
-      foil.stallBlendWidth = saved[1];
+      foil.stallBlendWidth = saved;
     }
   }, 30_000);
 

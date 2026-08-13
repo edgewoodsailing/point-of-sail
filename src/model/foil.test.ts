@@ -208,6 +208,39 @@ describe("the flat-plate limb", () => {
     expect(cl(FULLY_STALLED_DEGREES)).toBeLessThan(0.7 * cl(STALL_DEGREES));
     expect(cd(FULLY_STALLED_DEGREES)).toBeGreaterThan(cd(STALL_DEGREES));
   });
+
+  /**
+   * **How much lift survives *inside* the blend, which nothing here used to
+   * check.** The test above reads both its samples at exactly
+   * `stallAngle + stallBlendWidth`, where the curve is pure plate by
+   * construction — so it holds for any blend width whatever and constrains
+   * nothing. That gap is how `Cl` at 40° of incidence moved from 0.542 to 1.225
+   * in pos-i4o with no test in this file noticing; it was `src/render`'s §4.2
+   * tests that caught it, two layers away from the constant that moved.
+   *
+   * This is the model layer's own statement of that. The fractions are what
+   * §4.2's "a sail sheeted flat is a mistake" is spent out of: an oversheeted
+   * sail sits at large α, and the more lift the blend leaves it, the less of a
+   * mistake the model says it is. Widening {@link FOIL.stallBlendWidth} spends
+   * this account, and it should fail here — where the cause is — rather than
+   * only in the renderer.
+   */
+  it("keeps the blend's falloff where §4.2 is priced against it", () => {
+    let peak = 0;
+    for (let degrees = 0; degrees <= 90; degrees += 0.01) peak = Math.max(peak, cl(degrees));
+
+    // Monotone down from the peak to the end of the blend: no shelf, no second
+    // hump for the optimal-trim search to find.
+    for (let degrees = 26; degrees < FULLY_STALLED_DEGREES; degrees += 0.5) {
+      expect(cl(degrees + 0.5), `${degrees}°`).toBeLessThan(cl(degrees));
+    }
+
+    // And the shape of it, as a fraction of peak lift so that a calibration
+    // pass moving `maxLift` does not have to touch these.
+    expect(cl(30) / peak).toBeCloseTo(0.935, 2);
+    expect(cl(40) / peak).toBeCloseTo(0.752, 2);
+    expect(cl(50) / peak).toBeCloseTo(0.543, 2);
+  });
 });
 
 describe("symmetry", () => {

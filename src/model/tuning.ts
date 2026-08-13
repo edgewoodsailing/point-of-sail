@@ -88,10 +88,10 @@ export const FOIL: {
    * angle and the post-stall falloff were one knob wearing two names. Peak lift
    * is now {@link FOIL.maxLift}'s job, and this constant does only what it says.
    *
-   * On the main, `Cl` reaches 1.34 here — a little under the 1.40 the bare
-   * linear limb would give, since the saturation has begun to bite — and the
-   * curve tops out at ≈ 1.63 near 24°, which is where the optimal-trim search
-   * sits at every point of sail in the §3.6 table.
+   * On the main, `Cl` reaches **1.394** here — the 1.40 §3.2 quotes, 0.27%
+   * under the bare linear limb because the saturation has just begun to bite —
+   * and the curve tops out at ≈ 1.63 near 24°, which is where the optimal-trim
+   * search sits at every point of sail in the §3.6 table.
    */
   stallAngle: degreesToRadians(18),
 

@@ -304,7 +304,33 @@ limb that turns over physically might have left the crossfade with nothing to
 do. It has not: with the ceiling in place and the blend left at its old 20°, the
 fold returns at 2.40 kt. The stall is still the crossfade's doing. What changed
 is that the two constants now govern different things — `Cl_max` the peak, the
-width the falloff — where before one number did both badly.
+width the falloff — where before one number did both badly. *"We gave it a
+maximum, so the blend is cosmetic now" is the simplification to resist, and that
+figure is why.*
+
+**The peak is flatter than it was, and §4.2 leans on it.** Saturating the limb
+does not just lower the summit, it broadens it: `Cl` is within 0.4% of its
+maximum from 22.7° to 24.9°, where the old curve turned over more definitely.
+That is the more physical shape — a real sail has a forgiving best trim rather
+than a knife edge — but it means "the optimal trim" is a fuzzier idea than it
+was, and the optimal-trim search's argmax can move by a fraction of a degree on
+a rounding difference. Anything comparing a trim to *the* optimum wants a
+tolerance rather than an equality.
+
+**One lesson from finding this, which is about method rather than sails.** The
+fold was hunted with a sweep over trims and winds, and a sweep can only fail to
+find a counterexample — it cannot establish there is none. Three passes at this
+bug reported settings as fold-free that a finer grid showed folding by 1.4 kt.
+The trap has a second door that is easy to miss after you have shut the first:
+sampling the *speed* axis bounds what can be seen too, and not merely how
+precisely. Detecting a fold means resolving the stretch where the net force is
+positive, between the unstable root and the upper stable one — not the gap
+between the two stable branches, which is much wider and is the natural thing to
+reason about. At a saddle-node the branches are born coalescent, so that stretch
+shrinks to nothing as a fold appears: **no step size removes the band where a
+fold is real and invisible; it only moves it.** `fold.test.ts` states its
+resolution, shows it against a grid ten times finer, and proves it can catch the
+narrowest fold this model makes rather than only an obvious one.
 
 **Past stall**, blend over ~50° into the flat-plate model — a normal force
 `Cn = k·sinα` resolved along and across the flow:
@@ -1416,11 +1442,17 @@ of sail angles really is fine, and the sail really should stay green across all
 of it. The colors inherit the truth of the model instead of restating a rule.
 
 And it comes out that way. Measured on the main in 10 kt of apparent wind, the
-trims reading 0.8 or better span 6.2% of the sail's legal range close hauled
-against 30.0% dead downwind; at 0.5 or better, 11.5% against 50.8%. Put as a
-trim error, close hauled loses 0.8 within 5.25° of sheeting in past the optimum
-and 6.25° of easing past it, against 27° on a run. Getting on for five times
-more forgiving downwind, and nothing anywhere says so.
+trims reading 0.8 or better span 7.0% of the sail's legal range close hauled
+against 29.8% dead downwind; at 0.5 or better, 13.6% against 50.6%. About four
+times more forgiving downwind, and nothing anywhere says so.
+
+Those figures were 6.2/30.0 and 11.5/50.8 — "getting on for five times" — before
+`pos-i4o` widened [§3.2](#the-attached-limb-has-a-maximum-of-its-own)'s stall
+blend. A softer stall leaves more lift either side of the optimum, which widens
+the close-hauled band; the run band is drag-driven, never goes near the blend,
+and did not move. The lesson is unchanged in kind and slightly weaker in degree,
+which is the honest way round: it is the *model* that says how forgiving a run
+is, and the model's stall got softer.
 
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
@@ -1431,10 +1463,18 @@ back into one.
 
 One qualification, and it comes from the physics rather than from the ramp:
 **you cannot badly oversheet close hauled.** The best trim there is already
-nearly on the centreline — 9° off it at an apparent wind angle of 30°, and
-exactly on it at 20° — so the boom hauled all the way in is a small error, and
-reads amber. Sheeted to the centreline, the quality first reaches amber at 28°
-and red at 35°. Past the centreline is not oversheeting at all but *backing*
+nearly on the centreline — half a degree off it at an apparent wind angle of
+20° — so the boom hauled all the way in is a small error, and reads amber.
+Sheeted to the centreline, the quality reaches red at **55°** of apparent wind.
+That boundary was 35° before `pos-i4o`, and it moved for the same reason the
+bands above did: a sail at large incidence keeps more of its lift, so hauling
+flat on a close reach is now amber where it used to be red. It is arguably the
+better answer — at 40° the best trim is only some 16° of ease away, so a boom on
+the centreline there is mildly overtrimmed rather than ruinous — but it is a
+real narrowing of what the colour calls a mistake, and the reach between 35° and
+55° now teaches "not ideal" where it taught "wrong".
+
+Past the centreline is not oversheeting at all but *backing*
 the sail ([§3.4](#34-backing-a-sail)), which is red for a different reason: it
 drives the boat astern. So overtrimming is a reaching and running mistake,
 which is where it is a mistake on the water too, and the error available close

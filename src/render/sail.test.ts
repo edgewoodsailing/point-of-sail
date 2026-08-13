@@ -1260,8 +1260,14 @@ describe("sail path data", () => {
  * in between.
  */
 describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
-  /** The ramp's end stops, asked of the palette rather than written out here. */
-  const GREEN = trimQualityColor(1);
+  /**
+   * The ramp's end stops, asked of the palette rather than written out here.
+   *
+   * Only RED survives as a string comparison. The green end is checked in
+   * `hue`/`chroma` instead, because the optimum now scores a hair under 1 —
+   * see `goes green at the optimal trim`. Nothing reaches the red end by a
+   * hair: a trim that reads red reads a clean 0.
+   */
   const RED = trimQualityColor(0);
 
   /** Close hauled to a dead run, on both tacks. */
@@ -1312,13 +1318,23 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
       const apparent = wind(10, awa);
       for (const sail of bothSails) {
         const quality = trimQuality(sail, mostDrivingTrim(sail, apparent), apparent);
-        // Not exactly 1, and *slightly over* it here: the search that supplies
-        // the denominator refines to 0.3125° while this scan steps 0.1°, so a
-        // scanned trim can beat it by a hair — 7e-5 at worst across these
-        // angles. Which is the overshoot `palette.clampQuality` names as one of
-        // the two reasons it folds rather than throws.
+        // Not exactly 1, and it can land either side of it: the search that
+        // supplies the denominator refines to 0.3125° while this scan steps
+        // 0.1°, so a scanned trim can beat it by a hair. Which is the overshoot
+        // `palette.clampQuality` names as one of the two reasons it folds
+        // rather than throws.
+        //
+        // **The colour is compared with a tolerance rather than for equality**
+        // (pos-i4o). §3.2's saturating lift limb broadens the peak — `Cl` is
+        // within 0.4% of maximum across 22.7°–24.9° — so the argmax is a
+        // fractionally softer idea than it was and `quality` now lands at
+        // 0.99995 rather than 1 at some angles. That renders as
+        // `oklch(86% 0.1599 …)` against `0.16`: a string away from GREEN and
+        // five decimal places away in the thing anyone can see. Comparing
+        // formatted colour strings for equality was measuring the formatter.
         expect(quality).toBeCloseTo(1, 3);
-        expect(trimQualityColor(quality)).toBe(GREEN);
+        expect(trimQualityStop(quality).hue).toBeCloseTo(trimQualityStop(1).hue, 6);
+        expect(trimQualityStop(quality).chroma).toBeCloseTo(trimQualityStop(1).chroma, 3);
       }
     }
   });
@@ -1361,7 +1377,18 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
     // other side of the boat and is a backed sail, not an overtrimmed one.
     // This is the case §4.2 exists for: the flow stays attached the whole way,
     // so without the ramp an oversheeted sail looks exactly like a good one.
-    for (const awa of [40, 60, 90, 150]) {
+    //
+    // **The band this covers narrowed in pos-i4o and that is a real change**,
+    // not a tolerance being relaxed. §3.2's stall blend widened to 50°, so a
+    // sail at large incidence keeps more of its lift, and sheeted flat now
+    // first reads red at AWA 55.2° where it used to at 35.0°. Between those the
+    // colour is amber rather than red — at AWA 40° the main reads 0.363. That
+    // is defensible on the water: at AWA 40° the best trim is only some 16°
+    // of ease away, so a boom on the centreline is mildly overtrimmed rather
+    // than ruinously so, and the sentence below already says oversheeting is a
+    // reaching and running mistake. What it costs is that the reach from 35° to
+    // 55° now teaches "not ideal" where it used to teach "wrong".
+    for (const awa of [60, 90, 150]) {
       const apparent = wind(10, awa);
       expect(isRed(trimQuality(MAIN, 0, apparent))).toBe(true);
       expect(isRed(trimQuality(JIB, 0, apparent))).toBe(true);
@@ -1379,21 +1406,31 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
 
   it("cannot be badly oversheeted close hauled, because the physics says so", () => {
     // The qualification §4.2 now carries, pinned rather than left implicit. The
-    // best trim close hauled is already nearly on the centreline — 9.1° off it
-    // at AWA 30°, and exactly on it at 20° — so there is barely any room to
-    // sheet in past it, and hauling the boom all the way in reads amber rather
-    // than red. Sheeted to the centreline, the quality first reaches amber at
-    // AWA 28.2° and red at 35.0°: oversheeting is a reaching and running
-    // mistake, which is where it is a mistake on the water too.
-    expect(radiansToDegrees(mostDrivingTrim(MAIN, wind(10, 20)))).toBeCloseTo(0, 6);
-    expect(trimQuality(MAIN, 0, wind(10, 20))).toBeCloseTo(1, 3);
+    // best trim close hauled is already nearly on the centreline — so there is
+    // barely any room to sheet in past it, and hauling the boom all the way in
+    // reads amber rather than red. Sheeted to the centreline, the quality
+    // reaches red at AWA 55.2° (pos-i4o widened §3.2's stall blend; it was
+    // 35.0°): oversheeting is a reaching and running mistake, which is where it
+    // is a mistake on the water too.
+    //
+    // The tolerance on the first line is a search artefact, not slack. §3.2's
+    // saturating limb flattens the lift peak, so `mostDrivingTrim` lands on
+    // 0.5° rather than 0.0° at AWA 20° — one step of its 0.3125° refinement,
+    // against a peak that is flat to within 0.4% over two degrees. The claim is
+    // "already on the centreline", and half a degree is on the centreline.
+    expect(Math.abs(radiansToDegrees(mostDrivingTrim(MAIN, wind(10, 20))))).toBeLessThan(1);
+    // Within a quarter of a percent of the best available, for the same reason
+    // the line above needs a tolerance: the optimum is half a degree off the
+    // centreline and the peak is flat, so sheeting flat gives up almost exactly
+    // nothing.
+    expect(trimQuality(MAIN, 0, wind(10, 20))).toBeCloseTo(1, 2);
 
     const closeHauled = trimQuality(MAIN, 0, wind(10, 30));
     expect(closeHauled).toBeGreaterThan(0.4);
     expect(isRed(closeHauled)).toBe(false);
 
-    expect(isRed(trimQuality(MAIN, 0, wind(10, 34.9)))).toBe(false);
-    expect(isRed(trimQuality(MAIN, 0, wind(10, 35.1)))).toBe(true);
+    expect(isRed(trimQuality(MAIN, 0, wind(10, 55.0)))).toBe(false);
+    expect(isRed(trimQuality(MAIN, 0, wind(10, 55.4)))).toBe(true);
   });
 
   it("goes red with a backed sail, which is a different mistake (§3.4)", () => {
@@ -1428,14 +1465,21 @@ describe("trim quality, the traffic light's number (DESIGN.md §4.2)", () => {
 
   it("falls off far more sharply close hauled than on a run", () => {
     // The claim §4.2 makes about *shape*, measured rather than asserted. In
-    // 10 kt of apparent wind the trims reading 0.8 or better span 6.2% of the
-    // legal range close hauled against 30.0% dead downwind, and the trims
-    // reading 0.5 or better 11.5% against 50.8% — a bit under five times
-    // wider, at both levels, from nothing but the driving-force ratio.
+    // 10 kt of apparent wind the trims reading 0.5 or better span 13.5% of the
+    // legal range close hauled against 50.8% dead downwind — a bit under four
+    // times wider, from nothing but the driving-force ratio.
+    //
+    // **The ratio was "a bit under five" before pos-i4o**, and the softer stall
+    // is what moved it: a wider blend leaves more lift either side of the
+    // optimum, which widens the close-hauled band (11.5% → 13.5%) while the run
+    // band, which is drag-driven and never near the blend, does not move at
+    // all. The bound is 3.5 rather than 4 for that reason, and it is still
+    // saying the thing §4.2 needs it to say — the close-hauled band is a
+    // quarter the width of the run's, so trim matters far more upwind.
     for (const level of [0.8, 0.5]) {
       const closeHauled = bandWidth(wind(10, 30), level);
       const run = bandWidth(wind(10, 180), level);
-      expect(run).toBeGreaterThan(4 * closeHauled);
+      expect(run).toBeGreaterThan(3.5 * closeHauled);
     }
 
     // And it widens steadily in between rather than jumping at one angle.
