@@ -600,6 +600,20 @@ physical event.
 The jib backs by the same mechanism, which is the other classic way off a
 mooring.
 
+**This manoeuvre is inside the model's domain, and it is worth saying so because
+the section that follows gives a reason to wonder.**
+[§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
+records that below a knot or two the keel cannot hold the side force the rig is
+making, so §7's no-leeway exclusion stops being a simplification — and a backed
+sail is the obvious place to worry, since it is deliberately a large force at no
+speed. Measured, it is not: backed to 45°–90° anywhere from head to wind out to
+TWA 45° in 10 kt, the boat settles at **2.1–2.8 kt of sternway**, and the keel is
+charging 0–22% of the side force against its 22% ceiling — at or under capacity
+throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5. The reason is
+that backing makes its force mostly as *drag*, straight down the boat's axis: at
+90° of backed trim the side force is a couple of newtons. So the boat gets moving
+smartly, and by the time it is moving the question does not arise.
+
 ### 3.5 Hull resistance and integration
 
 Resistance rises steeply approaching hull speed:
@@ -2253,7 +2267,19 @@ one. Several are worth revisiting *after* v1 works.
 
 - Leeway — the crab angle between heading and track. The *cost* of making side
   force is charged ([§3.5](#35-hull-resistance-and-integration)); what is out is
-  the boat visibly crabbing, and any separate accounting of where that cost goes
+  the boat visibly crabbing, and any separate accounting of where that cost goes.
+  **That reading holds above a knot or two and not below**, which `pos-rem` found
+  and [§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
+  works through. Keel lift goes as `v²`, so at half a knot close hauled the keel
+  is being asked for a `Cl` of 37 and upwards against a foil's 1.5; §3.5's
+  `keelStall` duly stops charging for side force it cannot hold — 0.6% of it,
+  against 22% when the boat is sailing — and a real boat answers by sliding
+  sideways, which this bullet forbids. So down there the exclusion is not the
+  cosmetic one this bullet describes: it is load-bearing, and it is what produces
+  the stalemate at the edge of the no-go zone. This is a statement about the
+  model's domain rather than an argument for modelling leeway — nothing a student
+  does below that speed is anything but stopped — but the bullet should not be
+  read as "leeway costs nothing but a drawing" at every speed, because it does not
 - **Sail telltales** — yarn at the luff, showing whether the flow is attached.
   Weaker than it first looks: [§4.2](#42-the-traffic-light) already reports trim
   quality, and it reports it from the *driving force* rather than from a proxy

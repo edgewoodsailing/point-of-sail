@@ -733,11 +733,19 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * over.** Every sweep in this file runs trim 0 to −90°, the side the sheet
    * holds a sail on. Carried the other way the band is wider and the fast branch
    * does make way — 1.306 kt split with a 0.827 kt branch at trim +4.75°,
-   * TWA 50.48°. That is the same artefact at the same speeds, not a second
-   * phenomenon, and it is §3.4's *held* state rather than a trim besides. Left
-   * measured and named rather than guarded, because a bound on it would be a
-   * bound on how wrong the no-leeway assumption is allowed to be, which is not a
-   * number this file can defend.
+   * TWA 50.48°. That is the same artefact at the same speeds rather than a second
+   * phenomenon, so it is left measured and named: a bound on it would be a bound
+   * on how wrong the no-leeway assumption is allowed to be, which is not a number
+   * this file can defend.
+   *
+   * **It is not §3.4's mooring departure, and that is worth keeping straight.**
+   * The band runs from trim 0 to about +14°, a sail a few degrees the wrong side
+   * of the centreline. Backing a sail properly puts it at 45°–90°, where the
+   * force is mostly drag along the boat's axis and the side force is a couple of
+   * newtons: the boat gathers 2.1–2.8 kt of sternway and the keel sits at or
+   * under its ceiling the whole way. §3.4 records the measurement. So the
+   * windward band is a sliver near the centreline that nothing in §3.4 passes
+   * through, not the manoeuvre it happens to share a side with.
    */
   it("leaves the boat stopped on both branches wherever rest is unstable", () => {
     const worst = worstAstrideRest(BOUND_WINDS);
