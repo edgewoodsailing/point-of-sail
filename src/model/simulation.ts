@@ -14,7 +14,7 @@ import {
   keelInducedDrag,
 } from "./hull.ts";
 import type { RigTrim } from "./sail.ts";
-import { depoweringFactor, rigForce } from "./sail.ts";
+import { depoweringFactor, easeMainAngle, rigForce } from "./sail.ts";
 import type { MetersPerSecond, Seconds } from "./units.ts";
 import type { BoatMotion, TrueWind } from "./wind.ts";
 import { apparentWind } from "./wind.ts";
@@ -199,6 +199,25 @@ function advance(state: SimState, dt: Seconds): SimState {
   return {
     ...state,
     motion: { ...state.motion, speed: state.motion.speed + change },
+    // **The boom swings on the same clock as the speed** (§3.4, and the sheet
+    // model in `naturalMainAngle`). It is state that evolves, not an input that
+    // is held: the sheet caps how far out it may go and the wind decides where
+    // inside that cap it sits, so turning the boat moves the boom without
+    // anybody touching it — which is what tacking and gybing *are*.
+    //
+    // Skipped entirely while `mainHeld`, because a hand on the boom is a
+    // stronger constraint than the wind. That flag has been in `SimState` and
+    // inert since it was added; this is the first thing to read it.
+    //
+    // Note this rides inside `advance`, so `settle` gets it for free: settle
+    // steps repeatedly, so it converges the boom and the speed together —
+    // which matters, since each depends on the other through the apparent wind.
+    trim: state.mainHeld
+      ? state.trim
+      : {
+          ...state.trim,
+          mainAngle: easeMainAngle(state.trim.mainAngle, state.trim.mainSheet, apparent, dt),
+        },
   };
 }
 

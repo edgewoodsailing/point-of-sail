@@ -69,6 +69,10 @@ let state: SimState = settle({
   motion: { heading: degreesToRadians(35), speed: 0 },
   trim: {
     mainAngle: degreesToRadians(-75),
+    // The sheet the boom is hanging on, not a second copy of the angle: settle()
+    // now moves the boom too, so the opening state is where this SHEET puts it
+    // in this wind rather than where the angle above was written.
+    mainSheet: degreesToRadians(75),
     jibAngle: degreesToRadians(-70),
     jibSet: true,
   },
@@ -386,7 +390,18 @@ const pos = {
 
   /** Patch just the trim, which is the field most worth poking at. */
   trim: (patch: Partial<SimState["trim"]>): SimState =>
-    pos.set({ trim: { ...state.trim, ...patch } }),
+    pos.set({
+      trim: {
+        ...state.trim,
+        ...patch,
+        // Setting an angle from the console sets the sheet with it, or the boom
+        // would swing straight back out of wherever it was put. Pass `mainSheet`
+        // explicitly to override.
+        mainSheet:
+          patch.mainSheet ??
+          (patch.mainAngle === undefined ? state.trim.mainSheet : Math.abs(patch.mainAngle)),
+      },
+    }),
 
   /**
    * Jump the speed to where this wind, heading and trim would eventually take

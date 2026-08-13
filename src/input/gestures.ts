@@ -675,6 +675,54 @@ export function dragTo(
   };
 }
 
+/**
+ * A touchdown on a sail is **a hand on the boom**, so the model stops moving it.
+ *
+ * `mainHeld` has been in `SimState` since it was added and inert until now
+ * (§3.4). This is the seam it was left for: while a finger is down the boom is
+ * where the finger says, and the wind does not get a vote.
+ */
+export function holdFor(state: SimState, target: GrabTarget): SimState {
+  if (target === "main") return { ...state, mainHeld: true };
+  if (target === "jib") return { ...state, jibHeld: true };
+  return state;
+}
+
+/**
+ * Letting go of the boom: **the angle you were holding becomes the sheet.**
+ *
+ * That is the whole of the gesture's new meaning, and it is what a hand on a
+ * mainsheet actually does — you haul the boom to where you want it and cleat it
+ * there, and what you have set is how far out it may go, not where it will be.
+ * The boom then goes wherever the wind and that limit put it
+ * ({@link naturalMainAngle}), which is usually exactly where you left it, and
+ * occasionally somewhere you have to think about:
+ *
+ * - Drag it **in** and let go: the wind is still pushing out, so it stays. The
+ *   ordinary case, and it feels like nothing changed — which is right.
+ * - Drag it **out past the apparent wind** and let go: the sheet is now slacker
+ *   than the wind angle, so the boom stops at the weathervane and the sail
+ *   flogs. Ease too much and it luffs, which is the lesson.
+ * - Drag it **across to windward** and let go: the sheet is `|angle|`, the wind
+ *   is on the other side, so it swings to the *mirror* — same trim, other tack.
+ *   pos-bql.2's swing-back, with no swing-back code.
+ *
+ * The magnitude is what is kept, deliberately. A sheet has no sign; taking one
+ * from the drag would make the rope remember which side of the boat it had been
+ * on, which is the thing about the old model this replaces.
+ */
+export function releaseFrom(state: SimState, target: GrabTarget): SimState {
+  if (target === "main") {
+    return {
+      ...state,
+      mainHeld: false,
+      trim: { ...state.trim, mainSheet: Math.abs(state.trim.mainAngle) },
+    };
+  }
+  if (target === "jib") return { ...state, jibHeld: false };
+  return state;
+}
+
 /** A live pointer: what it has hold of, and the last place it was seen. */
 export interface Held {
   readonly grab: Grab;

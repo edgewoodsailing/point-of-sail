@@ -37,7 +37,7 @@ import { clampTrim, JIB, MAIN, sailChordBearing, SWING_LIMIT } from "./boat.ts";
 import { foilCoefficients, liftCurveSlope } from "./foil.ts";
 import { DEPOWERING, FOIL, LUFF } from "./tuning.ts";
 import type { ApparentWind } from "./wind.ts";
-import type { MetersPerSecond, Newtons, Radians } from "./units.ts";
+import type { MetersPerSecond, Newtons, Radians, Seconds } from "./units.ts";
 import {
   add,
   angleBetween,
@@ -104,7 +104,25 @@ export interface SailForce {
 
 /** What the two sails are doing, as the simulation holds it. */
 export interface RigTrim {
+  /**
+   * Where the boom **is**, which is no longer the same thing as where it was
+   * put. See {@link naturalMainAngle}: the sheet sets a limit and the wind
+   * decides the angle inside it, so this is a state that evolves rather than an
+   * input that is held.
+   */
   readonly mainAngle: Radians;
+  /**
+   * How far off the centreline the mainsheet will *let* the boom go, ≥ 0.
+   *
+   * **This is what a sheet actually controls.** A mainsheet is a length of rope,
+   * and a length of rope cannot tell the boom which side to be on or push it
+   * anywhere — it can only stop it going further out. Which side and how far in
+   * is the wind's business. Modelling the sheet as an absolute angle, which is
+   * what this did before, quietly asserts the opposite: that the boom holds
+   * whatever bearing it was left at however the boat turns under it, which is
+   * the one thing a real boom conspicuously does not do.
+   */
+  readonly mainSheet: Radians;
   readonly jibAngle: Radians;
   /** False when the jib is struck — §3.7's sailing under main alone. */
   readonly jibSet: boolean;
@@ -139,6 +157,100 @@ export function dynamicPressure(speed: MetersPerSecond): number {
 export function angleOfAttack(sailAngle: Radians, apparent: ApparentWind): Radians {
   const flow = oppositeAngle(apparent.angle);
   return angleBetween(sailChordBearing(sailAngle), flow);
+}
+
+/**
+ * Where the boom goes on its own: **downwind until the sheet stops it.**
+ *
+ * ## The whole derivation, because it is two lines and it is the point
+ *
+ * With no hand on it, a boom is a weathervane pivoting on the mast. It comes to
+ * rest where the sail has stopped pushing it round, which is where the cloth
+ * lies along the flow — {@link angleOfAttack} zero. From the definition above,
+ * α = 0 needs `sailChordBearing(a) = oppositeAngle(awa)`, and since
+ * `sailChordBearing(a) = π − a` that is `π − a = awa + π`, so:
+ *
+ * ```text
+ *   weathervane angle = −awa
+ * ```
+ *
+ * The sheet then does the only thing a rope can: it stops the boom going
+ * further out than `sheet`, on whichever side the wind has taken it. So
+ *
+ * ```text
+ *   natural angle = clamp(−awa, −sheet, +sheet)
+ * ```
+ *
+ * ## What falls out of it, none of which is special-cased
+ *
+ * - **Sailing.** Close hauled, `|awa|` is small and the sheet is in tight, but
+ *   `|−awa|` still exceeds it — so the boom sits *on the sheet limit* and the
+ *   sail draws at α = `|awa| − sheet`. That is true at every point of sail a
+ *   student uses: the boom is on its stop and the sheet is what sets the angle
+ *   of attack. The old absolute-angle model got the same answer here, which is
+ *   why it survived this long.
+ * - **Easing too far.** Ease past `|awa|` and the clamp stops binding: the boom
+ *   reaches the weathervane angle, α goes to zero and the sail flogs. Which is
+ *   what over-easing does, and what the old model could not show at all.
+ * - **Tacking and gybing, for free.** Turn the boat and `awa` changes sign; the
+ *   clamp changes side with it and the boom crosses on its own. A gybe is the
+ *   dramatic one — bear away through dead downwind and `−awa` swings from just
+ *   inside `+π` to just inside `−π`, so the boom goes from one stop to the
+ *   other with nothing in between.
+ * - **Backing, and pos-bql.2's swing-back, derived rather than animated.** Push
+ *   the boom to windward and let go: `sheet` is whatever you held it at, the
+ *   wind is on the other side, so the natural angle is `−sheet` — the *mirror*
+ *   of where you had it. That is pos-bql.2's specified behaviour, "same trim,
+ *   other side", arrived at without a swing-back animation existing.
+ *
+ * ## The feedback loop this creates, which is real and worth having
+ *
+ * Ease too far, the sail flogs, the boat slows — and as it slows the apparent
+ * wind swings *aft*, so `|awa|` grows, the clamp starts binding again and the
+ * sail refills. It is a stable loop with a genuine lesson in it, and it is not
+ * something anyone wrote: it is `apparentWind` and this clamp interacting.
+ */
+export function naturalMainAngle(sheet: Radians, apparent: ApparentWind): Radians {
+  const weathervane = normalizeSigned(-apparent.angle);
+  return Math.min(Math.max(weathervane, -sheet), sheet);
+}
+
+/**
+ * How fast the boom answers a change, as a first-order time constant.
+ *
+ * A boom is not massless and a sheet is not a rail, so it takes a moment. At
+ * 0.13 s it covers 95% of a swing in about 0.4 s, which is pos-bql.2's figure
+ * for the swing-back and reads as a boom rather than a jump cut.
+ *
+ * **One constant for every swing, which is a simplification with a visible
+ * cost**: a boom slamming across in a gybe is driven by a great deal more force
+ * than one drifting out in light air, and here they take the same time. The
+ * honest version would drive the swing from the aerodynamic moment, which is a
+ * second integrator and its own bead. Until then this errs toward the gentle
+ * end, because a too-fast gybe reads as a glitch while a too-slow one only
+ * reads as a heavy boom.
+ */
+export const BOOM_RESPONSE: Seconds = 0.13;
+
+/**
+ * The boom's angle after `dt`, easing toward wherever the wind and sheet put it.
+ *
+ * Exponential rather than a constant rate, so it cannot overshoot at any step
+ * length — `step` clamps `dt` to a tenth of a second but `settle` is free to
+ * take longer strides, and a rate-limited swing would ring at those.
+ */
+export function easeMainAngle(
+  current: Radians,
+  sheet: Radians,
+  apparent: ApparentWind,
+  dt: Seconds,
+): Radians {
+  const target = naturalMainAngle(sheet, apparent);
+  if (!(dt > 0)) return current;
+  // Shortest way round, so a gybe crosses through 180° rather than unwinding
+  // the long way through head to wind.
+  const gap = normalizeSigned(target - current);
+  return normalizeSigned(current + gap * (1 - Math.exp(-dt / BOOM_RESPONSE)));
 }
 
 /**
