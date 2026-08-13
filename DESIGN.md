@@ -871,7 +871,7 @@ of the no-go zone — rest is a balance point. Whether it is a *stable* one is
 decided by the drive's own slope, unopposed, since the water contributes none.
 That slope is positive: the moment the boat has way on, the apparent wind hauls
 forward, the angle of attack comes down off the stall, and the sail makes more.
-Measured at that boundary it runs 0.28 to 15.94 N/(m/s) across the 0.5–30 kt the
+Measured at that boundary it runs 0.29 to 15.95 N/(m/s) across the 0.5–30 kt the
 tests sweep, on both rigs — scaling with the wind up to the 13 kt depowering
 knee and falling away above it. So rest there is **unstable**, and the boat runs
 away from it — astern if

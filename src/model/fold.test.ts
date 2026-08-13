@@ -450,10 +450,10 @@ describe("what is left, and where it lives", () => {
  * to clear the residue of the bisection below. Forty halvings take a one-degree
  * bracket to about 1e-12 of a degree, and the drive moves some 2 N per degree of
  * TWA there, so the drive left at rest is around 2e-12 N. Against that, a
- * ten-thousandth of a knot reads 1.46e-5 N at the *shallowest* drive slope
- * anywhere a fold is found — 0.283 N/(m/s), at the half-knot bottom of
+ * ten-thousandth of a knot reads 1.48e-5 N at the *shallowest* drive slope
+ * anywhere a fold is found — 0.288 N/(m/s), at the half-knot bottom of
  * {@link BOUND_WINDS}, since the slope scales with the wind. Seven orders of
- * margin at the worst case and nine at the 15.94 N/(m/s) top of the range.
+ * margin at the worst case and nine at the 15.95 N/(m/s) top of the range.
  */
 const REST_PROBE_KNOTS = 1e-4;
 
@@ -694,7 +694,7 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
    * water drags vanish at least as fast as `v²`, so they contribute no slope at
    * rest at all, and the sign of the drive's own slope is left to decide the
    * stability of rest unopposed. At the upwind boundary that slope is positive at
-   * every wind and both rigs — 0.283 N/(m/s) at the bottom of the sweep up to 15.94 at the
+   * every wind and both rigs — 0.288 N/(m/s) at the bottom of the sweep up to 15.95 at the
    * 13 kt knee, scaling with the wind below it and falling away above.
    *
    * **What is defended is that nothing sailing has two answers.** Across §5's
@@ -896,7 +896,7 @@ describe("the fold at the edge of the no-go zone (DESIGN.md §3.4, §3.5)", () =
     expect(chordSlope(1e-4) / chordSlope(1e-5), linear).toBeCloseTo(10, 1);
 
     // Which puts it nearly three orders under the shallowest drive slope found
-    // at any folding boundary, 0.283 N/(m/s), by a hundred-thousandth of a knot.
+    // at any folding boundary, 0.288 N/(m/s), by a hundred-thousandth of a knot.
     expect(chordSlope(1e-5), "the water has a slope at rest after all").toBeLessThan(1e-3);
   });
 });
