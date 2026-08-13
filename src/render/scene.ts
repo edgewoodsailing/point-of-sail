@@ -18,7 +18,7 @@
  * Two rules follow, and everything downstream depends on them:
  *
  * 1. **A dimension *of the boat* is in metres** and scales with the drawing —
- *    the mast dot, a sail's camber, a clew handle's visual radius.
+ *    the mast dot, a stay's deck fitting, a sail's camber, a telltale's length.
  * 2. **A *line weight* is in CSS pixels** and scales with the viewport, not
  *    with the drawing (§4.5). `vector-effect="non-scaling-stroke"` is what makes
  *    that possible inside a metre-valued viewBox; see `scene.css`.
@@ -340,15 +340,21 @@ export interface SceneLayers {
   /** Boat frame, **above** the hull, so the boom reads as lying on the deck. */
   readonly sails: SVGGElement;
   /**
-   * Boat frame, above the cloth. The clew fittings §5 draws so the grab points
-   * announce themselves.
+   * Boat frame, above the cloth. The rigging telltale (pos-32n).
    *
-   * A layer of its own rather than a pair of circles inside `sails`, because a
-   * fitting is hardware and the cloth is the subject: it takes the hull's ink
-   * rather than §4.2's trim colour, and it has to sit above a sail that may be
-   * eased across it. A later bead that wants the fitting to carry the sail's
-   * colour after all would move it into the per-sail group, where
-   * `--pos-sail-ink` already inherits.
+   * **It no longer holds clew fittings, and that is a decision rather than a
+   * deletion.** §5 argued for a small ring at each clew so the grab points would
+   * announce themselves without a label. In the running drawing it did the
+   * opposite: the ring is sized as *hardware*, in metres, while the target is
+   * sized as a *touch*, in pixels, and the two are nowhere near each other — on
+   * a phone the invisible disc is several times the visible ring. So the mark
+   * advertised an affordance at a size the geometry never honoured, which is a
+   * worse failure than no advertisement at all. The corner of a sail marks its
+   * own clew.
+   *
+   * What is left here is above the cloth for the same reason the fittings were:
+   * a sail may be eased across it, and this is the one mark on the boat that
+   * reports the wind the sails are answering.
    *
    * It is transparent to the pointer (`scene.css`), which costs nothing and
    * says the true thing: hit-testing is geometric (`input/gestures.ts`) and

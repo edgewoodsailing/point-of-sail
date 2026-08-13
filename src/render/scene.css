@@ -146,9 +146,11 @@
  * `STAY_RADIUS` in `hull.ts`, which is the honest place for it — they are the
  * same kind of object and differ only in importance.
  *
- * Filled rather than hollow, because hollow is already taken: `.pos-clew` is a
- * ring, and the difference between a fitting you may drag and one you may not
- * should not rest on size alone.
+ * Filled, and now the only round marks on the deck besides the mast. The clew
+ * rings that were the drawing's other circles are gone: a drawn ring the size
+ * of a shackle standing in for a 22 px touch target promised an affordance at a
+ * size the geometry never honoured, and the corner of a sail marks its own clew
+ * well enough without one.
  */
 .pos-sim .pos-stay {
   fill: var(--pos-ink);
@@ -188,18 +190,6 @@
    accessibility tree alike. */
 .pos-sim .pos-struck {
   display: none;
-}
-
-/*
- * The clew fittings (§5). Hull ink and hull weight, because a fitting is part
- * of the boat rather than part of the sail — a shackle, not a telltale — and
- * because the sail's own stroke is the heaviest line in the drawing and should
- * stay so. Hollow, so it is told apart from the filled mast dot.
- */
-.pos-sim .pos-clew {
-  fill: none;
-  stroke: var(--pos-ink);
-  stroke-width: var(--pos-rule-hull);
 }
 
 /*
