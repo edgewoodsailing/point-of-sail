@@ -131,16 +131,19 @@
  * The six stays' deck attachment points (§4.1, pos-aax) — headstay, two uppers,
  * two lowers, backstay.
  *
- * The hull's ink, so they read as part of the boat rather than as annotation
- * about it, and lighter than the mast dot so the two are ranked: the mast is
- * what the rig turns about, a chainplate is where a wire lands. Filled rather
- * than hollow, because hollow is already taken — `.pos-clew` is a ring, and the
- * difference between a fitting you may drag and one you may not should not rest
- * on size alone.
+ * **Full-strength hull ink, no opacity.** A lightened version was tried and
+ * read as dirt on the deck rather than as hardware on it: at this size a mark
+ * has to be definite to be a mark at all, and the eye reads a faint small thing
+ * as a rendering artefact. The ranking against the mast is carried entirely by
+ * `STAY_RADIUS` in `hull.ts`, which is the honest place for it — they are the
+ * same kind of object and differ only in importance.
+ *
+ * Filled rather than hollow, because hollow is already taken: `.pos-clew` is a
+ * ring, and the difference between a fitting you may drag and one you may not
+ * should not rest on size alone.
  */
 .pos-sim .pos-stay {
   fill: var(--pos-ink);
-  opacity: 0.45;
 }
 
 .pos-sim .pos-boom {

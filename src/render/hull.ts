@@ -305,13 +305,25 @@ export function stayStations(): readonly StayStation[] {
 }
 
 /**
- * A deck fitting's drawn radius, smaller than the mast's 0.11 m.
+ * A deck fitting's drawn radius: 0.023 m, about a fifth of the mast dot's 0.11.
  *
- * Smaller on purpose: the mast is a thing the rig turns about and these are
- * places where a wire lands. Same ink, so they read as the same *kind* of
- * hardware, and the size difference is what ranks them.
+ * The first attempt was 0.07 m in a lightened ink and it read as *dirt* — big
+ * enough to be a shape rather than a point, pale enough to look unresolved. The
+ * fix runs both dials the other way at once, and they are the same decision
+ * rather than two: a chainplate is a place where a wire lands, so it wants to be
+ * nearly dimensionless, and **being small is exactly what lets it take the
+ * hull's ink at full strength** without competing with the mast. A faint mark
+ * reads as a mistake; a tiny sharp one reads as a fitting.
+ *
+ * So the ranking against the mast is now carried by size alone, with no
+ * difference in weight to help — which is the honest way round, since they are
+ * the same kind of thing and differ only in importance.
+ *
+ * A dimension *of the boat*, so it is in metres and shrinks with the drawing
+ * (§4.1): about 3.8 px across on an iPad and 2 px on a phone. The phone is thin
+ * enough to be worth an eye on real glass rather than a screenshot — pos-740.4.
  */
-const STAY_RADIUS: Meters = 0.07;
+const STAY_RADIUS: Meters = 0.07 / 3;
 
 // --- The drawn layer --------------------------------------------------------
 
