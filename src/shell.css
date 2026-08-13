@@ -72,64 +72,14 @@ body {
   user-select: none;
 }
 
-/* Minimal control strip (§5). It carries the wind speed slider, and pos-740.3's
-   apparent-wind and jib switches are still to come beside it. Nothing else is:
-   everything else a student manipulates is a direct manipulation of the boat. */
+/*
+ * Minimal control strip (§5), and **empty by default**. It carried the wind
+ * speed slider until the wind became a direct manipulation of the drawing;
+ * pos-740.3's apparent-wind and jib switches are what will fill it. Nothing else
+ * belongs here, because everything else a student sets is a manipulation of the
+ * boat rather than a setting about it.
+ */
 .pos-sim .controls {
   flex: 0 0 auto;
   padding: 0.5rem 1rem;
-}
-
-/*
- * The wind speed control (§5) — the one quantity that is set here rather than
- * dragged on the drawing, for the reason `input/windSpeed.ts` gives.
- *
- * Both blues come from `render/scene.css`, which declares them on `.pos-sim`
- * precisely so this row and the ring out on the perimeter are the same colour.
- * The two are halves of one subject, and a student who has just dragged the ring
- * should be able to see where its other half is without being told.
- *
- * The *text* takes the darker of the two. The ring's own lightness gives 3.45:1
- * on this background, which is a fine line and a poor paragraph — WCAG AA wants
- * 4.5:1 for text at this size, and `--pos-wind-text` is 5.13:1. This is the one
- * number §5 argues a student has to be able to read, on a device §4.2's premise
- * has three of them squinting at from an angle.
- */
-.pos-sim .wind-speed {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  font: 0.9rem/1.6 system-ui, sans-serif;
-  color: var(--pos-wind-text);
-}
-
-.pos-sim .wind-speed-caption {
-  flex: 0 0 auto;
-}
-
-.pos-sim .wind-speed > input[type="range"] {
-  flex: 1 1 auto;
-  min-width: 0;
-
-  /*
-   * Tints the track and thumb the browser draws, so the control matches the
-   * ring without any of it being redrawn by hand. `accent-color` begins at
-   * Safari 15.4, which is exactly §4.4's support floor — the one place in this
-   * project where a property lands precisely on it rather than above or below.
-   * Below the floor it is ignored and the control is the platform's own blue,
-   * which is a colour mismatch and not a broken control.
-   *
-   * The ring's own ink here rather than the text colour above: this is a UI
-   * component, which WCAG asks 3:1 of, and 3.45:1 clears that. Matching the ring
-   * exactly is the point — the thumb and the arrow are the same wind.
-   */
-  accent-color: var(--pos-wind-ink);
-}
-
-/* Tabular figures and a fixed box, so the row does not twitch sideways as the
-   reading goes from 9 kt to 10 kt while a thumb is moving. */
-.pos-sim .wind-speed-value {
-  flex: 0 0 3.5rem;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }

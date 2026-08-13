@@ -1006,7 +1006,7 @@ other side.
 **It is bounded and it is small.** The band is half a degree of TWA wide at trim
 0 and needs the sheet almost exactly flat: it survives a quarter of a degree of
 ease, at a slightly wider angle and a smaller split, and half a degree is clean.
-Swept across §5's whole wind slider at a tenth of a knot, both rigs and every
+Swept across §5's whole wind range at a tenth of a knot, both rigs and every
 trim the sheet can hold, the widest split is 0.699 kt and the fastest either
 branch ever reaches is 0.482 kt, both on the sloop sheeted flat at TWA 64.88° in
 12.8 kt — the peak sits at [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
@@ -1227,7 +1227,7 @@ reach is the one point of sail a displacement boat holds a little past it, and
 this section's own 10 kt figure is already 5.55 kt against a 5.65 kt hull speed,
 so there was never room to cap much harder without taking this table with it.
 The honest cost is on the last row of the table above — above about 13 kt the
-wind slider stops making the boat faster, because that is what a capped rig
+wind stops making the boat faster, because that is what a capped rig
 means.
 
 The last row matters as much as the speeds. Main-only falls off *hardest close
@@ -2068,7 +2068,7 @@ coincidence rather than by decision. It is worth taking deliberately.
 
 What the bend guarantees, and why it is a curve rather than a clamp: the length
 is **bounded** at every speed there is, including ones no boat reaches, so no
-future top speed can be a surprise — the wind slider's 30 kt ceiling is
+future top speed can be a surprise — the 30 kt ceiling of the day was
 throwaway scaffolding rather than anything this document commits to, so "nobody
 can get there" is not something to build on. It is **monotone**, so the arrow
 never stops answering the question. And it leaves the linear law
@@ -2326,11 +2326,10 @@ manipulations, both are things a student sets once and forgets, and neither
 belongs on the boat. Striking the jib by dragging it overboard would be
 charming and undiscoverable.
 
-The wind speed slider shares the strip with them, for a reason that has since
-changed — see [wind speed](#wind-speed-also-a-manipulation-after-all). It was out
-here because the alternative gesture would have spoiled the one on the ring; that
-is no longer true, and the slider stays now only because it is the simulator's
-one keyboard-operable control.
+**The strip is otherwise empty**, and was not always. It carried a wind speed
+slider until the whole water became a radial control — see
+[wind speed](#wind-speed-also-a-manipulation-after-all) — at which point the
+slider was a second way to say a thing the drawing already said.
 
 Striking the jib also *helps* the hardest interaction problem below — with one
 sail there is nothing to disambiguate close hauled — which means the Level 1
@@ -2461,11 +2460,19 @@ it matches every other gesture here and because it is what makes a stray touch
 cost nothing — a finger that lands on the water and does not move changes no
 wind at all, which is the old objection to giving the water away, answered.
 
-**The wind speed slider remains** in the control strip. It is now redundant
-rather than load-bearing, and it is worth keeping while the radial gesture is
-still new: it is the only keyboard-operable control in the simulator
-([§6](#6-architecture) and the accessibility bead), and removing it before the
-app-wide keyboard route exists would trade one gap for another.
+**The slider is gone**, and with it the last of §5's non-manipulations. Two
+quantities on one gesture is the whole design now; a second control for one of
+them was a redundancy that had to be kept in step, and the kind that goes stale
+quietly.
+
+**It cost the simulator its only keyboard route, and that is a debt rather than a
+decision.** The slider was the one focusable element in the app; there are now
+**zero**. Every quantity — heading, wind bearing, wind speed, both sheets — is
+pointer-only, and nothing here is reachable by keyboard or announced to a screen
+reader. That is recorded as a gap in the shipped design rather than an oversight
+to be discovered: it is `pos-z7p`, it is now the whole of the accessibility
+story rather than a shortfall in it, and the app should not go in front of
+students who need it until that lands.
 
 **The range is 0 to 20 knots**, in whole-knot steps, and both ends are chosen
 rather than inherited. Zero has to be reachable: a boat that will not stop is a
@@ -2475,10 +2482,10 @@ not.
 
 **Twenty is roughly where the school stays ashore**, and that is the whole
 reason for it: above 20 kt, with new sailors, the experience turns bad and
-equipment starts to break. So the top of the slider is the top of the range a
+equipment starts to break. So the top of the range is the top of the range a
 student is being taught to sail in, which is the only range this simulator is
 for. It lands well: [§3.2](#32-sail-forces)'s depowering begins at exactly 13 kt,
-so the top third of the slider sits inside the regime where the rig is shedding
+so the top third of the range sits inside the regime where the rig is shedding
 force — run it up and the boat visibly *stops* gaining speed, which is what that
 end of the range is for.
 
@@ -2492,7 +2499,9 @@ comments across the model appealed to "the wind slider" without this section eve
 saying where it stopped, and for four beads the answer was whatever the throwaway
 scaffolding happened to offer.
 
-The value is shown in knots beside the slider. That is not the scaffolding
+The value used to be shown in knots beside the slider, and nothing shows it now
+— which is a real loss and is why the arrow's *length* has to carry it (§4.1).
+Showing it was not the scaffolding
 [§7](#7-deliberately-out-of-scope) rules out: §7 is about not handing the student
 the *answer*, and the wind is the question. A student poses a situation and needs
 to know which one they posed. What stays unlabelled is everything downstream —
