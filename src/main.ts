@@ -410,19 +410,21 @@ const pos = {
   },
 
   /** Patch just the trim, which is the field most worth poking at. */
-  trim: (patch: Partial<SimState["trim"]>): SimState =>
-    pos.set({
-      trim: {
-        ...state.trim,
-        ...patch,
-        // Setting an angle from the console sets the sheet with it, or the boom
-        // would swing straight back out of wherever it was put. Pass `mainSheet`
-        // explicitly to override.
-        mainSheet:
-          patch.mainSheet ??
-          (patch.mainAngle === undefined ? state.trim.mainSheet : Math.abs(patch.mainAngle)),
-      },
-    }),
+  trim: (patch: Partial<SimState["trim"]>): SimState => {
+    // Setting an angle from the console sets the sheet that holds it, or the
+    // sail swings straight back out of wherever it was put. **Both sails**: an
+    // earlier version did this for the main only, so `pos.trim({ jibAngle })`
+    // eased straight back and looked like the console being ignored.
+    const want = { ...state.trim, ...patch };
+    const cleated = cleatedAt(
+      want.mainAngle,
+      want.jibAngle,
+      want.jibSet,
+      apparentWind(state.wind, state.motion),
+    );
+    // The caller's own fields still win, so an explicit sheet can be set.
+    return pos.set({ trim: { ...cleated, ...patch } });
+  },
 
   /**
    * Jump the speed to where this wind, heading and trim would eventually take

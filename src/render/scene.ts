@@ -140,9 +140,11 @@ export const SCENE = {
 
   /**
    * How far the speed indicator can reach *without overlapping the wind ring*.
-   * It leaves 2.28 m clear of the bow and, because the pivot is the midpoint of
-   * LOA, exactly the same astern — so sternway is no longer the cramped case it
-   * was when the boat turned about the mast.
+   * It leaves **1.43 m** clear of the bow and, because the pivot is the midpoint
+   * of LOA, exactly the same astern — so sternway is no longer the cramped case
+   * it was when the boat turned about the mast. (It read 2.28 m while the ring's
+   * radius was the declared 5.65; solving the radius shrank the reservation with
+   * it, and the figure here did not follow.)
    *
    * A reservation, not a clamp, and `render/speed.ts` took it up on exactly
    * that: the arrow's tip lands on this radius at hull speed, and above hull

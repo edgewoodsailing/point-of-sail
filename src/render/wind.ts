@@ -12,9 +12,15 @@
  * §5's whole argument in one line: an iPad flat on a table has no hover state,
  * touch targets have to be large, and targets will overlap. A wind vector drawn
  * near the boat competes with the sails for exactly the space the sails need. A
- * ring at the perimeter cannot collide with anything — `windRingRadius` is
- * 5.65 m against a boat that sweeps 3.59 m at any heading and any legal trim —
- * and it gives the wind an enormous, always-reachable target.
+ * ring at the perimeter gives the wind an enormous, always-reachable target.
+ *
+ * **The "cannot collide with anything" half of that argument is spent.** It was
+ * true when `windRingRadius` was a declared 5.65 m against a boat sweeping
+ * 3.59; the radius is solved now (`render/scene.ts`) and comes out at 4.35, and
+ * the arrow's length is the wind's speed, so the arrow reaches into the boat's
+ * disc above 3.49 kt on purpose. What survives is the part that mattered: the
+ * *track* is at the perimeter, so the wind is reachable from water no sail ever
+ * occupies.
  *
  * ## What the graduations are
  *
@@ -29,11 +35,12 @@
  * ## What this module deliberately does not do
  *
  * No hit-testing and no drag. The gesture lives in `input/gestures.ts`, which
- * claims an annulus running from {@link ARROW_REACH} out to 22 CSS px beyond
- * `windRingRadius` — far wider than the drawn line, whose job here is to show
- * where that band is. Hit-testing is geometric and never reads an event's
+ * gives the wind **everything the boat does not claim** — there is no band, and
+ * the drawn line's job is to show the scale rather than the target. (It did
+ * claim an annulus from `ARROW_REACH` out to 22 px beyond the ring; DESIGN §5
+ * records why that went.) Hit-testing is geometric and never reads an event's
  * target, so nothing below needs to set `pointer-events` in either direction:
- * the drawn track is not what makes the ring grabbable, and hiding it from the
+ * the drawn track is not what makes the wind grabbable, and hiding it from the
  * pointer would not make it ungrabbable.
  *
  * ## Why a wind drag is drawn here and not in `scene.ts`
@@ -90,20 +97,29 @@ import { formatNumber, svgElement } from "./svg.ts";
  *   against and stopped being true when the radius was solved down to 4.35 m.
  *   The arrow crossing the sails in a breeze is the intent — that is what the
  *   translucent layer is for — but "always outside" was simply wrong.)
- * - **Its tip is under the finger**, which is what makes the water one radial
- *   control: a pointer's radius is where the arrowhead goes, and its bearing is
- *   where the wind comes from.
+ * - **Its tip is where the arrowhead goes** — a pointer's radius maps to it and
+ *   its bearing to the wind's. But see the correction below: the tip is under
+ *   the *finger* only in light air.
  *
  * The consequence worth judging rather than reasoning about: **dragging inward
  * makes more wind**, because the tip is the handle and the tip travels inward as
  * the wind builds. {@link WIND_CONTROL} is the switch, and neither setting is
  * free:
  *
- * - **Inward (the default) tracks.** Your finger is the arrowhead and the
- *   arrowhead is under your finger, which is what direct manipulation means, and
- *   it is pos-bwd.6's "drag the arrowhead" with the requirement to hit the
- *   arrowhead removed. Against it: "further out is more" is what a dial teaches,
- *   and this is the reverse.
+ * - **Inward (the default) tracks** — with a caveat that weakens its own best
+ *   argument, and is recorded because it was found by measurement rather than by
+ *   reasoning. The tip crosses into the boat's swept disc at **3.49 kt**, and a
+ *   touchdown there is claimed by the *hull*, not the wind: at 10 kt a touch on
+ *   the arrowhead returns `"hull"`. So "your finger is the arrowhead" holds only
+ *   in light air, and above that the arrowhead is a mark you can see and cannot
+ *   grab.
+ *
+ *   The control is unharmed — the whole water is the target and the drag is
+ *   relative, so nobody needs to hit the tip — but the *justification* for this
+ *   polarity is thinner than it looks, and the honest version is "the tip moves
+ *   the way the hand moves" rather than "the tip is under the hand". Against it,
+ *   unchanged: "further out is more" is what a dial teaches, and this is the
+ *   reverse.
  * - **Outward reads the way a dial does** — and then the arrowhead moves the
  *   opposite way to the hand moving it, which is usually the worse of the two
  *   mistakes. Under relative dragging the finger is not on any drawn point
@@ -147,10 +163,10 @@ const ARROW_BARB: Meters = 0.4;
 const ARROW_SPREAD: Radians = degreesToRadians(28);
 
 /**
- * Retained only so nothing that imported it breaks while the prototype is being
- * looked at. It no longer bounds a hit band: the wind's region is now everything
- * the boat does not claim (`input/gestures.ts`), so there is no inner edge to
- * state.
+ * **DEAD.** It bounded the wind's hit band, and there is no band: the wind takes
+ * everything the boat does not claim (`input/gestures.ts`). Zero rather than
+ * removed only because the tests pos-f18 and pos-d0w will rewrite still import
+ * it; it should go with them, and nothing in the app reads it.
  */
 export const ARROW_REACH: Meters = 0;
 

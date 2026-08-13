@@ -124,6 +124,20 @@ export const GRAB_RADIUS_PX = 22;
 export const DEAD_ZONE_PX = 24;
 
 /**
+ * **DEAD, and kept only until the tests that read it are rewritten (pos-d0w).**
+ *
+ * There is no band any longer: the wind is the fall-through in {@link beginGrab}
+ * and takes everything the boat does not claim. Everything below this line
+ * argues the annulus design that replaced — the asymmetry that covered the
+ * arrowhead, and the outward 22 px that kept a resting palm from owning the
+ * wind. Both are answered in DESIGN §5, the second by dropping the premise: the
+ * wind is not exclusive, so a palm holds it and cannot move it.
+ *
+ * The argument is left standing rather than deleted because it is the reasoning
+ * a reader would otherwise reconstruct and believe. It is history now.
+ *
+ * ---
+ *
  * How far *outside* the drawn wind ring still counts as the wind, in CSS pixels.
  *
  * A separate constant from the clew radius, though they are the same number for
@@ -539,7 +553,12 @@ function reference(grab: Grab, state: SimState, world: Vec2, deadZone: Meters): 
   };
 }
 
-/** Whether a **world-frame** point lies in the wind ring's hit band. */
+/**
+ * Whether a **world-frame** point lies in the wind ring's hit band.
+ *
+ * **DEAD** — nothing in the app calls this; the wind is the fall-through now.
+ * Read only by the tests pos-d0w will rewrite, and removable with them.
+ */
 export function onWindRing(world: Vec2, ring: WindRing): boolean {
   const radius = magnitude(world);
   return radius >= ring.inner && radius <= ring.outer;
@@ -564,11 +583,16 @@ export function onWindRing(world: Vec2, ring: WindRing): boolean {
  * single tangent point belongs to on a display too small for the two to be
  * strictly separated, and nothing else.
  *
- * Anything else — the open water between the boat and the ring, the water
- * outside the band, a sail's cloth away from its clew — returns `null` and the
- * pointer is left alone. That is deliberate rather than unfinished: a touch
- * given to the nearest anything is how a student ends up turning a boat they
- * meant to miss.
+ * **Anything else is the wind**, which is the reverse of what this docblock
+ * used to say. It said open water returned `null` and the pointer was left
+ * alone, on the argument that a touch given to the nearest anything is how a
+ * student ends up turning a boat they meant to miss. That argument is answered
+ * in DESIGN §5: the water is a control now, and it is safe to give away because
+ * a drag references itself relatively — a finger that lands and does not move
+ * changes nothing at all.
+ *
+ * `null` survives as the *narrow* case: a clew disc another finger holds, or the
+ * deck while the hull is held. Both are blocks rather than gaps.
  *
  * The tie-break is load-bearing on a phone and cheap everywhere else. Sizing
  * the discs at half the clew gap already stops them overlapping, so in practice

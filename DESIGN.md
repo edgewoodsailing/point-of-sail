@@ -2444,9 +2444,17 @@ which is why the sails keep single-axis gestures.
 
 **Two things about the radial axis that could not be settled on paper.** The
 arrow's tail stays on the ring and its **tip** moves, so the tip is the handle —
-which means *dragging inward makes more wind*. That tracks (your finger is the
-arrowhead) but reverses what a dial teaches, and the alternative has the
-arrowhead moving opposite to the hand, which is usually the worse mistake. And
+which means *dragging inward makes more wind*. It reverses what a dial teaches,
+and the alternative has the arrowhead moving opposite to the hand, which is
+usually the worse mistake.
+
+The argument for it is thinner than it first appeared, and the correction is
+worth recording. "Your finger is the arrowhead" is only true in light air: the
+tip crosses into the boat's swept disc at **3.49 kt**, and a touchdown there is
+claimed by the *hull* — at 10 kt a touch on the arrowhead returns the heading,
+not the wind. The control is unharmed, because the whole water is the target and
+the drag is relative, so nobody has to hit the tip. But the honest claim is
+"the tip moves the way the hand moves", not "the tip is under the hand". And
 a drag can reference itself *relatively*, preserving the length it grabbed, or
 *absolutely*, snapping the tail to the finger. Relative is the default, because
 it matches every other gesture here and because it is what makes a stray touch

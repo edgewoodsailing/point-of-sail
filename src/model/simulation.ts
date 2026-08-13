@@ -16,6 +16,7 @@ import {
 import { clampTrim } from "./boat.ts";
 import type { RigTrim } from "./sail.ts";
 import {
+  clearMast,
   depoweringFactor,
   easeSailAngle,
   jibChord,
@@ -244,15 +245,22 @@ function advance(state: SimState, dt: Seconds): SimState {
         state.jibHeld || !state.trim.jibSet
           ? state.trim.jibAngle
           : clampTrim(
-              easeSailAngle(
-                state.trim.jibAngle,
-                naturalJibAngle(
+              clearMast(
+                easeSailAngle(
+                  state.trim.jibAngle,
+                  naturalJibAngle(
                 state.trim.jibSheet,
                 state.trim.jibSheetSide,
                 apparent,
-                  jibChord(state.trim.jibAngle, apparent),
+                    jibChord(state.trim.jibAngle, apparent),
+                  ),
+                  dt,
                 ),
-                dt,
+                // The TARGET clears the spar, but the swing toward it did not:
+                // a clew crossing the centreline could pass through the mast's
+                // shadow on the way. Cheap to apply per step and it is the same
+                // guard, so the drawn cloth never crosses the spar either.
+                state.trim.jibSheetSide,
               ),
             ),
     },

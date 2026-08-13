@@ -19,12 +19,13 @@
  *        where H = SPEED_LIMIT − SPEED_KNEE
  * ```
  *
- * `SPEED_REACH` is derived rather than declared — it is what is left of
- * `SCENE.contentRadius` once the bow and the gap between hull and arrow are
- * accounted for, which is the same figure astern because the pivot is the
- * midpoint of LOA. `SPEED_FULL_SCALE` is hull speed. So the tip lands *exactly*
- * on `contentRadius` at hull speed, which is what that band was reserved for,
- * and everything at or below hull speed is drawn by the plain linear law.
+ * `SPEED_REACH` is derived rather than declared, and **no longer from
+ * `SCENE.contentRadius`** — see its own docblock below. It is
+ * `VELOCITY_SCALE × SPEED_FULL_SCALE`, so both velocity arrows share one scale
+ * (DESIGN §4.1) and the tip lands on the ring at hull speed because the ring's
+ * radius is *solved* from that statement rather than reserved for it. This
+ * paragraph derived it the other way round for one commit and contradicted the
+ * constant it describes.
  *
  * Above hull speed the arrow keeps growing and crosses the wind ring. That is
  * deliberate, and §4.1 says so in as many words: `contentRadius` is a
@@ -228,7 +229,8 @@ export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
 const EDGE_KEEP_OUT: Meters = 0.1;
 
 /**
- * The length the arrow eases onto and never exceeds, ≈ 2.78 m.
+ * The length the arrow eases onto and never exceeds, **1.397 m**. (2.78 m while
+ * `shortRadius` was 6.0; it follows the solved ring now.)
  *
  * `SCENE.shortRadius` is the binding constraint on the whole drawing and not
  * merely the tightest one: `sceneExtent` scales by the surface's *shorter* side,

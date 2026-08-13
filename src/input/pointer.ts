@@ -105,9 +105,11 @@ export function bindPointers(
     const current = state.read();
     const world = scene.toWorld(event.clientX, event.clientY);
     const grab = beginGrab(current, world, touchScale(current, scene.pixelsToMeters), taken());
-    // Open water still claims nothing — the arbitration in `gestures.ts` covers
-    // the boat, the clews and the wind ring's band, and everything else is left
-    // alone rather than given to the nearest target.
+    // `null` is now the *narrow* case rather than the broad one. Open water is
+    // the wind's (`gestures.ts` arbitrates clews, then hull, then everything
+    // else), so a touchdown comes back empty only where the boat itself refuses
+    // it: a clew disc another finger already holds, or the deck while the hull
+    // is held. Both are deliberate blocks rather than gaps.
     if (grab === null) return;
 
     // Capture *then* claim, not the other way round. The two lines look
