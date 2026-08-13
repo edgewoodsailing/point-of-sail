@@ -424,20 +424,46 @@ export function clearMast(jibAngle: Radians, incumbent: number): Radians {
  *
  * With no hand on it, a boom is a weathervane pivoting on the mast. It comes to
  * rest where the sail has stopped pushing it round, which is where the cloth
- * lies along the flow — {@link angleOfAttack} zero. From the definition above,
- * α = 0 needs `sailChordBearing(a) = oppositeAngle(awa)`, and since
- * `sailChordBearing(a) = π − a` that is `π − a = awa + π`, so:
+ * lies along the flow — {@link angleOfAttack} zero. Turning the boom by δ moves
+ * α by δ, so the turn it wants is exactly `−α` and it ends up at
  *
  * ```text
- *   weathervane angle = −awa
+ *   weathervane angle = current − α
  * ```
  *
  * The sheet then does the only thing a rope can: it stops the boom going
  * further out than `sheet`, on whichever side the wind has taken it. So
  *
  * ```text
- *   natural angle = clamp(−awa, −sheet, +sheet)
+ *   natural angle = clamp(current − α, −sheet, +sheet)
  * ```
+ *
+ * ## Why that is not `clamp(−awa, …)`, which is what it was
+ *
+ * `current − α` **is** `−awa` — the identity `α = normalizeSigned(awa + a)` says
+ * so — but only *modulo a full turn*, and which of those representatives you
+ * take is the entire behaviour of a gybe.
+ *
+ * `normalizeSigned(−awa)` takes the one nearest the centreline, and that one
+ * jumps from just inside `+π` to just inside `−π` the instant the apparent wind
+ * crosses dead astern. The clamp changes side with it, so the boom gybed at
+ * exactly AWA 180° however far out it was sheeted. Nothing about the sail said
+ * to: **α is perfectly continuous through a dead run** — running with the wind
+ * on the starboard quarter and the boom out to port at 80°, α passes +99° →
+ * +100° → +101° as AWA goes +179° → 180° → −179° — and it was only the branch
+ * that jumped.
+ *
+ * `current − α` takes the representative the boom can actually *reach*, and
+ * that is the physical one. The moment the cloth makes about the mast is odd in
+ * α and vanishes at **both** edge-on states — at α = 0, where the wind meets the
+ * luff, and at α = ±180°, where it meets the leech — so the boom is driven
+ * toward zero *along the α axis* and cannot wrap through the leech-first state
+ * on the way. While the wind is still on the after face of the sail it is
+ * pressing the boom *outward*, into its stop, and a rope cannot pull it back.
+ *
+ * The two expressions agree everywhere `|current − α| ≤ 180°`, which is every
+ * trim from close hauled round to a broad reach. A tack is unaffected: near the
+ * bow `|α|` is small and there is nothing to wrap.
  *
  * ## What falls out of it, none of which is special-cased
  *
@@ -450,11 +476,25 @@ export function clearMast(jibAngle: Radians, incumbent: number): Radians {
  * - **Easing too far.** Ease past `|awa|` and the clamp stops binding: the boom
  *   reaches the weathervane angle, α goes to zero and the sail flogs. Which is
  *   what over-easing does, and what the old model could not show at all.
- * - **Tacking and gybing, for free.** Turn the boat and `awa` changes sign; the
- *   clamp changes side with it and the boom crosses on its own. A gybe is the
- *   dramatic one — bear away through dead downwind and `−awa` swings from just
- *   inside `+π` to just inside `−π`, so the boom goes from one stop to the
- *   other with nothing in between.
+ * - **Tacking, for free.** Turn the boat up through the wind and α changes sign
+ *   with `awa`; the clamp changes side with it and the boom crosses on its own,
+ *   from one stop to the mirror of it with nothing in between.
+ * - **Gybing, when the wind gets round the leech — and not before.** Bear away
+ *   through dead downwind and nothing happens: α is still on the after face of
+ *   the sail, still pressing the boom out against its stop, and the boat sails
+ *   by the lee with the boom where it was. The boom crosses when α reaches
+ *   ±180°, which with the boom on its stop is
+ *
+ *   ```text
+ *     |awa| = 180° − sheet
+ *   ```
+ *
+ *   — **the boat has to be by the lee by as much as the boom is eased.**
+ *   Sheeted flat at 10° it gybes 10° past dead downwind, which is the twitchy
+ *   boat a student recognises; eased to 80° it holds until the apparent wind is
+ *   10° from the beam. That bound is `SWING_LIMIT`, so it is also a guarantee:
+ *   a free boom never holds to windward with the apparent wind forward of the
+ *   beam.
  * - **Backing, and pos-bql.2's swing-back, derived rather than animated.** Push
  *   the boom to windward and let go: `sheet` is whatever you held it at, the
  *   wind is on the other side, so the natural angle is `−sheet` — the *mirror*
@@ -468,9 +508,37 @@ export function clearMast(jibAngle: Radians, incumbent: number): Radians {
  * sail refills. It is a stable loop with a genuine lesson in it, and it is not
  * something anyone wrote: it is `apparentWind` and this clamp interacting.
  */
-export function naturalMainAngle(sheet: Radians, apparent: ApparentWind): Radians {
-  const weathervane = normalizeSigned(-apparent.angle);
-  return Math.min(Math.max(weathervane, -sheet), sheet);
+export function naturalMainAngle(
+  current: Radians,
+  sheet: Radians,
+  apparent: ApparentWind,
+): Radians {
+  return heldBetween(weathervaneAngle(current, apparent), -sheet, sheet);
+}
+
+/**
+ * The angle this sail is turning toward: `current − α`, **left unwrapped**.
+ *
+ * The one line both sails share, and the one place the branch is chosen. See
+ * {@link naturalMainAngle} for why the branch is the whole of it.
+ */
+function weathervaneAngle(current: Radians, apparent: ApparentWind): Radians {
+  return current - angleOfAttack(current, apparent);
+}
+
+/**
+ * Held between two bounds **without normalising first**, which is why this is
+ * here and {@link clampTrim} is not.
+ *
+ * `clampTrim` normalises into (−π, π] before clamping, and the whole content of
+ * a weathervane target is which turn of the circle it sits on: normalise a boom
+ * straining out to port at −190° and it becomes +170°, which clamps to the
+ * *starboard* stop — the gybe this function exists to stop happening. Every
+ * result still leaves through `clampTrim`; it is just handed a legal angle by
+ * the time it gets there.
+ */
+function heldBetween(angle: Radians, low: Radians, high: Radians): Radians {
+  return Math.min(Math.max(angle, low), high);
 }
 
 /**
@@ -533,14 +601,18 @@ export function easeSailAngle(current: Radians, target: Radians, dt: Seconds): R
  * **symmetric about the bearing to the car**:
  *
  * ```text
- *   natural jib angle = clamp(−awa, a₀ − h, a₀ + h)
+ *   natural jib angle = clamp(current − α, a₀ − h, a₀ + h)
  *       a₀ = the angle whose clew lies nearest the car (12.6° to the car's side)
  *       h  = acos(C), how far the sheet lets it swing either way from there
  * ```
  *
- * That is {@link naturalMainAngle} with the interval shifted off centre. The
- * main is the special case where the car is on the centreline, so `a₀ = 0` and
- * the interval is symmetric — which is exactly why a boom tacks itself.
+ * That is {@link naturalMainAngle} with the interval shifted off centre —
+ * including the unwrapped target, and for the same reason. A jib has a leech
+ * too, and the clew is held out on the sheet by the wind on the after face of
+ * the cloth just as the boom is; it crosses when the wind gets round that leech
+ * and backs the sail, not when the wind crosses the transom. The main is the
+ * special case where the car is on the centreline, so `a₀ = 0` and the interval
+ * is symmetric — which is exactly why a boom tacks itself.
  *
  * ## The asymmetry that falls out, and it is the real one
  *
@@ -565,6 +637,7 @@ export function easeSailAngle(current: Radians, target: Radians, dt: Seconds): R
  * happens on the water, where the crew choose a sheet and it stays chosen.
  */
 export function naturalJibAngle(
+  current: Radians,
   sheet: Meters,
   side: number,
   apparent: ApparentWind,
@@ -581,32 +654,37 @@ export function naturalJibAngle(
 
   // The clew nearest the car: chord bearing straight at it, so a₀ = π − β.
   const centre = sailChordBearing(angleOfVector(w));
-  const weathervane = normalizeSigned(-apparent.angle);
+  const weathervane = weathervaneAngle(current, apparent);
 
   const cosine = (foot * foot + d * d - sheet * sheet) / (2 * foot * d);
-  // A sheet or a chord that is not a number has no geometry, and `acos` says so
-  // loudly rather than returning NaN. Hold what we have instead — the same
-  // answer "there is no usable bearing right now" gets everywhere else.
-  if (!Number.isFinite(cosine)) return centre;
-  // Sheet hauled shorter than the geometry allows — |foot − d| — so both
-  // constraints cannot hold at once. The cloth wins: the clew goes to the point
-  // on the foot circle nearest the car and the sheet is simply bar taut.
-  if (cosine >= 1) return centre;
-  // Longer than `foot + d`: no reach of the sheet can stop the clew anywhere, so
-  // it flies free and weathervanes.
-  if (cosine <= -1) return weathervane;
+  // Three degenerate sheets, written as the ends of the same interval rather
+  // than as three early returns, so the clamping and the shroud limit below are
+  // reached by every path:
+  //
+  // - **Not a number at all.** A sheet or a chord that is not a number has no
+  //   geometry, and `acos` says so loudly rather than returning NaN. A zero
+  //   interval holds the clew at `centre` — the same answer "there is no usable
+  //   bearing right now" gets everywhere else.
+  // - **Hauled shorter than the geometry allows**, `|foot − d|`, so both
+  //   constraints cannot hold at once. The cloth wins: the clew goes to the
+  //   point on the foot circle nearest the car and the sheet is simply bar taut.
+  //   Also a zero interval.
+  // - **Longer than `foot + d`**: no reach of the sheet can stop the clew
+  //   anywhere, so it flies free and weathervanes. A full interval, `h = π`.
+  const half = !Number.isFinite(cosine) || cosine >= 1 ? 0 : cosine <= -1 ? Math.PI : acos(cosine);
 
-  const half = acos(cosine);
-  const gap = normalizeSigned(weathervane - centre);
-  const settled = normalizeSigned(centre + Math.min(Math.max(gap, -half), half));
-  // **Clamped to the shrouds like every other trim.** The interval is centred on
-  // `a₀` rather than on zero, so `centre + half` can reach past ±SWING_LIMIT —
-  // measured at 92.01°, from a jib cleated at the drag clamp and then borne away
-  // to a run. That is outside the range `render/scene.ts` sweeps when it sizes
-  // the boat's swept disc, so the clew would leave the disc the scene reserves
-  // for it. §5's rule is that *every* site setting a sail angle routes through
-  // the clamp; the integrator is a site.
-  return clampTrim(clearMast(settled, side));
+  const settled = heldBetween(weathervane, centre - half, centre + half);
+  // **Clamped to the shrouds like every other trim**, and held there *before*
+  // `clampTrim` normalises. The interval is centred on `a₀` rather than on zero,
+  // so `centre + half` can reach past ±SWING_LIMIT — measured at 92.01°, from a
+  // jib cleated at the drag clamp and then borne away to a run. That is outside
+  // the range `render/scene.ts` sweeps when it sizes the boat's swept disc, so
+  // the clew would leave the disc the scene reserves for it. §5's rule is that
+  // *every* site setting a sail angle routes through the clamp; the integrator
+  // is a site. Why the order matters is {@link heldBetween}: a target deep by
+  // the lee is deliberately unwrapped, and normalising it first would fold a
+  // clew straining to port round onto the starboard shroud.
+  return clampTrim(clearMast(heldBetween(settled, -SWING_LIMIT, SWING_LIMIT), side));
 }
 
 /**

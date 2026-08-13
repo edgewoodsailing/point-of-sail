@@ -6,6 +6,9 @@ import {
   collapseFrom,
   collapsedFraction,
   dynamicPressure,
+  jibSheetFor,
+  naturalJibAngle,
+  naturalMainAngle,
   optimalTrim,
   rigForce,
   sailForce,
@@ -232,6 +235,172 @@ describe("acceptance: drive goes negative when a sail is backed (DESIGN.md §3.4
     for (const [awa, sailAngle] of backed) {
       expect(sailForce(MAIN, deg(sailAngle), wind(awa)).collapsedFraction).toBe(0);
     }
+  });
+});
+
+describe("where the sails go on their own (DESIGN.md §3.4)", () => {
+  /**
+   * Where the boom comes to rest at this wind, having started where it is: the
+   * map iterated to its fixed point, which is what `advance` reaches by easing
+   * toward it a frame at a time.
+   */
+  function restingMain(startDegrees: number, sheetDegrees: number, awaDegrees: number): number {
+    let angle = deg(startDegrees);
+    for (let i = 0; i < 100; i += 1) angle = naturalMainAngle(angle, deg(sheetDegrees), wind(awaDegrees));
+    return radiansToDegrees(angle);
+  }
+
+  /** The same for the jib's clew, sheeted where {@link cleatedAt} would put it. */
+  function restingJib(startDegrees: number, awaDegrees: number): number {
+    const side = Math.sign(startDegrees);
+    const sheet = jibSheetFor(deg(startDegrees), side);
+    let angle = deg(startDegrees);
+    for (let i = 0; i < 100; i += 1) angle = naturalJibAngle(angle, sheet, side, wind(awaDegrees));
+    return radiansToDegrees(angle);
+  }
+
+  const SHEETS = [10, 30, 45, 60, 80, 90];
+
+  /**
+   * The bug this describe block was written for: the boom used to gybe at
+   * exactly AWA 180°, whatever the sheet, because the weathervane angle was
+   * taken as `normalizeSigned(−awa)` and that expression changes sign there.
+   * Nothing about the sail does — α is continuous straight through a dead run —
+   * so the boom went across while the wind was still pressing it out against
+   * its stop.
+   */
+  it("keeps the boom on its stop while the boat sails by the lee", () => {
+    for (const sheet of SHEETS) {
+      // Bearing away on starboard tack, the boom out to port: the wind works
+      // aft to dead astern (AWA 180°) and then round onto the port quarter,
+      // where the boat is sailing by the lee by `180° − |awa|`.
+      for (const awa of [120, 150, 179, 180]) {
+        expect(restingMain(-sheet, sheet, awa)).toBeCloseTo(-sheet, 9);
+      }
+      for (let lee = 0; lee < sheet; lee += 0.5) {
+        expect(restingMain(-sheet, sheet, -(180 - lee))).toBeCloseTo(-sheet, 9);
+        // And the mirror, bearing away on port tack.
+        expect(restingMain(sheet, sheet, 180 - lee)).toBeCloseTo(sheet, 9);
+      }
+    }
+  });
+
+  /**
+   * **The boat has to be by the lee by as much as the boom is eased.** The boom
+   * crosses when the apparent wind gets round the *leech* — α = ±180° — and
+   * with the boom on its stop that is `|awa| = 180° − sheet`, which is the rule
+   * of thumb a student is taught rather than a number this model invented.
+   */
+  it("gybes when the wind comes round the leech, and not before", () => {
+    for (const sheet of SHEETS) {
+      const leech = 180 - sheet;
+      // Where it lands once it has gone: the far stop — unless the sheet is so
+      // slack that the wind is already inside it, and then the weathervane,
+      // which happens only for a boom right out on the shrouds.
+      const across = Math.min(sheet, leech - 0.5);
+
+      expect(restingMain(-sheet, sheet, -(leech + 0.5))).toBeCloseTo(-sheet, 9);
+      expect(restingMain(-sheet, sheet, -(leech - 0.5))).toBeCloseTo(across, 9);
+
+      expect(restingMain(sheet, sheet, leech + 0.5)).toBeCloseTo(sheet, 9);
+      expect(restingMain(sheet, sheet, leech - 0.5)).toBeCloseTo(-across, 9);
+    }
+  });
+
+  /**
+   * The bound on the rule above, and the reason it cannot become absurd: the
+   * gybe angle `180° − sheet` is furthest out when the boom is on the shrouds,
+   * where it is exactly the beam. So however deep the boat sails by the lee, a
+   * boom nobody is holding is never carried to windward of the beam.
+   */
+  it("never holds the boom to windward with the wind forward of the beam", () => {
+    for (const sheet of SHEETS) {
+      for (let awa = -89; awa <= 89; awa += 1) {
+        // Started on the windward stop, which is the worst case: if anything
+        // holds a boom to windward here, this does.
+        const port = restingMain(-sheet, sheet, awa);
+        if (awa > 0) expect(port).toBeLessThanOrEqual(0);
+        if (awa < 0) expect(port).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  /**
+   * The other half of the fix: everything that is *not* by the lee is
+   * untouched. Where the wind is on the working face of the sail, `|α| < 90°`,
+   * the reachable branch and the nearest-the-centreline branch are the same
+   * angle, so the boom answers exactly as it did — tacking, easing too far, and
+   * the swing-back of a backed sail included.
+   *
+   * Strictly inside 90°, and the boundary is the whole point rather than a
+   * fussy epsilon: with `|current| ≤ SWING_LIMIT` too, `|current − α| < 180°`
+   * and there is nothing to wrap. At exactly `|α| = 90°` with the boom on the
+   * shrouds the two branches are 360° apart and `normalizeSigned` breaks the
+   * tie toward +180°, which is the old model gybing a boom dead downwind.
+   */
+  it("answers as it always did wherever the wind is on the working face", () => {
+    for (const sheet of SHEETS) {
+      for (let current = -90; current <= 90; current += 5) {
+        for (let awa = -180; awa <= 180; awa += 5) {
+          const alpha = radiansToDegrees(normalizeSigned(deg(awa + current)));
+          if (Math.abs(alpha) >= 90) continue;
+
+          const nearest = radiansToDegrees(normalizeSigned(deg(-awa)));
+          const clamped = Math.min(Math.max(nearest, -sheet), sheet);
+          expect(radiansToDegrees(naturalMainAngle(deg(current), deg(sheet), wind(awa)))).toBeCloseTo(
+            clamped,
+            9,
+          );
+        }
+      }
+    }
+  });
+
+  /** pos-bql.2's swing-back: let a backed boom go and it mirrors, as before. */
+  it("swings a backed boom to the mirror of where it was held", () => {
+    expect(restingMain(30, 30, 40)).toBeCloseTo(-30, 9);
+    expect(restingMain(-30, 30, -40)).toBeCloseTo(30, 9);
+  });
+
+  /** Eased past the apparent wind, the clamp stops binding and the sail flogs. */
+  it("leaves an over-eased boom at the weathervane, where α is zero", () => {
+    for (const awa of [30, 60, -45]) {
+      const resting = restingMain(-Math.sign(awa) * 85, 85, awa);
+      expect(resting).toBeCloseTo(-awa, 9);
+      expect(radiansToDegrees(angleOfAttack(deg(resting), wind(awa)))).toBeCloseTo(0, 9);
+    }
+  });
+
+  /**
+   * The jib has a leech too. Its clew is held out on the sheet by the wind on
+   * the after face of the cloth exactly as the boom is, so it crosses when the
+   * wind gets round *its* leech — which, being sheeted narrower than the main,
+   * is earlier. Bearing away, the headsail backs first and the boom follows,
+   * which is the order it happens in on the water.
+   */
+  it("keeps the jib's clew on its side through a dead run too", () => {
+    for (const clew of [30, 45, 60]) {
+      for (const awa of [170, 179, 180, -179, -170, -(180 - clew) - 2]) {
+        expect(restingJib(-clew, awa)).toBeCloseTo(-clew, 6);
+      }
+      // Round the leech, and it goes — to the far root of the sheet's own
+      // circle, since the sheet is still on the old car.
+      expect(restingJib(-clew, -(180 - clew) + 2)).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * Unchanged, and the one asymmetry that matters: the jib's interval is not
+   * centred on zero, so putting the wind on the other bow leaves the clew on
+   * the windward stop, aback, while the main has crossed on its own.
+   */
+  it("still leaves the jib aback through a tack", () => {
+    // Sheeted to starboard and drawing on port tack, then tacked: the wind
+    // comes onto the starboard bow and the weathervane wants the far side of
+    // the interval, which the sheet will not reach. The clew stops just to
+    // windward of the centreline, aback, while the main has crossed on its own.
+    expect(restingJib(35, 30)).toBeLessThan(0);
+    expect(restingJib(35, 30)).toBeGreaterThan(-15);
   });
 });
 

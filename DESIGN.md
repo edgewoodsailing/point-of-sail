@@ -544,11 +544,20 @@ dead astern, or the boom out on the windward side. Both are ordinary:
 - **A main sheeted flat on a run.** Under-trimmed, not over-eased.
 - **Sailing by the lee** — bearing away past dead downwind until the wind
   crosses behind the sail, with the boom still out on what has now become the
-  windward side. At AWA −85° with the boom eased to port, α = −175°.
+  windward side. At AWA −105° with the boom eased to port at 80°, α = +175°.
 
 The second is the one that earns the change. Sailing by the lee is what precedes
 an accidental gybe, and a sail that goes on looking full and drawing through it
 is teaching precisely the wrong thing.
+
+It is also the state the boom now *holds*, which is what makes the band worth
+having rather than a curiosity. [§3.4](#the-sheet-sets-a-limit-not-an-angle)'s
+clamp keeps the boom on its stop until α reaches ±180°, so the sail spends the
+whole approach to a gybe walking up this band — flatter, shaking from the leech
+— and goes over at the top of it, with the last 2° fully collapsed. The fraction
+reaching 1 just as the boom lets go is one geometry seen from two sides rather
+than two thresholds that have to be kept in step: both are α arriving at the
+leech.
 
 The fold costs almost nothing elsewhere. It reaches only `|α| > 173°`; the rest
 of the polar is untouched by construction, and backing survives it — a backed
@@ -634,12 +643,29 @@ conspicuously does not do.
 
 So `RigTrim` carries `mainSheet` — the limit — and `mainAngle` becomes state that
 evolves. With no hand on it the boom is a weathervane: it comes to rest where the
-cloth lies along the flow, which is angle of attack zero, which by the geometry of
-[§3.2](#32-sail-forces) is exactly `−awa`. The sheet then clamps it:
+cloth lies along the flow, which is angle of attack zero. Turning the boom by δ
+moves α by δ, so the turn it wants is `−α`, and the sheet then clamps it:
 
 ```text
-  natural = clamp(−awa, −sheet, +sheet)
+  natural = clamp(current − α, −sheet, +sheet)
 ```
+
+**`current − α` is `−awa`, but only modulo a full turn, and which representative
+you take is the whole behaviour of a gybe.** Taking the one nearest the
+centreline, `normalizeSigned(−awa)`, gybes the boom at exactly AWA 180° however
+far out it is sheeted — because that expression changes sign there. Nothing
+about the sail does: α is perfectly continuous through a dead run, and it was
+only the branch that jumped.
+
+The reachable representative is the physical one. The moment the cloth makes
+about the mast is odd in α and vanishes at *both* edge-on states — at α = 0,
+where the wind meets the luff, and at α = ±180°, where it meets the leech — so
+the boom is driven toward zero along the α axis and cannot wrap through the
+leech-first state on the way. While the wind is on the after face of the sail it
+is pressing the boom outward, into its stop, and a rope cannot pull it back in.
+The two branches agree wherever `|α| < 90°`, which is every trim from close
+hauled round to a broad reach, so this changes the deep running end of the polar
+and nothing else.
 
 **Everything falls out of that one expression, and none of it is special-cased:**
 
@@ -653,11 +679,34 @@ cloth lies along the flow, which is angle of attack zero, which by the geometry 
   *aft*, the clamp starts binding again and the sail refills. Measured: eased in
   a 66° apparent wind the boat fell from 5.01 kt to 4.35 while the wind moved
   −63.4° → −66.5°.
-- **Tacking and gybing, unassisted.** Turn the boat and `awa` changes sign; the
-  clamp changes side with it and the boom crosses on its own. Measured through a
-  tack the boat loses 0.4 kt; through a gybe the boom holds at its stop until the
-  apparent wind crosses dead downwind, then slams **through the centreline** to
-  the other stop in about half a second.
+- **Tacking, unassisted.** Turn the boat up through the wind and α changes sign
+  with `awa`; the clamp changes side with it and the boom crosses on its own,
+  from one stop to the mirror of it. Measured through a tack the boat loses
+  0.4 kt.
+- **Gybing when the wind gets round the leech, and not before.** Bear away
+  through dead downwind and nothing happens — the wind is still on the after
+  face of the sail, still pressing the boom out against its stop, and the boat
+  sails **by the lee** with the boom where it was. The boom goes when α reaches
+  ±180°, which on the stop is
+
+  ```text
+    |awa| = 180° − sheet
+  ```
+
+  — *the boat has to be by the lee by as much as the boom is eased*, which is
+  the rule of thumb a student is taught rather than a number this model
+  invented. Sheeted flat at 10° it gybes 10° past dead downwind; eased to 80° it
+  holds until the apparent wind is 10° from the beam, and then slams **through
+  the centreline** to the other stop in about half a second. The bound is
+  `SWING_LIMIT`, so it is also a guarantee: a boom nobody is holding is never
+  carried to windward of the beam.
+
+  Measured, bearing away at 3°/s from a broad reach with the main out at 80° and
+  the jib at 55°: the jib backs at AWA −125° and the boom goes at −100°, more
+  than 20° of turning apart. **The headsail backs first and the boom follows**,
+  which is the order it happens in on the water and which the old model could
+  not show at all — it took both across together, at 180°, with the boat barely
+  by the lee.
 - **The swing-back above, derived rather than animated.** Push the boom to
   windward and let go: the sheet is `|angle|`, the wind is on the other side, so
   the natural angle is its mirror. "Same trim, other side" is what the clamp
@@ -678,14 +727,16 @@ tack to car and `d` their distance,
 
 ```text
   cos(b − β) = (chord² + d² − sheet²) / (2·chord·d)
-  natural = clamp(−awa, a₀ − h, a₀ + h)
+  natural = clamp(current − α, a₀ − h, a₀ + h)
       a₀ = the angle whose clew lies nearest the car (12.6°, toward that car)
       h  = acos of the above
 ```
 
 **So the jib is the main with the interval shifted off centre**, and the main is
 the special case where the car sits on the centreline, `a₀ = 0`, and the interval
-is symmetric.
+is symmetric. The unwrapped target carries over with everything else, and for
+the same reason: a jib has a leech too, and its clew is held out on the sheet by
+the wind on the after face of the cloth exactly as the boom is.
 
 **That asymmetry is the real one on the water.** Because the jib's interval is
 not centred on zero, tacking the boat does not tack the jib: sheeted to starboard
