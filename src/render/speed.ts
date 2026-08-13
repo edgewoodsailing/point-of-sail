@@ -19,12 +19,13 @@
  *        where H = SPEED_LIMIT − SPEED_KNEE
  * ```
  *
- * `SPEED_REACH` is derived rather than declared — it is what is left of
- * `SCENE.contentRadius` once the bow and the gap between hull and arrow are
- * accounted for, which is the same figure astern because the pivot is the
- * midpoint of LOA. `SPEED_FULL_SCALE` is hull speed. So the tip lands *exactly*
- * on `contentRadius` at hull speed, which is what that band was reserved for,
- * and everything at or below hull speed is drawn by the plain linear law.
+ * `SPEED_REACH` is derived rather than declared, and **no longer from
+ * `SCENE.contentRadius`** — see its own docblock below. It is
+ * `VELOCITY_SCALE × SPEED_FULL_SCALE`, so both velocity arrows share one scale
+ * (DESIGN §4.1) and the tip lands on the ring at hull speed because the ring's
+ * radius is *solved* from that statement rather than reserved for it. This
+ * paragraph derived it the other way round for one commit and contradicted the
+ * constant it describes.
  *
  * Above hull speed the arrow keeps growing and crosses the wind ring. That is
  * deliberate, and §4.1 says so in as many words: `contentRadius` is a
@@ -47,7 +48,7 @@
  * the box on any square-or-portrait viewport.
  *
  * The bend is placed at the ring rather than at hull speed on purpose, and it
- * is what makes this change invisible: **every speed out to 6.87 kt draws
+ * was what made pos-w4v's change invisible: **every speed out to the ring drew
  * exactly what it drew before**, because that is where the linear tip reaches
  * `windRingRadius`. What compresses is only the 0.25 m between the ring and the
  * edge — the one band in the drawing that nothing else uses, since `wind.ts`
@@ -63,7 +64,7 @@
  * ## Why this stays, once nothing can reach the clip
  *
  * pos-d7u depowers the rig in a breeze and drops the fastest reachable speed
- * from 8.9 kt to about 6.4 — *below* the 6.87 kt ring crossing. So once it
+ * from 8.9 kt to about 6.4 — which used to be *below* the ring crossing. So once it
  * lands the knee never engages in normal use and the arrow is linear over the
  * whole reachable range, which can make this look like dead weight. It is not,
  * and the reason is the same one that made it wrong to clamp at a measured top
@@ -108,8 +109,8 @@
 import { HULL, STATIONS } from "../model/boat.ts";
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
-import { add, degreesToRadians, magnitude, subtract, vectorFromAngle } from "../model/units.ts";
-import { SCENE, type Layer } from "./scene.ts";
+import { add, degreesToRadians, vectorFromAngle } from "../model/units.ts";
+import { ARROW_TAIL_RADIUS, SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- The scale --------------------------------------------------------------
@@ -139,31 +140,64 @@ const HULL_GAP: Meters = 0.2;
  * astern, so sternway gets exactly the room headway does — `scene.test.ts` pins
  * that symmetry from the other side.
  */
-const TAIL_RADIUS: Meters = magnitude(subtract(STATIONS.bow, STATIONS.pivot)) + HULL_GAP;
+const TAIL_RADIUS: Meters = ARROW_TAIL_RADIUS;
 
 /**
- * How long the arrow is at hull speed: what is left of `SCENE.contentRadius`
- * once the bow and the gap are accounted for, ≈ 2.08 m.
+ * The speed at which the arrow is exactly {@link SPEED_REACH} long.
  *
- * Measured rather than declared, the way `SCENE.boatRadius` is. Refair the hull
- * or move the mast station and this follows, instead of quietly disagreeing with
- * the band it is supposed to fill.
+ * Hull speed rather than a number chosen to look right: it is already the
+ * boat's own scale — `model/hull.ts` builds its resistance wall around it — and
+ * it is the speed a student is trying to reach.
  *
- * Note which end the gap is taken out of: the *arrow's*, not the band's. The
- * clear water is a drawing decision and the band is a budget, so the gap comes
- * out of what the arrow may spend rather than being added on top of it — which
- * is what keeps the tip landing exactly on `contentRadius` at hull speed.
+ * Declared above `SPEED_REACH` rather than below it, as it was, because that
+ * constant now derives from this one and a module's constants initialise in
+ * source order.
  */
-export const SPEED_REACH: Meters = SCENE.contentRadius - TAIL_RADIUS;
+export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 
 /**
- * The longest arrow still drawn by the plain linear law, ≈ 2.53 m — the one
- * whose tip lands on the wind ring, at about 6.87 kt.
+ * PROTOTYPE (pos-bwd.5) — how long the arrow is at hull speed, **1.227 m**.
  *
- * Everything at or below this is untouched by pos-w4v's bend, which is the
- * whole reason the knee is here rather than at `SPEED_REACH`: the ring is the
- * only landmark in the drawing a student can see the arrow cross, and moving
- * the speed that crosses it would be a real change to what the picture says.
+ * **Derived from `VELOCITY_SCALE` now, not from `SCENE.contentRadius`.** That is
+ * the whole of the change: the two arrows are both velocities, so their lengths
+ * come off one scale and the drawing becomes a vector diagram instead of three
+ * separate readouts. The old figure was 2.08 m — what was left of the
+ * `contentRadius` band once the bow and the gap were accounted for — and it was
+ * a fine length chosen for the wrong reason. It made the boat's arrow 30% longer
+ * per knot than the wind's, so a 5 kt boat in a 5 kt wind out-drew the wind
+ * pushing it.
+ *
+ * Two consequences, both intended and both stated rather than discovered:
+ *
+ * - **The arrow shrinks about 1.30×.** Not a regression: the boat genuinely *is*
+ *   several times slower than the top of the wind range, and the proportions
+ *   being true is the entire point. pos-bwd.5's table measured exactly this row.
+ * - **`contentRadius` no longer has a tenant.** The band it reserved is now
+ *   unspent, which is a space question this prototype opens rather than closes.
+ *
+ * Hull speed is still the *speed* this length is quoted at, because it is still
+ * the boat's own scale — what has changed is that the length is no longer chosen
+ * to fill a band.
+ */
+export const SPEED_REACH: Meters = VELOCITY_SCALE * SPEED_FULL_SCALE;
+
+/**
+ * The longest arrow still drawn by the plain linear law — the one whose tip
+ * lands on the wind ring.
+ *
+ * **It is now the same number as `SPEED_REACH`, and that is algebra rather than
+ * coincidence.** Substituting `R = Rtail·Vwind/(Vwind − Vhull)` makes
+ * `windRingRadius − TAIL_RADIUS` identical to `VELOCITY_SCALE × hull speed`;
+ * measured, the two differ in the last ulp (1.2274683188377038 against …36). So
+ * the knee sits *at hull speed*, not past it.
+ *
+ * This docblock used to say ≈ 2.53 m, crossing at about 6.87 kt, and to argue
+ * that placing the knee at the ring rather than at `SPEED_REACH` was what kept
+ * pos-w4v's bend invisible. That argument is now vacuous — the two places are
+ * one place — and it is recorded rather than deleted because it is the reasoning
+ * a reader would otherwise reconstruct and trust. What replaced it: the shared
+ * velocity scale is worth a 4% shortfall at the model's top speed, which is the
+ * whole of what the bend now costs.
  */
 export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
 
@@ -195,7 +229,8 @@ export const SPEED_KNEE: Meters = SCENE.windRingRadius - TAIL_RADIUS;
 const EDGE_KEEP_OUT: Meters = 0.1;
 
 /**
- * The length the arrow eases onto and never exceeds, ≈ 2.78 m.
+ * The length the arrow eases onto and never exceeds, **1.397 m**. (2.78 m while
+ * `shortRadius` was 6.0; it follows the solved ring now.)
  *
  * `SCENE.shortRadius` is the binding constraint on the whole drawing and not
  * merely the tightest one: `sceneExtent` scales by the surface's *shorter* side,
@@ -205,15 +240,6 @@ const EDGE_KEEP_OUT: Meters = 0.1;
  */
 export const SPEED_LIMIT: Meters = SCENE.shortRadius - EDGE_KEEP_OUT - TAIL_RADIUS;
 
-/**
- * The speed at which the arrow is exactly `SPEED_REACH` long.
- *
- * Hull speed rather than a number chosen to look right: it is already the
- * boat's own scale — `model/hull.ts` builds its resistance wall around it — and
- * it is the speed a student is trying to reach. That makes a full-length arrow
- * mean something rather than merely being the biggest one.
- */
-export const SPEED_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
 
 /**
  * Below this drawn length there is no arrow at all.

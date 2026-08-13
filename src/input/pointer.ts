@@ -34,7 +34,15 @@
 import type { SimState } from "../model/simulation.ts";
 import type { Scene } from "../render/scene.ts";
 import type { GrabTarget, Held } from "./gestures.ts";
-import { beginGrab, DEAD_ZONE_PX, dragTo, reapply, touchScale } from "./gestures.ts";
+import {
+  beginGrab,
+  DEAD_ZONE_PX,
+  dragTo,
+  holdFor,
+  reapply,
+  releaseFrom,
+  touchScale,
+} from "./gestures.ts";
 
 /** The state the gestures read and write. `main.ts` supplies both halves. */
 export interface StateAccess {
@@ -97,9 +105,11 @@ export function bindPointers(
     const current = state.read();
     const world = scene.toWorld(event.clientX, event.clientY);
     const grab = beginGrab(current, world, touchScale(current, scene.pixelsToMeters), taken());
-    // Open water still claims nothing — the arbitration in `gestures.ts` covers
-    // the boat, the clews and the wind ring's band, and everything else is left
-    // alone rather than given to the nearest target.
+    // `null` is now the *narrow* case rather than the broad one. Open water is
+    // the wind's (`gestures.ts` arbitrates clews, then hull, then everything
+    // else), so a touchdown comes back empty only where the boat itself refuses
+    // it: a clew disc another finger already holds, or the deck while the hull
+    // is held. Both are deliberate blocks rather than gaps.
     if (grab === null) return;
 
     // Capture *then* claim, not the other way round. The two lines look
@@ -109,6 +119,10 @@ export function bindPointers(
     // not take.
     surface.setPointerCapture(event.pointerId);
     active.set(event.pointerId, { grab, at: world });
+    // A finger on a sail is a hand on its boom, and the model stops moving it
+    // until the finger goes (§3.4, `gestures.holdFor`).
+    const held = holdFor(current, grab.target);
+    if (held !== current) state.write(held);
     // Suppresses the text selection a mouse drag would otherwise start, and the
     // synthesised mouse events a touch would. `touch-action: none` in the
     // stylesheet is what handles scrolling and zooming, not this.
@@ -152,10 +166,35 @@ export function bindPointers(
    * of the page and neither finger could ever grab that sail again.
    */
   function release(event: PointerEvent): void {
+    const held = active.get(event.pointerId);
     if (!active.delete(event.pointerId)) return;
     if (surface.hasPointerCapture(event.pointerId)) {
       surface.releasePointerCapture(event.pointerId);
     }
+    // **Letting go is a state change, not merely the end of one.** The angle the
+    // boom was being held at becomes the sheet, and the model takes the boom
+    // back — see `gestures.releaseFrom`. This runs for every way a pointer can
+    // end, including `pointercancel` and a lost capture, so a sail can never be
+    // left held by a finger that no longer exists.
+    if (held === undefined) return;
+    const current = state.read();
+    // **The release event's own position, not the last one a `pointermove`
+    // reported.** They are usually the same and occasionally are not: a
+    // `pointerup` carries its own coordinates, and a finger that crosses the
+    // centreline and lifts in one motion can deliver the crossing only on the
+    // up. For the jib that decides which car the sheet is cleated to
+    // (`gestures.releaseFrom`), so the stale reading would cleat to the side the
+    // hand had *left* and the sail would swing back across on its own.
+    //
+    // `lostpointercapture` is the exception and takes the stored point: it can
+    // fire without a meaningful position — a disconnected device, a capture the
+    // browser revoked — and a spurious (0, 0) would be read as hard to port.
+    const at =
+      event.type === "lostpointercapture"
+        ? held.at
+        : scene.toWorld(event.clientX, event.clientY);
+    const next = releaseFrom(current, held.grab.target, at);
+    if (next !== current) state.write(next);
   }
 
   surface.addEventListener("pointerdown", onPointerDown);

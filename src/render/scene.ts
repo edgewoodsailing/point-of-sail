@@ -18,7 +18,7 @@
  * Two rules follow, and everything downstream depends on them:
  *
  * 1. **A dimension *of the boat* is in metres** and scales with the drawing —
- *    the mast dot, a sail's camber, a clew handle's visual radius.
+ *    the mast dot, a stay's deck fitting, a sail's camber, a telltale's length.
  * 2. **A *line weight* is in CSS pixels** and scales with the viewport, not
  *    with the drawing (§4.5). `vector-effect="non-scaling-stroke"` is what makes
  *    that possible inside a metre-valued viewBox; see `scene.css`.
@@ -31,9 +31,10 @@
  */
 
 import type { SimState } from "../model/simulation.ts";
-import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
-import type { Meters, Radians, Vec2 } from "../model/units.ts";
-import { magnitude, radiansToDegrees, subtract } from "../model/units.ts";
+import { HULL, jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT } from "../model/boat.ts";
+import { WIND_SPEED_KT } from "../input/windSpeed.ts";
+import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
+import { knotsToMetersPerSecond, magnitude, radiansToDegrees, subtract } from "../model/units.ts";
 import { createHullLayer, outlineRadius } from "./hull.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 import "./scene.css";
@@ -53,6 +54,75 @@ function clewRadius(): Meters {
 }
 
 /**
+ * The clear water between the stem and the speed arrow's tail.
+ *
+ * An arrow welded to the stem reads as a bowsprit — part of the boat rather than
+ * a thing said about it. Lives here rather than in `render/speed.ts` because the
+ * ring's radius is now derived from it; see {@link ARROW_TAIL_RADIUS}.
+ */
+const BOW_GAP: Meters = 0.2;
+
+/**
+ * How far the speed arrow's *tail* stands from the pivot, ≈ 3.12 m.
+ *
+ * Because `STATIONS.pivot` is the midpoint of LOA the figure is the same astern,
+ * so sternway gets exactly the room headway does.
+ */
+export const ARROW_TAIL_RADIUS: Meters =
+  magnitude(subtract(STATIONS.bow, STATIONS.pivot)) + BOW_GAP;
+
+/** The two speeds that between them fix the whole drawing's scale. */
+const WIND_FULL_SCALE: MetersPerSecond = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+const BOAT_FULL_SCALE: MetersPerSecond = HULL.hullSpeed;
+
+/**
+ * PROTOTYPE — **the ring's radius is solved for, not chosen.**
+ *
+ * Both velocity arrows are drawn on one scale, and each has a natural maximum
+ * that lands on something already in the drawing:
+ *
+ * - The **wind** arrow hangs its tail on the ring and flies inward. Its longest
+ *   useful length is the one that puts the tip on the centre — further and the
+ *   radial control's handle would have to pass through the origin, where a
+ *   bearing stops existing. So full-scale wind draws `R`.
+ * - The **speed** arrow starts at the bow and flies outward. Its longest useful
+ *   length is the one that puts the tip on the ring. So hull speed draws
+ *   `R − ARROW_TAIL_RADIUS`.
+ *
+ * One scale through both:
+ *
+ * ```text
+ *   R / Vwind = (R − Rtail) / Vhull
+ *   R = Rtail · Vwind / (Vwind − Vhull)
+ * ```
+ *
+ * The ring is then whatever radius makes those two statements consistent, and
+ * `shortRadius` follows it out to the viewport. The drawing zooms until the
+ * proportion is satisfied, which is what turns the space the wind gave up — it
+ * is an overlay now, not a reservation — into a bigger boat rather than more
+ * water.
+ *
+ * Note the sign condition, which is not academic: the wind's full scale must
+ * exceed the boat's, or `R` goes negative. It does, comfortably, and it is the
+ * true statement about a keelboat — but it means the ring's radius is now
+ * sensitive to hull speed and to §5's 20 kt ceiling in a way nothing was before.
+ * Lower the ceiling toward hull speed and the ring runs away to infinity.
+ */
+const SOLVED_RING_RADIUS: Meters =
+  (ARROW_TAIL_RADIUS * WIND_FULL_SCALE) / (WIND_FULL_SCALE - BOAT_FULL_SCALE);
+
+/**
+ * How much water is left outside the ring, as a fraction of it.
+ *
+ * A fraction rather than a length, so the margin is the same number of *pixels*
+ * whatever the derivation above does to the radius — which is what it has to be,
+ * since its whole job is to keep the graduations from being clipped by the
+ * viewport edge. Matches what 0.35 m of 5.65 m bought before: 22 px on an iPad
+ * and 11 px on a phone.
+ */
+const EDGE_FRACTION = 0.35 / 5.65;
+
+/**
  * Concentric bands, as radii in metres from the mast. Everything but
  * `boatRadius` is a reservation this bead makes on behalf of later ones, so
  * that they inherit a budget instead of each inventing their own margin.
@@ -70,9 +140,11 @@ export const SCENE = {
 
   /**
    * How far the speed indicator can reach *without overlapping the wind ring*.
-   * It leaves 2.28 m clear of the bow and, because the pivot is the midpoint of
-   * LOA, exactly the same astern — so sternway is no longer the cramped case it
-   * was when the boat turned about the mast.
+   * It leaves **1.43 m** clear of the bow and, because the pivot is the midpoint
+   * of LOA, exactly the same astern — so sternway is no longer the cramped case
+   * it was when the boat turned about the mast. (It read 2.28 m while the ring's
+   * radius was the declared 5.65; solving the radius shrank the reservation with
+   * it, and the figure here did not follow.)
    *
    * A reservation, not a clamp, and `render/speed.ts` took it up on exactly
    * that: the arrow's tip lands on this radius at hull speed, and above hull
@@ -81,13 +153,23 @@ export const SCENE = {
    * the arrow cannot intercept a drag meant for it — which is what
    * `pointer-events: none` on `.pos-speed` guarantees, not the paint order.
    */
-  contentRadius: 5.2,
+  contentRadius: SOLVED_RING_RADIUS,
 
-  /** Centreline of the drawn wind ring (pos-qmk.3). */
-  windRingRadius: 5.65,
+  /**
+   * Centreline of the drawn wind ring — now {@link SOLVED_RING_RADIUS} rather
+   * than the declared 5.65 m.
+   *
+   * `contentRadius` above is left pointing at the same number rather than
+   * deleted, and it is worth saying why it is now redundant instead of quietly
+   * leaving it at 5.2: it existed to reserve the band the speed arrow's tip
+   * landed on at hull speed, and under the derivation that band *is* the ring.
+   * The reservation and the mark it was reserving space for have become the
+   * same circle, which is the whole of what this change buys.
+   */
+  windRingRadius: SOLVED_RING_RADIUS,
 
   /** Half the span mapped across the surface's *shorter* dimension. */
-  shortRadius: 6.0,
+  shortRadius: SOLVED_RING_RADIUS * (1 + EDGE_FRACTION),
 } as const;
 
 /**
@@ -147,6 +229,38 @@ export function sceneExtent(widthPx: number, heightPx: number): SceneExtent {
     metersPerPixel,
   };
 }
+
+/**
+ * PROTOTYPE (pos-bwd.5) — **metres of drawing per metre per second, shared by
+ * both velocity arrows.**
+ *
+ * The wind arrow and the speed arrow are both velocities, and until this
+ * constant existed they were drawn on scales that differed by 30% *and* ran the
+ * wrong way round: the boat's arrow was the longer per knot, so a 5 kt boat in a
+ * 5 kt wind drew a longer arrow than the wind moving it. Three readouts, not one
+ * picture.
+ *
+ * One number, read by both, so they cannot drift — pos-bwd.5's acceptance
+ * criterion in as many words: *one exported scale constant, not two
+ * coincidentally-equal numbers.*
+ *
+ * **Full scale is the top of §5's wind range**, because that is the whole of the
+ * wind a student is ever taught in, and pinning it there keeps the composition
+ * true at every wind they can set. A knee or a clamp inside the range would make
+ * the triangle a lie exactly where the breeze gets interesting. It works out at
+ * **0.2174 m per knot**, measured. (An earlier draft of this docblock said
+ * 0.2825, which was the figure while `windRingRadius` was still the declared
+ * 5.65 m; solving the radius moved it and the number here did not follow. It is
+ * `windRingRadius / 20 kt` by construction, so it is derived rather than quoted
+ * — but a stale figure in prose is exactly as misleading as one in code.)
+ *
+ * Where this constant should *live* is a real question this prototype ducks: it
+ * is stated here because both renderers already import the scene, and it reaches
+ * into `input/windSpeed.ts` for the range, which is the wrong direction across
+ * §6's layering. The range is arguably not an input concern at all.
+ */
+export const VELOCITY_SCALE: number =
+  SCENE.windRingRadius / knotsToMetersPerSecond(WIND_SPEED_KT.max);
 
 /** The `viewBox` attribute for an extent: origin centred, so the mast is mid-screen. */
 export function viewBoxAttribute(extent: SceneExtent): string {
@@ -230,15 +344,21 @@ export interface SceneLayers {
   /** Boat frame, **above** the hull, so the boom reads as lying on the deck. */
   readonly sails: SVGGElement;
   /**
-   * Boat frame, above the cloth. The clew fittings §5 draws so the grab points
-   * announce themselves.
+   * Boat frame, above the cloth. The rigging telltale (pos-32n).
    *
-   * A layer of its own rather than a pair of circles inside `sails`, because a
-   * fitting is hardware and the cloth is the subject: it takes the hull's ink
-   * rather than §4.2's trim colour, and it has to sit above a sail that may be
-   * eased across it. A later bead that wants the fitting to carry the sail's
-   * colour after all would move it into the per-sail group, where
-   * `--pos-sail-ink` already inherits.
+   * **It no longer holds clew fittings, and that is a decision rather than a
+   * deletion.** §5 argued for a small ring at each clew so the grab points would
+   * announce themselves without a label. In the running drawing it did the
+   * opposite: the ring is sized as *hardware*, in metres, while the target is
+   * sized as a *touch*, in pixels, and the two are nowhere near each other — on
+   * a phone the invisible disc is several times the visible ring. So the mark
+   * advertised an affordance at a size the geometry never honoured, which is a
+   * worse failure than no advertisement at all. The corner of a sail marks its
+   * own clew.
+   *
+   * What is left here is above the cloth for the same reason the fittings were:
+   * a sail may be eased across it, and this is the one mark on the boat that
+   * reports the wind the sails are answering.
    *
    * It is transparent to the pointer (`scene.css`), which costs nothing and
    * says the true thing: hit-testing is geometric (`input/gestures.ts`) and

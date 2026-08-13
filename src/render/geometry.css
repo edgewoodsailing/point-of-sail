@@ -1,0 +1,212 @@
+/*
+ * The prototyping geometry overlay (`render/geometry.ts`).
+ *
+ * Not shipping CSS. Every colour here is a translucent wash rather than ink,
+ * because the overlay paints *above* the drawing and has to tint it without
+ * hiding it. Hues are picked to stay off the two vocabularies the drawing
+ * already owns — §4.2's 30°–145° trim ramp and the wind's 235° — except where
+ * the mark deliberately belongs to one of them: the wind band is the wind's own
+ * hue, which is the point of it.
+ */
+
+.pos-sim .pos-geo {
+  /* Hit-testing is geometric; nothing drawn is ever a target, and this overlay
+     least of all. */
+  pointer-events: none;
+}
+
+.pos-sim .pos-geo-off {
+  display: none;
+}
+
+/* --- Regions a pointer can claim ------------------------------------------ */
+
+/* The hull silhouette — the whole deck is the target, not the sheer line. */
+.pos-sim .pos-geo-hull {
+  fill: oklch(62% 0.14 155deg / 16%);
+  stroke: none;
+}
+
+/* The two clew discs: `min(22px, gap / 2)`, whichever is binding right now. */
+.pos-sim .pos-geo-clew {
+  fill: oklch(62% 0.19 340deg / 20%);
+  stroke: none;
+}
+
+/* The rotation dead zone, where a bearing stops being usable. */
+.pos-sim .pos-geo-dead {
+  fill: oklch(62% 0.18 25deg / 22%);
+  stroke: none;
+}
+
+/* --- Claimed by nothing ---------------------------------------------------- */
+
+/*
+ * The open water between the furthest reach of a clew grab and the wind band's
+ * inner edge. Amber because it is neither a target nor a mistake: §5 argues it
+ * has to exist, and the question this overlay exists to ask is how wide it is.
+ */
+.pos-sim .pos-geo-gap {
+  fill: none;
+  stroke: oklch(75% 0.15 75deg / 30%);
+}
+
+/* --- Reservations, not targets --------------------------------------------- */
+
+/* The disc the boat sweeps at any heading and any legal trim. */
+.pos-sim .pos-geo-sweep {
+  fill: oklch(55% 0.03 250deg / 7%);
+  stroke: none;
+}
+
+.pos-sim .pos-geo-rule {
+  fill: none;
+  stroke: oklch(45% 0.04 250deg / 45%);
+  stroke-width: 1px;
+  stroke-dasharray: 6 5;
+}
+
+/* The speed arrow's reservation reaches further than the eye expects. */
+.pos-sim .pos-geo-content {
+  stroke-dasharray: 2 4;
+}
+
+/* The arrow's tip, which is what pulls the band's inner edge inward. */
+.pos-sim .pos-geo-arrow {
+  stroke: oklch(62% 0.13 235deg / 55%);
+  stroke-dasharray: 2 3;
+}
+
+/* The short axis — where the viewport ends on a phone in portrait. */
+.pos-sim .pos-geo-short {
+  stroke-dasharray: 10 6;
+}
+
+/* The clew's legal travel, so the discs' reach is visible as well as their size. */
+.pos-sim .pos-geo-travel {
+  fill: none;
+  stroke: oklch(62% 0.19 340deg / 45%);
+  stroke-width: 1px;
+  stroke-dasharray: 3 4;
+}
+
+/* A radial ruler along the wind's bearing, for counting the bands off. */
+.pos-sim .pos-geo-ruler {
+  fill: none;
+  stroke: oklch(45% 0.04 250deg / 30%);
+  stroke-width: 1px;
+}
+
+.pos-sim .pos-geo-struck {
+  display: none;
+}
+
+/* --- The display picker ---------------------------------------------------- */
+
+/*
+ * Prototyping chrome in the control strip. Deliberately unstyled-looking — a
+ * plain platform `<select>` — so it never reads as part of the simulator's own
+ * vocabulary while it sits beside the wind slider that is.
+ */
+.pos-sim .pos-geo-device {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-block-end: 0.4rem;
+  font: 0.8rem/1.6 system-ui, sans-serif;
+  color: oklch(45% 0.03 250deg);
+}
+
+/* Knobs on the wind-as-radial-control prototype, beside the display picker. */
+.pos-sim .pos-geo-knobs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin-block-end: 0.4rem;
+  font: 0.8rem/1.6 system-ui, sans-serif;
+  color: oklch(45% 0.03 250deg);
+}
+
+.pos-sim .pos-geo-knobs label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pos-sim .pos-geo-knob-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- The readout ----------------------------------------------------------- */
+
+.pos-sim .surface {
+  /* The legend is positioned against the drawing surface. */
+  position: relative;
+}
+
+.pos-sim .pos-geo-legend {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  background: oklch(100% 0 0deg / 82%);
+  box-shadow: 0 1px 3px oklch(0% 0 0deg / 12%);
+  font: 500 0.72rem/1.5 ui-monospace, "SF Mono", menlo, monospace;
+  color: oklch(38% 0.03 250deg);
+  pointer-events: none;
+}
+
+.pos-sim .pos-geo-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.pos-sim .pos-geo-swatch {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid oklch(45% 0.04 250deg / 35%);
+  border-radius: 0.15rem;
+}
+
+.pos-sim .pos-geo-name {
+  flex: none;
+  width: 7em;
+  white-space: nowrap;
+}
+
+.pos-sim .pos-geo-value {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Swatches, at the alpha the region is actually painted with — over white, so
+   the legend shows the wash rather than the hue it was mixed from. */
+.pos-sim .pos-geo-swatch-hull {
+  background: oklch(62% 0.14 155deg / 16%);
+}
+
+.pos-sim .pos-geo-swatch-clew {
+  background: oklch(62% 0.19 340deg / 20%);
+}
+
+.pos-sim .pos-geo-swatch-dead {
+  background: oklch(62% 0.18 25deg / 22%);
+}
+
+.pos-sim .pos-geo-swatch-gap {
+  background: oklch(75% 0.15 75deg / 30%);
+}
+
+.pos-sim .pos-geo-swatch-sweep {
+  background: oklch(55% 0.03 250deg / 7%);
+}
+
+.pos-sim .pos-geo-swatch-ring,
+.pos-sim .pos-geo-swatch-short,
+.pos-sim .pos-geo-swatch-band {
+  background: none;
+  border-style: dashed;
+}

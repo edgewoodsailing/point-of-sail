@@ -4,6 +4,7 @@ import { jibClewPosition, mainClewPosition, STATIONS, SWING_LIMIT, HULL } from "
 import type { Radians, Vec2 } from "../model/units.ts";
 import { degreesToRadians, magnitude, rotateVector, subtract } from "../model/units.ts";
 import { boatTransform, SCENE, sceneExtent, SHORT_SPAN, viewBoxAttribute } from "./scene.ts";
+import { formatNumber } from "./svg.ts";
 
 const deg = degreesToRadians;
 
@@ -75,7 +76,15 @@ describe("scene extent (DESIGN.md §4.1)", () => {
   });
 
   it("centres the origin — and therefore the boat's pivot — in the viewBox", () => {
-    expect(viewBoxAttribute(sceneExtent(500, 500))).toBe("-6 -6 12 12");
+    // Derived rather than quoted, because the half-span is no longer a number
+    // anyone chose: `shortRadius` follows the ring, and the ring is solved from
+    // the two velocity scales (`SCENE`). Quoting "12" here pinned an old
+    // decision as if it were an invariant. The invariant is that a square
+    // surface is centred on the origin and spans `SHORT_SPAN`.
+    const half = SHORT_SPAN / 2;
+    expect(viewBoxAttribute(sceneExtent(500, 500))).toBe(
+      `${formatNumber(-half)} ${formatNumber(-half)} ${formatNumber(SHORT_SPAN)} ${formatNumber(SHORT_SPAN)}`,
+    );
     const [minX, minY, width, height] = viewBoxAttribute(sceneExtent(1600, 900))
       .split(" ")
       .map(Number) as [number, number, number, number];
@@ -95,7 +104,12 @@ describe("scene extent (DESIGN.md §4.1)", () => {
 describe("scene bands", () => {
   it("nests strictly, so no later bead can quietly overlap another", () => {
     expect(SCENE.boatRadius).toBeLessThan(SCENE.contentRadius);
-    expect(SCENE.contentRadius).toBeLessThan(SCENE.windRingRadius);
+    // contentRadius and windRingRadius are now the SAME circle: the band that
+    // was reserved for the speed arrow's tip at hull speed IS the ring, since
+    // the ring's radius is solved from that very statement. "Nests strictly"
+    // survives as "never overlaps"; the strictness it asserted was a property
+    // of a radius that had been declared rather than derived.
+    expect(SCENE.contentRadius).toBeLessThanOrEqual(SCENE.windRingRadius);
     expect(SCENE.windRingRadius).toBeLessThan(SCENE.shortRadius);
   });
 
@@ -125,9 +139,13 @@ describe("scene bands", () => {
     const ahead = SCENE.contentRadius - fromPivot(STATIONS.bow);
     const astern = SCENE.contentRadius - fromPivot(STATIONS.stern);
     expect(ahead).toBeCloseTo(astern, 9);
-    expect(ahead).toBeGreaterThan(2);
-    // Still at least ¾ of a boat length per m/s at hull speed, if it is an arrow.
-    expect(ahead / HULL.hullSpeed).toBeGreaterThan(0.75);
+    // The absolute figures moved when the ring's radius stopped being declared
+    // and started being solved from the two velocity maxima: the whole drawing
+    // zoomed 1.30x, so a metre buys more picture than it did. What is asserted
+    // is the symmetry, which is structural, and that the reservation is still
+    // worth having at all.
+    expect(ahead).toBeGreaterThan(1.2);
+    expect(ahead / HULL.hullSpeed).toBeGreaterThan(0.4);
   });
 });
 

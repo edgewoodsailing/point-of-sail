@@ -12,9 +12,15 @@
  * §5's whole argument in one line: an iPad flat on a table has no hover state,
  * touch targets have to be large, and targets will overlap. A wind vector drawn
  * near the boat competes with the sails for exactly the space the sails need. A
- * ring at the perimeter cannot collide with anything — `windRingRadius` is
- * 5.65 m against a boat that sweeps 3.59 m at any heading and any legal trim —
- * and it gives the wind an enormous, always-reachable target.
+ * ring at the perimeter gives the wind an enormous, always-reachable target.
+ *
+ * **The "cannot collide with anything" half of that argument is spent.** It was
+ * true when `windRingRadius` was a declared 5.65 m against a boat sweeping
+ * 3.59; the radius is solved now (`render/scene.ts`) and comes out at 4.35, and
+ * the arrow's length is the wind's speed, so the arrow reaches into the boat's
+ * disc above 3.49 kt on purpose. What survives is the part that mattered: the
+ * *track* is at the perimeter, so the wind is reachable from water no sail ever
+ * occupies.
  *
  * ## What the graduations are
  *
@@ -29,11 +35,12 @@
  * ## What this module deliberately does not do
  *
  * No hit-testing and no drag. The gesture lives in `input/gestures.ts`, which
- * claims an annulus running from {@link ARROW_REACH} out to 22 CSS px beyond
- * `windRingRadius` — far wider than the drawn line, whose job here is to show
- * where that band is. Hit-testing is geometric and never reads an event's
+ * gives the wind **everything the boat does not claim** — there is no band, and
+ * the drawn line's job is to show the scale rather than the target. (It did
+ * claim an annulus from `ARROW_REACH` out to 22 px beyond the ring; DESIGN §5
+ * records why that went.) Hit-testing is geometric and never reads an event's
  * target, so nothing below needs to set `pointer-events` in either direction:
- * the drawn track is not what makes the ring grabbable, and hiding it from the
+ * the drawn track is not what makes the wind grabbable, and hiding it from the
  * pointer would not make it ungrabbable.
  *
  * ## Why a wind drag is drawn here and not in `scene.ts`
@@ -53,59 +60,131 @@
  * the drawing, so that cannot be taken by accident.
  */
 
+import { WIND_SPEED_KT } from "../input/windSpeed.ts";
 import type { SimState } from "../model/simulation.ts";
-import type { Meters, Radians, Vec2 } from "../model/units.ts";
-import { TAU, add, degreesToRadians, vectorFromAngle } from "../model/units.ts";
-import { SCENE, type Layer } from "./scene.ts";
+import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
+import {
+  TAU,
+  add,
+  degreesToRadians,
+  knotsToMetersPerSecond,
+  vectorFromAngle,
+} from "../model/units.ts";
+import { SCENE, VELOCITY_SCALE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- Drawing taste ----------------------------------------------------------
 
 /**
- * How far the arrow flies in from the ring.
+ * PROTOTYPE — the arrow's length is the wind's *speed*, and its **tip** is the
+ * radial control's handle.
  *
- * It reaches 4.45 m, which is inside `contentRadius` — and that is fine, because
- * the reservation runs the other way: `contentRadius` bounds how far the *speed*
- * indicator reaches before it starts crossing the ring, not how far in the ring's
- * own marks may come. The two can only be co-located with the bow aimed straight
- * at the arrow, which is head to wind, where the boat is making no way forward to
- * draw. What actually matters is that the arrow stays clear of the boat's swept
- * disc at every heading, with 0.86 m to spare; `wind.test.ts` sweeps it.
+ * The arrow's tail stays on the ring, where it has always been, and only the tip
+ * moves: it flies in from the perimeter by `arrowLength(speed)`, reaching the
+ * scene origin — the mast — at the top of the range and vanishing into the ring
+ * in a calm. So:
+ *
+ * - **Its length is the wind**, on one scale, and 20 kt is full scale because
+ *   20 kt is the whole of the range §5 teaches in. That is pos-bwd.5's shared
+ *   scale — 0.2174 m/kt once the ring's radius is solved from it.
+ * - **It is not buried.** An arrow anchored at the origin instead is entirely
+ *   inside the boat's swept disc below 12.7 kt — most of the teaching range —
+ *   and at 5 kt reads as deck hardware lying across the sails. Anchored at the
+ *   ring, the whole arrow is clear of the boat's disc up to **3.49 kt** and its
+ *   *tail* is clear at every wind, so there is always a length of it out in open
+ *   water to read and to grab. (An earlier draft of this bullet claimed it was
+ *   "always outside the boat", which was true of the 5.65 m ring it was written
+ *   against and stopped being true when the radius was solved down to 4.35 m.
+ *   The arrow crossing the sails in a breeze is the intent — that is what the
+ *   translucent layer is for — but "always outside" was simply wrong.)
+ * - **Its tip is where the arrowhead goes** — a pointer's radius maps to it and
+ *   its bearing to the wind's. But see the correction below: the tip is under
+ *   the *finger* only in light air.
+ *
+ * The consequence worth judging rather than reasoning about: **dragging inward
+ * makes more wind**, because the tip is the handle and the tip travels inward as
+ * the wind builds. {@link WIND_CONTROL} is the switch, and neither setting is
+ * free:
+ *
+ * - **Inward (the default) tracks** — with a caveat that weakens its own best
+ *   argument, and is recorded because it was found by measurement rather than by
+ *   reasoning. The tip crosses into the boat's swept disc at **3.49 kt**, and a
+ *   touchdown there is claimed by the *hull*, not the wind: at 10 kt a touch on
+ *   the arrowhead returns `"hull"`. So "your finger is the arrowhead" holds only
+ *   in light air, and above that the arrowhead is a mark you can see and cannot
+ *   grab.
+ *
+ *   The control is unharmed — the whole water is the target and the drag is
+ *   relative, so nobody needs to hit the tip — but the *justification* for this
+ *   polarity is thinner than it looks, and the honest version is "the tip moves
+ *   the way the hand moves" rather than "the tip is under the hand". Against it,
+ *   unchanged: "further out is more" is what a dial teaches, and this is the
+ *   reverse.
+ * - **Outward reads the way a dial does** — and then the arrowhead moves the
+ *   opposite way to the hand moving it, which is usually the worse of the two
+ *   mistakes. Under relative dragging the finger is not on any drawn point
+ *   anyway, so it is not incoherent; it just has nothing to track.
  */
-const ARROW_LENGTH: Meters = 1.2;
+export const WIND_CONTROL = { inward: true };
+
+function arrowLength(speed: MetersPerSecond): Meters {
+  const full = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+  return VELOCITY_SCALE * Math.min(Math.max(speed, 0), full);
+}
+
+/**
+ * What wind a pointer at this radius is asking for, clamped to the range the
+ * control offers.
+ *
+ * Exported for `input/gestures.ts`, which is the whole point — the mapping is
+ * one pair of functions read both ways, so the arrow cannot end up drawn on a
+ * different scale from the one the finger is moving it on.
+ */
+export function speedForRadius(radius: Meters): MetersPerSecond {
+  const travel = WIND_CONTROL.inward ? SCENE.windRingRadius - radius : radius;
+  const full = knotsToMetersPerSecond(WIND_SPEED_KT.max);
+  return Math.min(Math.max(travel / VELOCITY_SCALE, 0), full);
+}
+
+/**
+ * Where this wind speed puts the control's handle.
+ *
+ * Under `inward` that is the arrowhead itself, so the drawn mark and the grabbed
+ * point are the same place. Under `outward` it is a radius with nothing drawn on
+ * it — which is the honest thing to say about that setting.
+ */
+export function radiusForWind(speed: MetersPerSecond): Meters {
+  const length = arrowLength(speed);
+  return WIND_CONTROL.inward ? SCENE.windRingRadius - length : length;
+}
 
 /** Barb length and how far the barbs splay back from the tip. */
 const ARROW_BARB: Meters = 0.4;
 const ARROW_SPREAD: Radians = degreesToRadians(28);
 
 /**
- * The innermost radius the drawn arrow reaches — its tip, at 4.45 m.
- *
- * Exported because it is the **inner edge of the wind's hit band** (§5), not
- * merely a drawing dimension. The arrow is the mark a student reaches for, and a
- * band sized only in pixels about the ring leaves most of it outside: a
- * symmetric 22 px band starts at 4.97 m on a phone and 5.33 m on an iPad, which
- * misses 17 px of the arrow's 39 px on the one and 61 px of its 83 px on the
- * other — the whole arrowhead in both cases, since the barb tips stand at
- * 4.807 m. `input/gestures.ts` reads this so the target follows the drawing
- * instead of a number that has to be remembered when the drawing changes.
- *
- * The barbs cannot be the binding point: they splay *back* from the tip toward
- * the ring, so the tip is the minimum by construction, and `wind.test.ts`
- * measures the path data to say so rather than taking it on trust.
+ * **DEAD.** It bounded the wind's hit band, and there is no band: the wind takes
+ * everything the boat does not claim (`input/gestures.ts`). Zero rather than
+ * removed only because the tests pos-f18 and pos-d0w will rewrite still import
+ * it; it should go with them, and nothing in the app reads it.
  */
-export const ARROW_REACH: Meters = SCENE.windRingRadius - ARROW_LENGTH;
+export const ARROW_REACH: Meters = 0;
 
 /**
  * How far each graduation reaches in from the ring.
  *
- * Inward rather than outward on purpose. Outward there are only 0.35 m to the
- * short-axis edge — about 11 px on a 390 px phone — and a tick clipped by the
- * viewport reads as a rendering fault. Inward it stops at 5.40 m, still outside
- * `contentRadius`, so the graduations never intrude on the speed indicator's
- * band either.
+ * Inward rather than outward on purpose. Outward there is only the edge margin
+ * to the short-axis edge — about 11 px on a 390 px phone — and a tick clipped by
+ * the viewport reads as a rendering fault.
+ *
+ * **A fraction of the ring, not a length.** It was 0.25 m against a ring of
+ * 5.65, and both of those were declared. The ring is solved now (`SCENE`), so a
+ * fixed 0.25 m grew from 4.4% of the radius to 5.7% and reached inside
+ * `contentRadius` — the graduations began intruding on the speed arrow's band
+ * without anybody changing them. Held at the proportion it always had, it
+ * follows the ring wherever the derivation puts it.
  */
-const TICK_LENGTH: Meters = 0.25;
+const TICK_LENGTH: Meters = SCENE.windRingRadius * (0.25 / 5.65);
 
 /** The points of sail: eight 45° marks, less the one the arrow stands on. */
 const TICK_COUNT = 8;
@@ -118,21 +197,36 @@ function point(v: Vec2): string {
 }
 
 /**
- * The arrow, tail on the ring at the bearing the wind blows *from*, flying
- * inward along the same radial — the way the wind is actually going.
+ * The arrow: tail on the ring at the bearing the wind blows *from*, flying
+ * inward along the same radial by however hard it is blowing — so it points the
+ * way the wind is going and its length is the speed.
  *
  * The head is path geometry in metres rather than a `marker`. Markers are sized
  * in stroke widths by default, and every stroke in this drawing is
  * `non-scaling-stroke` (§4.5), so a marker would size itself off a length that
  * has been taken out of user space — which draws an arrowhead the size of the
  * boat.
+ *
+ * **A calm draws nothing**, and needs to draw nothing. The zero-wind edge case
+ * pos-bwd.6 had to design a grabbable minimum for is dissolved rather than
+ * solved: the whole water is the control, so a wind dragged away to nothing is
+ * recoverable from anywhere on the surface.
+ *
+ * The barbs shrink with the shaft below `4 × ARROW_BARB`, so a light air draws a
+ * small arrow rather than an arrowhead with no arrow behind it. Without it the
+ * mark inverts at the bottom of the range, which is precisely where a student is
+ * trying to read whether there is any wind at all.
  */
-export function windArrowPathData(from: Radians): string {
+export function windArrowPathData(from: Radians, speed: MetersPerSecond): string {
+  const length = arrowLength(speed);
+  if (length <= 0) return "";
+
   const tail = vectorFromAngle(from, SCENE.windRingRadius);
-  const tip = vectorFromAngle(from, SCENE.windRingRadius - ARROW_LENGTH);
+  const tip = vectorFromAngle(from, SCENE.windRingRadius - length);
+  const barbLength = Math.min(ARROW_BARB, length / 4);
   // Barbs splay back upwind from the tip, which is bearing `from` again.
   const barb = (sign: number): Vec2 =>
-    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, ARROW_BARB));
+    add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, barbLength));
 
   return [
     `M ${point(tail)} L ${point(tip)}`,
@@ -193,7 +287,7 @@ export function createWindLayer(): Layer {
     element,
     update(state: SimState): void {
       ticks.setAttribute("d", windTickPathData(state.wind.from));
-      arrow.setAttribute("d", windArrowPathData(state.wind.from));
+      arrow.setAttribute("d", windArrowPathData(state.wind.from, state.wind.speed));
     },
   };
 }

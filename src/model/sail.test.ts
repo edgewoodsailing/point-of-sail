@@ -9,6 +9,7 @@ import {
   optimalTrim,
   rigForce,
   sailForce,
+  cleatedAt,
 } from "./sail.ts";
 import { FOIL, LUFF } from "./tuning.ts";
 import type { ApparentWind } from "./wind.ts";
@@ -587,7 +588,10 @@ describe("optimal trim (DESIGN.md §3.2)", () => {
 });
 
 describe("the rig as a whole", () => {
-  const trim = { mainAngle: deg(-15), jibAngle: deg(-20), jibSet: true };
+  // A full RigTrim, because a sheet setting is part of one now. `rigForce` reads
+  // only the angles, so the sheets are along for the ride — but the type says
+  // what a trim IS, and a literal that omits them is describing the old model.
+  const trim = cleatedAt(deg(-15), deg(-20), true, wind(30));
 
   it("sums the two sails", () => {
     const rig = rigForce(trim, wind(30));

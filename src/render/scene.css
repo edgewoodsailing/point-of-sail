@@ -107,6 +107,14 @@
    * compete with the cloth for attention.
    */
   --pos-rule-speed: clamp(1.6px, 0.45vmin, 4px);
+
+  /*
+   * The telltale. The lightest *object* on the boat — lighter than the hull's
+   * own rule, because it is a piece of yarn and the drawing should not make it
+   * a spar. It carries its weight through motion instead, which is what a real
+   * telltale does across a crowded foredeck.
+   */
+  --pos-rule-telltale: clamp(1.2px, 0.35vmin, 3px);
   --pos-ink: oklch(38% 0.03 250deg);
   --pos-deck: oklch(99% 0.004 250deg / 80%);
 }
@@ -124,6 +132,27 @@
 }
 
 .pos-sim .pos-mast {
+  fill: var(--pos-ink);
+}
+
+/*
+ * The six stays' deck attachment points (§4.1, pos-aax) — headstay, two uppers,
+ * two lowers, backstay.
+ *
+ * **Full-strength hull ink, no opacity.** A lightened version was tried and
+ * read as dirt on the deck rather than as hardware on it: at this size a mark
+ * has to be definite to be a mark at all, and the eye reads a faint small thing
+ * as a rendering artefact. The ranking against the mast is carried entirely by
+ * `STAY_RADIUS` in `hull.ts`, which is the honest place for it — they are the
+ * same kind of object and differ only in importance.
+ *
+ * Filled, and now the only round marks on the deck besides the mast. The clew
+ * rings that were the drawing's other circles are gone: a drawn ring the size
+ * of a shackle standing in for a 22 px touch target promised an affordance at a
+ * size the geometry never honoured, and the corner of a sail marks its own clew
+ * well enough without one.
+ */
+.pos-sim .pos-stay {
   fill: var(--pos-ink);
 }
 
@@ -164,24 +193,56 @@
 }
 
 /*
- * The clew fittings (§5). Hull ink and hull weight, because a fitting is part
- * of the boat rather than part of the sail — a shackle, not a telltale — and
- * because the sail's own stroke is the heaviest line in the drawing and should
- * stay so. Hollow, so it is told apart from the filled mast dot.
- */
-.pos-sim .pos-clew {
-  fill: none;
-  stroke: var(--pos-ink);
-  stroke-width: var(--pos-rule-hull);
-}
-
-/*
  * Transparent to the pointer. Hit-testing is geometric — `input/gestures.ts`
  * arbitrates in metres and never reads an event's target — so this changes no
  * behaviour; it is here to make that true by construction rather than by
  * convention, exactly as `.pos-speed` above is.
  */
 .pos-sim .pos-handles {
+  pointer-events: none;
+}
+
+/*
+ * PROTOTYPE — the wind's *display* layer, translucent so it can lie over the
+ * boat instead of stopping short of it.
+ *
+ * The layer already painted above the boat (`render/scene.ts` appends it after
+ * the boat group); what is new is that the arrow now reaches the mast, so
+ * "above" has consequences it never had while the arrow stopped at 4.45 m. The
+ * opacity is on the group rather than on each mark, so the arrow does not
+ * darken where it crosses its own graduations.
+ *
+ * Applied to the group's *opacity* rather than to each stroke's alpha for the
+ * same reason, and because it leaves one knob to turn.
+ */
+.pos-sim .pos-wind {
+  opacity: var(--pos-wind-opacity, 0.55);
+}
+
+/*
+ * The rigging telltale (§4.1, pos-32n): yarn showing the APPARENT wind.
+ *
+ * Hull ink, not the wind's blue, and the choice is the whole argument. The blue
+ * belongs to the true wind — the ring and its graduations — and a mark that is
+ * meant to *disagree* with the ring must not look like part of it. It is a
+ * physical object tied to the boat, so it takes the boat's colour; that the
+ * student then sees the yarn pointing somewhere the ring does not is the lesson,
+ * and it lands harder for the two being told apart at a glance.
+ *
+ * Round-capped and round-joined, so a sampled polyline reads as limp yarn rather
+ * than as a faceted line.
+ */
+.pos-sim .pos-telltale {
+  fill: none;
+  stroke: var(--pos-ink);
+  stroke-width: var(--pos-rule-telltale);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Transparent to the pointer, like every other drawn mark: hit-testing is
+   geometric and reads no element (`input/gestures.ts`). */
+.pos-sim .pos-telltales {
   pointer-events: none;
 }
 

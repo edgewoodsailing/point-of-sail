@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { JIB, MAIN } from "./boat.ts";
 import { hullResistance, hullResistanceSlope, keelInducedDrag } from "./hull.ts";
-import { depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
+import { cleatedAt, depoweringFactor, optimalTrim, rigForce } from "./sail.ts";
 import { FOIL } from "./tuning.ts";
 import type { SimState } from "./simulation.ts";
 import { settle } from "./simulation.ts";
@@ -128,7 +128,7 @@ function boat(twa: number, jibSet: boolean, trim: Radians, wind: MetersPerSecond
   return {
     wind: { from: deg(twa), speed: wind },
     motion: { heading: 0, speed: 0 },
-    trim: { mainAngle: trim, jibAngle: trim, jibSet },
+    trim: cleatedAt(trim, trim, jibSet, apparentWind({ from: deg(twa), speed: wind }, { heading: 0, speed: 0 })),
     mainHeld: false,
     jibHeld: false,
   };
@@ -257,7 +257,13 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
       const found = worstFold(wind);
       expect(found.width, `${wind} kt true: fold at ${found.where}`).toBe(0);
     }
-  }, 60_000);
+  // 120 s, raised from 60 when the sheet model landed. `settle` now eases the
+  // boom toward its natural angle on every step as well as integrating the
+  // speed, so a sweep of this size costs materially more than it did — it
+  // passes in about 70 s alone and was tipping over the old budget only when
+  // vitest ran it alongside the other suites. A hang detector, still, rather
+  // than a performance assertion.
+  }, 120_000);
 
   /**
    * The same claim in the terms the bug was reported in, which is worth having
@@ -272,15 +278,30 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
    * `leaves only cases where the boat is stopped on one of the branches` below,
    * which reads the numbers this collects.
    */
-  it("settles to the same speed from rest as from speed", () => {
-    for (const wind of [6, 10, 14]) {
-      for (const jibSet of [false, true]) {
+  // **One test per wind, rather than one test over three winds.** Not a style
+  // choice: the merged sweep ran ~6,600 settles in a single uninterrupted body,
+  // and a worker that never yields cannot answer vitest's `onTaskUpdate`, so
+  // `npm test` exited **non-zero** with an unhandled RPC timeout while every
+  // assertion passed. Raising the per-test budget did not help and could not —
+  // the limit being hit is the runner's reporting channel, not the test's clock.
+  // The grid is unchanged; only the number of bodies it is spread across is.
+  for (const wind of [6, 10, 14]) {
+    for (const jibSet of [false, true]) {
+      it(`settles to the same speed from rest as from speed (${wind} kt, ${jibSet ? "sloop" : "main only"})`, async () => {
         // From 5°, not 10°: the residual this also collects lives at TWA 65°,
         // and a grid of 10 + 15k steps straight over it. That is not a
         // hypothetical — merging these two sweeps into one pass did exactly
         // that, and the bound below went on passing against a set that no
         // longer contained the case its own docblock describes.
         for (let twa = 5; twa <= 180; twa += 15) {
+          // **Yield to the event loop once per bearing.** This is a few thousand
+          // `settle` calls in a row, and a worker blocked in a synchronous loop
+          // cannot answer vitest's `onTaskUpdate` — which fails `npm test` with
+          // an unhandled RPC timeout while every assertion passes. Splitting the
+          // grid into smaller test bodies treats the symptom; the cause is that
+          // the loop never gives the runner a turn. Twelve yields per body cost
+          // nothing measurable and fix it at the mechanism.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           for (let trim = 0; trim >= -90; trim -= 2) {
             const state = boat(twa, jibSet, deg(trim), kt(wind));
             const fromRest = metersPerSecondToKnots(settle(state).motion.speed);
@@ -307,9 +328,13 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
             expect(fromRest, where).toBeCloseTo(fromSpeed, 4);
           }
         }
-      }
+      // A hang detector rather than a performance assertion. `settle` costs more
+      // than it did on `main` because it now eases the boom as well as
+      // integrating the speed, and the sloop cases pay for the jib's chord on
+      // every step.
+      }, 60_000);
     }
-  }, 60_000);
+  }
 
   /**
    * The bug as the human found it in the running app: main alone, TWA 90 in
@@ -357,11 +382,14 @@ describe("the settled speed is single-valued (DESIGN.md §3.5, §3.6)", () => {
             state = {
               ...state,
               motion: settled.motion,
-              trim: {
-                ...state.trim,
-                mainAngle: optimalTrim(MAIN, apparent).angle,
-                jibAngle: optimalTrim(JIB, apparent).angle,
-              },
+              // Cleated: an angle without a sheet to hold it is eased straight
+              // back out by the next step (`cleatedAt`).
+              trim: cleatedAt(
+                optimalTrim(MAIN, apparent).angle,
+                optimalTrim(JIB, apparent).angle,
+                state.trim.jibSet,
+                apparent,
+              ),
             };
           }
 

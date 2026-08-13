@@ -1,26 +1,32 @@
 /**
- * The wind speed control: §5's one slider, and the range it runs over.
+ * **The range the wind runs over** — and, until it was removed, the slider that
+ * ran over it.
  *
- * ## Why a slider and not a drag
+ * ## There is no longer a slider, and the argument for one is answered
  *
- * Every other input in the simulator is a direct manipulation of the drawing,
- * and wind speed deliberately is not. The obvious gesture — drag the wind
- * arrow's length — puts a one-dimensional target inside a two-dimensional one:
- * the same finger on the same ring would have to mean *bearing* when it moves
- * around and *speed* when it moves in and out, and on a phone, where §5's whole
- * argument is that targets must be large and will overlap, that is the one
- * pairing guaranteed to make both gestures worse. So the ring keeps the bearing,
- * which is the gesture worth having, and the speed goes to a control that cannot
- * be missed.
+ * This module used to open by arguing that wind speed could not be a direct
+ * manipulation: dragging the arrow's length would put a one-dimensional target
+ * inside a two-dimensional one, so the same finger on the same ring would mean
+ * *bearing* going round and *speed* going in and out — on a phone, the pairing
+ * guaranteed to make both worse.
  *
- * It is also the honest reading of what the two quantities are. Wind direction
- * is a thing you point at; wind speed is a dial on the world. §5 put it in the
- * control strip beside the switches for that reason, and this module is only the
- * arithmetic — `main.ts` owns the element, as it owns the rest of the shell.
+ * The reasoning was sound and its premise was a **thin ring**, where the radial
+ * axis has almost no travel and every drag is tangential by construction. Given
+ * the whole water — which is what the wind claims now — the radial axis has the
+ * full radius, and the two axes separate on their own: motion along a circle
+ * about the origin is pure bearing, motion along a radius is pure speed. DESIGN
+ * §5 works it through, and the slider went with it.
+ *
+ * What is left here is the arithmetic and the range, which the *drawing* now
+ * reads: `render/scene.ts` derives the whole scene's scale from
+ * {@link WIND_SPEED_KT}`.max`, so this file went from owning a control to owning
+ * a constant that sizes the boat. That is a stranger job than it had and worth
+ * saying out loud; the constant is arguably not an `input/` concern at all any
+ * more.
  *
  * ## Where the range stops
  *
- * **0 to 20 knots.** §5 asked for a slider without saying where it ended, and
+ * **0 to 20 knots.** §5 asked for a range without saying where it ended, and
  * for several beads the answer was whatever the scaffolding happened to offer;
  * comments across the model still appeal to "today's scaffolding offers 0–30 kt"
  * as though that were a decision (pos-g7p). This is where it becomes one.

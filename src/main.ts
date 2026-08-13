@@ -1,10 +1,9 @@
 import "./shell.css";
 
 import { bindPointers } from "./input/pointer.ts";
-import { knotsFromWindSpeed, WIND_SPEED_KT, windSpeedFromKnots } from "./input/windSpeed.ts";
 import { clampTrim } from "./model/boat.ts";
 import type { CollapseEdge } from "./model/sail.ts";
-import { rigForce } from "./model/sail.ts";
+import { cleatedAt, rigForce } from "./model/sail.ts";
 import type { SimState } from "./model/simulation.ts";
 import { settle, step } from "./model/simulation.ts";
 import type { Degrees, Meters, Newtons, Radians, Seconds } from "./model/units.ts";
@@ -15,17 +14,23 @@ import {
   radiansToDegrees,
 } from "./model/units.ts";
 import { apparentWind, trueWindAngle } from "./model/wind.ts";
-import { createClewLayer } from "./render/clew.ts";
+import { createDevicePicker, createGeometryOverlay, createWindKnobs } from "./render/geometry.ts";
 import { createSailLayer, rigDrawing } from "./render/sail.ts";
 import { createScene } from "./render/scene.ts";
 import { createSpeedLayer } from "./render/speed.ts";
+import { createTelltaleLayer } from "./render/telltale.ts";
 import { createWindLayer } from "./render/wind.ts";
 
 // Shell bootstrap. Every drawn layer mounts through the scene, onto the named
 // group it belongs to; the pointer layer binds to `surface` rather than to the
-// SVG, for the reason `input/pointer.ts` gives. The control strip carries §5's
-// wind speed slider, and pos-740.3's two switches are what is still to come
-// beside it. (DESIGN.md §6)
+// SVG, for the reason `input/pointer.ts` gives.
+//
+// **The control strip is empty by default now.** It held §5's wind speed
+// slider until the wind became a direct manipulation of the drawing — the whole
+// water sets bearing and speed together — at which point the slider was a second
+// way to say the same thing. pos-740.3's apparent-wind and jib switches are what
+// will fill it; until then it carries only the prototyping rig, hidden behind
+// `g`. (DESIGN.md §5, §6)
 const surface = document.querySelector<HTMLElement>(".pos-sim .surface");
 if (surface === null) {
   throw new Error("Page shell is missing the drawing surface (.pos-sim .surface)");
@@ -66,11 +71,21 @@ if (controls === null) {
 let state: SimState = settle({
   wind: { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
   motion: { heading: degreesToRadians(35), speed: 0 },
-  trim: {
-    mainAngle: degreesToRadians(-75),
-    jibAngle: degreesToRadians(-70),
-    jibSet: true,
-  },
+  // Cleated, so the sheets hold the angles asked for and `settle` leaves them
+  // where this says. Built by `cleatedAt` rather than field by field: writing
+  // `jibSheet` by hand measured it against the rigid 7'6" foot while the model
+  // reads it back against the bellied chord, which opened the boat at −71.36°
+  // when the line above said −70. The helper passes the live chord, which is
+  // the whole reason it exists.
+  trim: cleatedAt(
+    degreesToRadians(-75),
+    degreesToRadians(-70),
+    true,
+    apparentWind(
+      { from: degreesToRadians(200), speed: knotsToMetersPerSecond(10) },
+      { heading: degreesToRadians(35), speed: 0 },
+    ),
+  ),
   mainHeld: false,
   jibHeld: false,
 });
@@ -86,87 +101,58 @@ scene.layers.speed.append(speed.element);
 const sails = createSailLayer();
 scene.layers.sails.append(sails.element);
 
-const clews = createClewLayer();
-scene.layers.handles.append(clews.element);
+// The telltale goes above the cloth so an eased sail cannot bury the one mark
+// on the boat that reports the wind the sails are answering.
+const telltale = createTelltaleLayer();
+scene.layers.handles.append(telltale.element);
+
+// --- The geometry overlay (prototyping only) --------------------------------
+//
+// Appended to the SVG root rather than to a named layer, so it paints above
+// everything and `render/scene.ts`'s layer contract is untouched. The root and
+// the world group share a transform — the world→user map is the identity — so
+// world-frame metres drop straight in.
+//
+// **Off by default**, now that the prototyping it existed for is done. `g`
+// toggles the whole kit — the overlay, its readout, and the two rows of
+// prototyping controls — and `?geometry=1` opens with it up. The code stays:
+// it is the only way to see the touch geometry, and the next person to argue
+// about target sizes will want it.
+
+const geometry = createGeometryOverlay(scene.pixelsToMeters, () => ({
+  width: surface.clientWidth,
+  height: surface.clientHeight,
+}));
+scene.element.append(geometry.element);
+surface.append(geometry.legend);
+
+const simRoot = document.querySelector<HTMLElement>(".pos-sim");
+if (simRoot === null) throw new Error("Page shell is missing its root (.pos-sim)");
+
+// The prototyping controls ride in their own box so one class hides them all,
+// rather than three elements each remembering to.
+const rig = document.createElement("div");
+rig.className = "pos-geo-rig";
+rig.append(createDevicePicker(simRoot), createWindKnobs(simRoot));
+controls.append(rig);
+
+let showGeometry = new URLSearchParams(location.search).get("geometry") === "1";
+
+function setDebug(on: boolean): void {
+  geometry.setVisible(on);
+  rig.classList.toggle("pos-geo-off", !on);
+}
+
+setDebug(showGeometry);
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "g" || event.metaKey || event.ctrlKey || event.altKey) return;
+  showGeometry = !showGeometry;
+  setDebug(showGeometry);
+});
 
 // --- The control strip ------------------------------------------------------
 
-/**
- * §5's wind speed slider, and the readout beside it.
- *
- * The one quantity a student sets that is *not* a direct manipulation of the
- * drawing, for the reason `input/windSpeed.ts` gives: the alternative is
- * dragging the arrow's length, which would make the same finger on the same ring
- * mean two different things. The range and both conversions live in that module
- * so they can be tested; what is here is the element.
- *
- * Built rather than written into `index.html` because the readout has to be kept
- * in step with the state, so the element and the code that feeds it belong
- * together. The strip itself is markup, and stays there.
- *
- * The value is shown. That is not the scaffolding §7 rules out — §7 is about not
- * handing the student the *answer*, and the wind is the question. A student poses
- * a situation and needs to know which one they posed; what stays unlabelled is
- * everything downstream, the boat speed and the trim quality, which are what
- * they are meant to work out from the drawing.
- */
-function createWindSpeedControl(host: HTMLElement, of: SimState): (next: SimState) => void {
-  const row = document.createElement("label");
-  row.className = "wind-speed";
-
-  const caption = document.createElement("span");
-  caption.className = "wind-speed-caption";
-  caption.textContent = "Wind";
-
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = String(WIND_SPEED_KT.min);
-  input.max = String(WIND_SPEED_KT.max);
-  input.step = String(WIND_SPEED_KT.step);
-  input.value = String(knotsFromWindSpeed(of.wind.speed));
-  // setAttribute, not the `ariaLabel` property: ARIA reflection starts at Safari
-  // 16.4, above the floor `vite.config.ts` pins (§4.4). Below it the property is
-  // a silent expando and the control has no accessible name at all — and the
-  // wrapping label cannot supply one either, since its text is "Wind", which is
-  // the direction as much as the speed.
-  input.setAttribute("aria-label", "Wind speed in knots");
-
-  const value = document.createElement("output");
-  value.className = "wind-speed-value";
-  // Hidden from assistive technology, not from the eye. `<output>` maps to
-  // `role="status"`, which is a polite live region — so dragging the thumb from
-  // 0 to 20 would announce the wind twenty times *on top of* the range
-  // input announcing exactly the same number as its own value. The readout is a
-  // visual duplicate of the slider's value, and the slider already says it.
-  value.setAttribute("aria-hidden", "true");
-
-  input.addEventListener("input", () => {
-    commit({ ...state, wind: { ...state.wind, speed: windSpeedFromKnots(Number(input.value)) } });
-  });
-
-  row.append(caption, input, value);
-  host.append(row);
-
-  /**
-   * Follows the state, so the console handle below — and pos-740's randomised
-   * opening state (§2.1) — cannot leave the control lying about the wind it is
-   * showing. A stale thumb is worse than no control, because the next touch of
-   * it jumps the wind to wherever the thumb was sitting.
-   *
-   * Guarded on the string rather than assigned every frame. Writing the same
-   * value back to a `range` while a thumb is being dragged is not reliably a
-   * no-op across browsers, and this runs sixty times a second.
-   */
-  return (next: SimState): void => {
-    const knots = knotsFromWindSpeed(next.wind.speed);
-    const shown = String(knots);
-    if (input.value !== shown) input.value = shown;
-    const text = `${knots} kt`;
-    if (value.textContent !== text) value.textContent = text;
-  };
-}
-
-const windSpeed = createWindSpeedControl(controls, state);
 
 /**
  * Everything that reads state, in one place, so nothing can forget a layer.
@@ -186,8 +172,8 @@ function draw(next: SimState): void {
   wind.update?.(next);
   speed.update?.(next);
   sails.update?.(next);
-  clews.update?.(next);
-  windSpeed(next);
+  telltale.update?.(next);
+  geometry.update(next);
 }
 
 // --- The frame loop ---------------------------------------------------------
@@ -351,8 +337,21 @@ const pos = {
   },
 
   /** Patch just the trim, which is the field most worth poking at. */
-  trim: (patch: Partial<SimState["trim"]>): SimState =>
-    pos.set({ trim: { ...state.trim, ...patch } }),
+  trim: (patch: Partial<SimState["trim"]>): SimState => {
+    // Setting an angle from the console sets the sheet that holds it, or the
+    // sail swings straight back out of wherever it was put. **Both sails**: an
+    // earlier version did this for the main only, so `pos.trim({ jibAngle })`
+    // eased straight back and looked like the console being ignored.
+    const want = { ...state.trim, ...patch };
+    const cleated = cleatedAt(
+      want.mainAngle,
+      want.jibAngle,
+      want.jibSet,
+      apparentWind(state.wind, state.motion),
+    );
+    // The caller's own fields still win, so an explicit sheet can be set.
+    return pos.set({ trim: { ...cleated, ...patch } });
+  },
 
   /**
    * Jump the speed to where this wind, heading and trim would eventually take
