@@ -403,6 +403,122 @@ describe("step size", () => {
   });
 });
 
+describe("bearing away through a gybe (DESIGN.md §3.4)", () => {
+  /**
+   * The whole manoeuvre, at the helm rate a student turns at: settled on a
+   * broad reach with both sails eased, then bearing away steadily through dead
+   * downwind and on round toward the other beam, with nobody touching a sheet.
+   *
+   * Returns the apparent wind angle at which each sail crossed the centreline,
+   * in degrees, negative because the boat is bearing away onto the port
+   * quarter — or `null` for a sail that never went.
+   */
+  function bearAwayThroughAGybe(turnRate: Radians): {
+    main: number | null;
+    jib: number | null;
+    mainReachedCentreline: boolean;
+  } {
+    // Broad reach on starboard tack, sails right out.
+    let state = settle({
+      ...boat(deg(140)),
+      trim: cleatedAt(
+        deg(80),
+        deg(55),
+        true,
+        apparentWind({ from: deg(140), speed: WIND_SPEED }, { heading: 0, speed: 0 }),
+      ),
+    });
+
+    let main: number | null = null;
+    let jib: number | null = null;
+    let mainReachedCentreline = false;
+
+    for (let elapsed = 0; elapsed < 40; elapsed += FRAME) {
+      const before = state.trim;
+      // The helm is the input layer's, so the test turns the boat the way
+      // `pointer.ts` does: by writing a heading and stepping.
+      state = step(
+        { ...state, motion: { ...state.motion, heading: state.motion.heading - turnRate * FRAME } },
+        FRAME,
+      );
+
+      const awa = radiansToDegrees(apparentWind(state.wind, state.motion).angle);
+      if (main === null && state.trim.mainAngle > 0 && before.mainAngle <= 0) main = awa;
+      if (jib === null && state.trim.jibAngle > 0 && before.jibAngle <= 0) jib = awa;
+      if (Math.abs(radiansToDegrees(state.trim.mainAngle)) < 5) mainReachedCentreline = true;
+    }
+
+    return { main, jib, mainReachedCentreline };
+  }
+
+  /**
+   * The bug: both sails used to go over the moment the apparent wind crossed
+   * dead astern, whatever they were sheeted at. They now hold while the boat
+   * sails by the lee and cross when the wind gets round their own leech — the
+   * jib first, being sheeted narrower, and the boom well after it.
+   *
+   * The angles are the model's own rule, `|awa| = 180° − trim`, met to about a
+   * degree: the sails are easing across a turning boat rather than answering a
+   * step change, and the boom has its own time constant to overcome first.
+   */
+  it("holds both sails until the wind is round their leech, jib first", () => {
+    const { main, jib, mainReachedCentreline } = bearAwayThroughAGybe(deg(3));
+
+    expect(jib).not.toBeNull();
+    expect(main).not.toBeNull();
+
+    // The jib's clew settles a little inside the 55° it was cleated at, so its
+    // leech comes round at about −125°; the boom, out at 80°, holds to −100°.
+    expect(jib as number).toBeLessThan(-120);
+    expect(jib as number).toBeGreaterThan(-130);
+    expect(main as number).toBeLessThan(-96);
+    expect(main as number).toBeGreaterThan(-104);
+
+    // The headsail backs first and the boom follows, which is the order it
+    // happens in on the water — and the gap is 20°+ of turning, not a frame.
+    expect((jib as number) + 15).toBeLessThan(main as number);
+
+    // And it goes *through* the centreline rather than unwinding the long way
+    // round through head to wind.
+    expect(mainReachedCentreline).toBe(true);
+  });
+
+  /**
+   * The same manoeuvre at four times the helm rate, and the crossing angles
+   * barely move: measured, the jib goes at −125.6° against −124.0° and the boom
+   * at −99.8° against −98.9°.
+   *
+   * **That near-invariance is the assertion**, not a robustness afterthought.
+   * If the sails were crossing because a wind that had swung past them was
+   * dragging them over, quadrupling how fast it swings would move the angle a
+   * long way; that it moves by a degree says the crossing is set by the
+   * geometry — α arriving at the leech — and that the boom's time constant only
+   * decides how long the crossing takes once it has started.
+   *
+   * Bounded on both sides for a reason worth recording: `main < −85°` would
+   * pass under the *old* model too, which crossed at AWA ±180°. A one-sided
+   * threshold cannot tell "held too long" from "went at the transom", so the
+   * band has to exclude both.
+   */
+  it("crosses at the same angles at a much faster turn", () => {
+    const slow = bearAwayThroughAGybe(deg(3));
+    const fast = bearAwayThroughAGybe(deg(12));
+
+    expect(fast.jib).not.toBeNull();
+    expect(fast.main).not.toBeNull();
+
+    // The same bands the 3°/s turn is held to, and both exclude ±180°.
+    expect(fast.jib as number).toBeLessThan(-120);
+    expect(fast.jib as number).toBeGreaterThan(-130);
+    expect(fast.main as number).toBeLessThan(-96);
+    expect(fast.main as number).toBeGreaterThan(-104);
+
+    expect(Math.abs((fast.jib as number) - (slow.jib as number))).toBeLessThan(3);
+    expect(Math.abs((fast.main as number) - (slow.main as number))).toBeLessThan(3);
+    expect(fast.jib as number).toBeLessThan(fast.main as number);
+  });
+});
+
 describe("state handling", () => {
   const beamReach = wellTrimmed(deg(45));
 

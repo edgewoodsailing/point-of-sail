@@ -222,6 +222,15 @@ function advance(state: SimState, dt: Seconds): SimState {
     // Note this rides inside `advance`, so `settle` gets it for free: settle
     // steps repeatedly, so it converges the boom and the speed together —
     // which matters, since each depends on the other through the apparent wind.
+    //
+    // **Both natural angles are handed the angle the sail is at**, and not for
+    // want of somewhere to put it: the wind alone does not say which way a sail
+    // swings once it is deep by the lee, because a sail lies along the flow at
+    // two angles and only where it *is* says which one it is being pushed
+    // toward. So the target is a function of the state as well as the wind —
+    // hysteretic, as a boom on the water is — and this is a step of that
+    // recurrence rather than a fresh solve. `naturalMainAngle` has the whole
+    // argument.
     trim: {
       ...state.trim,
       mainAngle: state.mainHeld
@@ -229,7 +238,7 @@ function advance(state: SimState, dt: Seconds): SimState {
         : clampTrim(
             easeSailAngle(
               state.trim.mainAngle,
-              naturalMainAngle(state.trim.mainSheet, apparent),
+              naturalMainAngle(state.trim.mainAngle, state.trim.mainSheet, apparent),
               dt,
             ),
           ),
@@ -249,9 +258,10 @@ function advance(state: SimState, dt: Seconds): SimState {
                 easeSailAngle(
                   state.trim.jibAngle,
                   naturalJibAngle(
-                state.trim.jibSheet,
-                state.trim.jibSheetSide,
-                apparent,
+                    state.trim.jibAngle,
+                    state.trim.jibSheet,
+                    state.trim.jibSheetSide,
+                    apparent,
                     jibChord(state.trim.jibAngle, apparent),
                   ),
                   dt,
