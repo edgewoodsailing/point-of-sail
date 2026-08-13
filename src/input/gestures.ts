@@ -74,7 +74,7 @@ import {
 } from "../model/units.ts";
 import { cubicPoint, HULL_OUTLINE } from "../render/hull.ts";
 import { SCENE } from "../render/scene.ts";
-import { ARROW_REACH } from "../render/wind.ts";
+import { radiusForWind, speedForRadius } from "../render/wind.ts";
 
 // --- Frames -----------------------------------------------------------------
 
@@ -248,10 +248,14 @@ export function touchScale(
  * so it is gone rather than left as a guard nothing can test.
  */
 function windRingFor(grab: Meters, band: Meters): WindRing {
-  return {
-    inner: Math.max(SCENE.boatRadius + grab, ARROW_REACH),
-    outer: SCENE.windRingRadius + band,
-  };
+  // PROTOTYPE — there is no annulus any more. The wind is the fall-through in
+  // {@link beginGrab}, so its region is everything the boat does not claim,
+  // which has no inner or outer edge to state. Reported as a disc reaching well
+  // past any viewport so `render/geometry.ts` can still draw the region, and so
+  // the two constants above still have somewhere to be read.
+  void grab;
+  void band;
+  return { inner: 0, outer: SCENE.shortRadius * 3 };
 }
 
 // --- The hull silhouette ----------------------------------------------------
@@ -341,11 +345,32 @@ export type GrabTarget = "main" | "jib" | "hull" | "wind";
  * sail from jumping to meet a finger. It is `null` whenever the pointer is
  * inside the dead zone, which is the same thing as "there is no usable bearing
  * right now"; {@link dragTo} re-derives it on the way out.
+ *
+ * `radiusOffset` is the same correction on the radial axis, and only the wind
+ * has one. It is metres of *radius*, not of speed, so the two halves of a wind
+ * drag are corrected in the same coordinates the pointer moves in.
  */
 export interface Grab {
   readonly target: GrabTarget;
   readonly offset: Radians | null;
+  readonly radiusOffset?: Meters;
 }
+
+/**
+ * PROTOTYPE — whether a wind drag's radius is *absolute* (the arrow's tail
+ * lands under the finger the instant it touches down) or *relative* (the arrow
+ * keeps its length and follows the finger from where it was).
+ *
+ * The one thing about this design that cannot be reasoned out from a
+ * description, so it is a switch rather than a decision. Relative is the
+ * default because it matches every other gesture in the simulator — §5's "drags
+ * preserve where you grabbed" — and because it is what makes an accidental
+ * touch cost nothing: a finger that lands on the water and does not move
+ * changes no wind at all. Under absolute, the same stray touch snaps the wind
+ * to wherever the hand happened to land, which is §5's objection to giving the
+ * open water away, arriving by a different road.
+ */
+export const RADIAL = { absolute: false };
 
 /** What a target turns about, and what writing to it does. */
 interface Axis {
@@ -359,6 +384,26 @@ interface Axis {
   fromBearing(bearing: Radians): Radians;
   /** The state with this target's angle set — including whatever clamp it owes. */
   apply(state: SimState, angle: Radians): SimState;
+  /**
+   * The target's **second** degree of freedom, if it has one. Only the wind
+   * does: the same drag that sweeps its bearing round the origin sets its speed
+   * by how far out it is.
+   *
+   * That the two are one gesture is the design rather than a compromise. A ring
+   * that meant bearing going round and speed going in and out was §5's argument
+   * *against* dragging the arrow's length — an argument made when the target was
+   * a thin annulus, where the radial half had almost no travel to work in. Given
+   * the whole water it has the full radius, and the coupling turns out to be
+   * mild in the hand: motion along a circle about the origin is pure bearing,
+   * motion along a radius is pure speed, and a hand drawing an arc does the
+   * first without being asked to.
+   */
+  readonly radial?: {
+    /** The radius the state's current value already stands at. */
+    readonly radius: Meters;
+    /** The state with the value that radius asks for. */
+    applyRadius(state: SimState, radius: Meters): SimState;
+  };
 }
 
 /**
@@ -424,8 +469,28 @@ function axisFor(target: GrabTarget, state: SimState): Axis {
           ...of,
           wind: { ...of.wind, from: normalizeSigned(angle) },
         }),
+        radial: {
+          radius: radiusForWind(state.wind.speed),
+          applyRadius: (of, radius) => {
+            // `speedForRadius` clamps to the control's range, so dragging past
+            // the ring holds at 20 kt and dragging through the centre floors at
+            // a calm rather than going negative.
+            const speed = speedForRadius(radius);
+            // Identity when nothing moved, because `input/pointer.ts` compares
+            // by identity to decide whether a move was worth writing. A drag
+            // held against the clamp would otherwise report a change every frame.
+            if (speed === of.wind.speed) return of;
+            return { ...of, wind: { ...of.wind, speed } };
+          },
+        },
       };
   }
+}
+
+/** How far the pointer is from a target's centre, in that target's frame. */
+function radiusOn(axis: Axis, world: Vec2, heading: Radians): Meters {
+  const point = axis.boatFrame ? toBoatPoint(world, heading) : world;
+  return magnitude(subtract(point, axis.centre));
 }
 
 /** The pointer's bearing about a target's centre, or `null` inside the dead zone. */
@@ -435,14 +500,26 @@ function bearingOn(axis: Axis, world: Vec2, heading: Radians, deadZone: Meters):
   return magnitude(offset) < deadZone ? null : angleOfVector(offset);
 }
 
-/** The grab with its offset taken afresh from where the pointer is now. */
+/**
+ * The radial correction a touchdown records, so a drag preserves the length it
+ * grabbed exactly as it preserves the angle. Zero under {@link RADIAL}.absolute,
+ * which is what makes the arrow's tail snap to the finger.
+ */
+function radialOffsetFor(axis: Axis, world: Vec2, heading: Radians): Meters {
+  if (axis.radial === undefined || RADIAL.absolute) return 0;
+  return axis.radial.radius - radiusOn(axis, world, heading);
+}
+
+/** The grab with its offsets taken afresh from where the pointer is now. */
 function reference(grab: Grab, state: SimState, world: Vec2, deadZone: Meters): Grab {
   const axis = axisFor(grab.target, state);
+  const radiusOffset = radialOffsetFor(axis, world, state.motion.heading);
   const bearing = bearingOn(axis, world, state.motion.heading, deadZone);
-  if (bearing === null) return { target: grab.target, offset: null };
+  if (bearing === null) return { target: grab.target, offset: null, radiusOffset };
   return {
     target: grab.target,
     offset: normalizeSigned(axis.angle - axis.fromBearing(bearing)),
+    radiusOffset,
   };
 }
 
@@ -529,16 +606,23 @@ export function beginGrab(
     return reference({ target: "hull", offset: null }, state, world, scale.deadZone);
   }
 
-  // The ring is measured in the world frame — it belongs to the world, not to
-  // the boat, which is the whole of §5's argument for putting the wind out
-  // here. A second finger reaches it while a first holds a sail, because the
-  // band and the clew discs are disjoint by construction and `wind` is a target
-  // of its own for the exclusivity rule.
-  if (!taken.has("wind") && onWindRing(world, scale.windRing)) {
-    return reference({ target: "wind", offset: null }, state, world, scale.deadZone);
-  }
-
-  return null;
+  // **Everything else is the wind**, and it is deliberately last: the water is
+  // the fall-through, so the boat's targets are never contended for and the wind
+  // gets whatever is left. That is the whole of "the manipulation layer sits
+  // beneath the boat" — there is no drawn layer to sit beneath, because
+  // hit-testing here is geometric and reads no element at all. Paint order and
+  // arbitration order are separate facts, and this is the one that decides.
+  //
+  // **The wind is not exclusive**, and that is what makes claiming the whole
+  // surface survivable. §5's objection to giving away the water outside the ring
+  // was the resting palm: a target belongs to one pointer at a time, so the
+  // first palm down would own the wind and every deliberate drag after it would
+  // get nothing. Giving the wind to *every* pointer that asks dissolves it —
+  // a palm that never moves never moves the wind, and a finger that does is
+  // never blocked by it. `reapply` re-references the still ones rather than
+  // re-applying them, so the held offsets stay fresh and no pointer fights
+  // another for the same number.
+  return reference({ target: "wind", offset: null }, state, world, scale.deadZone);
 }
 
 /**
@@ -559,11 +643,36 @@ export function dragTo(
   const axis = axisFor(grab.target, state);
   const bearing = bearingOn(axis, world, state.motion.heading, deadZone);
 
-  if (bearing === null) return { state, grab: { target: grab.target, offset: null } };
-  if (grab.offset === null) {
-    return { state, grab: reference(grab, state, world, deadZone) };
+  // The radial half runs first and runs unconditionally. A radius has no
+  // singularity at the centre the way a bearing does, so the dead zone — which
+  // exists because the angular gain rises without bound there — has nothing to
+  // say about it. Dragging a finger into the middle of the boat is a legitimate
+  // way to ask for a calm even though it is no way at all to ask for a bearing.
+  const radial = axis.radial;
+  const afterRadius =
+    radial === undefined
+      ? state
+      : radial.applyRadius(
+          state,
+          radiusOn(axis, world, state.motion.heading) + (grab.radiusOffset ?? 0),
+        );
+
+  if (bearing === null) {
+    return {
+      state: afterRadius,
+      grab: { target: grab.target, offset: null, radiusOffset: grab.radiusOffset },
+    };
   }
-  return { state: axis.apply(state, axis.fromBearing(bearing) + grab.offset), grab };
+  if (grab.offset === null) {
+    return { state: afterRadius, grab: reference(grab, afterRadius, world, deadZone) };
+  }
+  // Re-derived against the state the radial half just produced, so the angular
+  // half writes on top of it rather than over it.
+  const settled = axisFor(grab.target, afterRadius);
+  return {
+    state: settled.apply(afterRadius, settled.fromBearing(bearing) + grab.offset),
+    grab,
+  };
 }
 
 /** A live pointer: what it has hold of, and the last place it was seen. */
@@ -603,6 +712,14 @@ export function reapply(
 ): { readonly state: SimState; readonly held: readonly Held[] } {
   let next = state;
   const updated = held.map((one) => {
+    // **The wind is re-referenced, not re-applied.** It is the one non-exclusive
+    // target, so several pointers may hold it at once, and re-applying a still
+    // one would write back the wind it grabbed and undo the drag the moving one
+    // just made. Re-referencing instead updates its offsets to the wind as it
+    // now is, so that pointer picks up smoothly from here if it ever moves.
+    if (one.grab.target === "wind") {
+      return { grab: reference(one.grab, next, one.at, deadZone), at: one.at };
+    }
     const result = dragTo(next, one.grab, one.at, deadZone);
     next = result.state;
     return { grab: result.grab, at: one.at };

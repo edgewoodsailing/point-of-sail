@@ -16,7 +16,7 @@ import {
 } from "./model/units.ts";
 import { apparentWind, trueWindAngle } from "./model/wind.ts";
 import { createClewLayer } from "./render/clew.ts";
-import { createDevicePicker, createGeometryOverlay } from "./render/geometry.ts";
+import { createDevicePicker, createGeometryOverlay, createWindKnobs } from "./render/geometry.ts";
 import { createSailLayer, rigDrawing } from "./render/sail.ts";
 import { createScene } from "./render/scene.ts";
 import { createSpeedLayer } from "./render/speed.ts";
@@ -109,7 +109,7 @@ surface.append(geometry.legend);
 
 const simRoot = document.querySelector<HTMLElement>(".pos-sim");
 if (simRoot === null) throw new Error("Page shell is missing its root (.pos-sim)");
-controls.append(createDevicePicker(simRoot));
+controls.append(createDevicePicker(simRoot), createWindKnobs(simRoot));
 
 let showGeometry = new URLSearchParams(location.search).get("geometry") !== "0";
 geometry.setVisible(showGeometry);

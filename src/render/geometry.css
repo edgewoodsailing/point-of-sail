@@ -124,6 +124,26 @@
   color: oklch(45% 0.03 250deg);
 }
 
+/* Knobs on the wind-as-radial-control prototype, beside the display picker. */
+.pos-sim .pos-geo-knobs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin-block-end: 0.4rem;
+  font: 0.8rem/1.6 system-ui, sans-serif;
+  color: oklch(45% 0.03 250deg);
+}
+
+.pos-sim .pos-geo-knobs label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pos-sim .pos-geo-knob-value {
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- The readout ----------------------------------------------------------- */
 
 .pos-sim .surface {

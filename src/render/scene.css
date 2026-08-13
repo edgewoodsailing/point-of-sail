@@ -185,6 +185,23 @@
   pointer-events: none;
 }
 
+/*
+ * PROTOTYPE — the wind's *display* layer, translucent so it can lie over the
+ * boat instead of stopping short of it.
+ *
+ * The layer already painted above the boat (`render/scene.ts` appends it after
+ * the boat group); what is new is that the arrow now reaches the mast, so
+ * "above" has consequences it never had while the arrow stopped at 4.45 m. The
+ * opacity is on the group rather than on each mark, so the arrow does not
+ * darken where it crosses its own graduations.
+ *
+ * Applied to the group's *opacity* rather than to each stroke's alpha for the
+ * same reason, and because it leaves one knob to turn.
+ */
+.pos-sim .pos-wind {
+  opacity: var(--pos-wind-opacity, 0.55);
+}
+
 /* The wind ring's track and its seven points-of-sail graduations (§4.1, §5). */
 .pos-sim .pos-wind-track,
 .pos-sim .pos-wind-ticks {

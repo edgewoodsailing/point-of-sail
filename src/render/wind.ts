@@ -53,48 +53,80 @@
  * the drawing, so that cannot be taken by accident.
  */
 
+import { WIND_SPEED_KT } from "../input/windSpeed.ts";
 import type { SimState } from "../model/simulation.ts";
-import type { Meters, Radians, Vec2 } from "../model/units.ts";
-import { TAU, add, degreesToRadians, vectorFromAngle } from "../model/units.ts";
+import type { Meters, MetersPerSecond, Radians, Vec2 } from "../model/units.ts";
+import {
+  TAU,
+  add,
+  degreesToRadians,
+  knotsToMetersPerSecond,
+  metersPerSecondToKnots,
+  vectorFromAngle,
+  ZERO_VECTOR,
+} from "../model/units.ts";
 import { SCENE, type Layer } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
 
 // --- Drawing taste ----------------------------------------------------------
 
 /**
- * How far the arrow flies in from the ring.
+ * PROTOTYPE — the arrow's length is the wind's *speed*, and its tail is the
+ * radial control's handle.
  *
- * It reaches 4.45 m, which is inside `contentRadius` — and that is fine, because
- * the reservation runs the other way: `contentRadius` bounds how far the *speed*
- * indicator reaches before it starts crossing the ring, not how far in the ring's
- * own marks may come. The two can only be co-located with the bow aimed straight
- * at the arrow, which is head to wind, where the boat is making no way forward to
- * draw. What actually matters is that the arrow stays clear of the boat's swept
- * disc at every heading, with 0.86 m to spare; `wind.test.ts` sweeps it.
+ * The arrow runs from `radiusForSpeed(speed)` on the bearing the wind blows
+ * *from*, inward to the scene origin, so:
+ *
+ * - **Its length is the wind**, on one scale: 20 kt — the whole of the range §5
+ *   teaches in — puts the tail on the drawn ring, and a calm shrinks it to
+ *   nothing. That is the scale pos-bwd.5 wants for the two arrows, arrived at
+ *   from the other direction.
+ * - **Its head is on the boat**, which is where a wind vector's head belongs if
+ *   it is ever going to compose head-to-tail with the boat's own velocity.
+ * - **Its tail is under the finger.** A pointer's radius *is* the speed and its
+ *   bearing *is* the direction, so the whole water is one radial control and the
+ *   arrow is drawn where the hand left it.
+ *
+ * The consequence to look at rather than reason about: the arrow now crosses the
+ * boat at any real wind. That is what the translucent display layer in
+ * `scene.css` is for — and it is the question pos-bwd.5 left open, answered by
+ * letting the arrow overlay the sails instead of stopping short of them.
  */
-const ARROW_LENGTH: Meters = 1.2;
+function radiusForSpeed(speed: MetersPerSecond): Meters {
+  const fraction = metersPerSecondToKnots(speed) / WIND_SPEED_KT.max;
+  return SCENE.windRingRadius * Math.min(Math.max(fraction, 0), 1);
+}
+
+/**
+ * The inverse: what wind a pointer at this radius is asking for, clamped to the
+ * range the control offers.
+ *
+ * Exported for `input/gestures.ts`, which is the whole point — the mapping is
+ * one function read both ways, so the arrow cannot end up drawn on a different
+ * scale from the one the finger is moving it on.
+ */
+export function speedForRadius(radius: Meters): MetersPerSecond {
+  const fraction = radius / SCENE.windRingRadius;
+  const knots = WIND_SPEED_KT.max * Math.min(Math.max(fraction, 0), 1);
+  return knotsToMetersPerSecond(knots);
+}
+
+/** What radius a given wind speed puts the arrow's tail at. Inverse of the above. */
+export function radiusForWind(speed: MetersPerSecond): Meters {
+  return radiusForSpeed(speed);
+}
 
 /** Barb length and how far the barbs splay back from the tip. */
 const ARROW_BARB: Meters = 0.4;
 const ARROW_SPREAD: Radians = degreesToRadians(28);
 
 /**
- * The innermost radius the drawn arrow reaches — its tip, at 4.45 m.
- *
- * Exported because it is the **inner edge of the wind's hit band** (§5), not
- * merely a drawing dimension. The arrow is the mark a student reaches for, and a
- * band sized only in pixels about the ring leaves most of it outside: a
- * symmetric 22 px band starts at 4.97 m on a phone and 5.33 m on an iPad, which
- * misses 17 px of the arrow's 39 px on the one and 61 px of its 83 px on the
- * other — the whole arrowhead in both cases, since the barb tips stand at
- * 4.807 m. `input/gestures.ts` reads this so the target follows the drawing
- * instead of a number that has to be remembered when the drawing changes.
- *
- * The barbs cannot be the binding point: they splay *back* from the tip toward
- * the ring, so the tip is the minimum by construction, and `wind.test.ts`
- * measures the path data to say so rather than taking it on trust.
+ * Retained only so nothing that imported it breaks while the prototype is being
+ * looked at. It no longer bounds a hit band: the wind's region is now everything
+ * the boat does not claim (`input/gestures.ts`), so there is no inner edge to
+ * state.
  */
-export const ARROW_REACH: Meters = SCENE.windRingRadius - ARROW_LENGTH;
+export const ARROW_REACH: Meters = 0;
 
 /**
  * How far each graduation reaches in from the ring.
@@ -118,18 +150,28 @@ function point(v: Vec2): string {
 }
 
 /**
- * The arrow, tail on the ring at the bearing the wind blows *from*, flying
- * inward along the same radial — the way the wind is actually going.
+ * The arrow: tail at the radius this wind speed earns, tip at the origin, along
+ * the bearing the wind blows *from* — so it flies the way the wind is going and
+ * its length is how hard it is blowing.
  *
  * The head is path geometry in metres rather than a `marker`. Markers are sized
  * in stroke widths by default, and every stroke in this drawing is
  * `non-scaling-stroke` (§4.5), so a marker would size itself off a length that
  * has been taken out of user space — which draws an arrowhead the size of the
  * boat.
+ *
+ * A calm draws nothing at all rather than an arrowhead sitting on the mast.
+ * There is nothing to grab in a calm and nothing needs grabbing: the whole water
+ * is the control now, so the wind is recoverable from anywhere by dragging
+ * outward. That is the zero-wind edge case pos-bwd.6 had to design around,
+ * dissolved rather than solved.
  */
-export function windArrowPathData(from: Radians): string {
-  const tail = vectorFromAngle(from, SCENE.windRingRadius);
-  const tip = vectorFromAngle(from, SCENE.windRingRadius - ARROW_LENGTH);
+export function windArrowPathData(from: Radians, speed: MetersPerSecond): string {
+  const length = radiusForSpeed(speed);
+  if (length <= ARROW_BARB) return "";
+
+  const tail = vectorFromAngle(from, length);
+  const tip = ZERO_VECTOR;
   // Barbs splay back upwind from the tip, which is bearing `from` again.
   const barb = (sign: number): Vec2 =>
     add(tip, vectorFromAngle(from + sign * ARROW_SPREAD, ARROW_BARB));
@@ -193,7 +235,7 @@ export function createWindLayer(): Layer {
     element,
     update(state: SimState): void {
       ticks.setAttribute("d", windTickPathData(state.wind.from));
-      arrow.setAttribute("d", windArrowPathData(state.wind.from));
+      arrow.setAttribute("d", windArrowPathData(state.wind.from, state.wind.speed));
     },
   };
 }

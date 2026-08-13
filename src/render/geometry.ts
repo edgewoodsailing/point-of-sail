@@ -25,7 +25,7 @@ import { jibClewPosition, mainClewPosition, SWING_LIMIT } from "../model/boat.ts
 import type { SimState } from "../model/simulation.ts";
 import type { Meters, Vec2 } from "../model/units.ts";
 import { vectorFromAngle } from "../model/units.ts";
-import { touchScale } from "../input/gestures.ts";
+import { RADIAL, touchScale } from "../input/gestures.ts";
 import { hullPathData } from "./hull.ts";
 import { boatTransform, SCENE } from "./scene.ts";
 import { formatNumber, svgElement } from "./svg.ts";
@@ -136,6 +136,55 @@ export function createDevicePicker(root: HTMLElement): HTMLElement {
   return wrapper;
 }
 
+/**
+ * The two knobs on the wind-as-a-radial-control prototype that cannot be settled
+ * by argument: how a radial drag references itself, and how far the display
+ * layer gets out of the boat's way.
+ */
+export function createWindKnobs(root: HTMLElement): HTMLElement {
+  const strip = document.createElement("div");
+  strip.className = "pos-geo-knobs";
+
+  const mode = document.createElement("label");
+  const modeCaption = document.createElement("span");
+  modeCaption.textContent = "Radial";
+  const modeSelect = document.createElement("select");
+  for (const [value, label] of [
+    ["relative", "relative (drag from where it was)"],
+    ["absolute", "absolute (tail snaps to finger)"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    modeSelect.append(option);
+  }
+  modeSelect.addEventListener("change", () => {
+    RADIAL.absolute = modeSelect.value === "absolute";
+  });
+  mode.append(modeCaption, modeSelect);
+
+  const opacity = document.createElement("label");
+  const opacityCaption = document.createElement("span");
+  opacityCaption.textContent = "Wind layer";
+  const opacityInput = document.createElement("input");
+  opacityInput.type = "range";
+  opacityInput.min = "0.1";
+  opacityInput.max = "1";
+  opacityInput.step = "0.05";
+  opacityInput.value = "0.55";
+  const opacityValue = document.createElement("span");
+  opacityValue.className = "pos-geo-knob-value";
+  opacityValue.textContent = "0.55";
+  opacityInput.addEventListener("input", () => {
+    root.style.setProperty("--pos-wind-opacity", opacityInput.value);
+    opacityValue.textContent = opacityInput.value;
+  });
+  opacity.append(opacityCaption, opacityInput, opacityValue);
+
+  strip.append(mode, opacity);
+  return strip;
+}
+
 export interface GeometryOverlay {
   /** Mounts on the SVG root, above everything — the fills are translucent. */
   readonly element: SVGGElement;
@@ -243,7 +292,7 @@ export function createGeometryOverlay(
     ["clew", "clew grab"],
     ["sweep", "boat sweep"],
     ["gap", "unclaimed"],
-    ["band", "wind band"],
+    ["band", "wind"],
     ["ring", "drawn ring"],
     ["short", "short axis"],
     ["surface", "surface"],
@@ -312,8 +361,20 @@ export function createGeometryOverlay(
       report("hull", "silhouette fill");
       report("clew", radius(scale.grab, metersPerPixel));
       report("sweep", radius(SCENE.boatRadius, metersPerPixel));
-      report("gap", span(SCENE.boatRadius + scale.grab, scale.windRing.inner, metersPerPixel));
-      report("band", span(scale.windRing.inner, scale.windRing.outer, metersPerPixel));
+      // Under the radial-control prototype the wind's region is the fall-through
+      // rather than an annulus, so there is no unclaimed water left to measure —
+      // which is itself the finding, and worth printing rather than hiding.
+      const unclaimed = scale.windRing.inner - (SCENE.boatRadius + scale.grab);
+      report(
+        "gap",
+        unclaimed > 0
+          ? span(SCENE.boatRadius + scale.grab, scale.windRing.inner, metersPerPixel)
+          : "none — wind is the fall-through",
+      );
+      report(
+        "band",
+        `all water · ${RADIAL.absolute ? "absolute" : "relative"} radial`,
+      );
       report("ring", radius(SCENE.windRingRadius, metersPerPixel));
       report("short", radius(SCENE.shortRadius, metersPerPixel));
 
