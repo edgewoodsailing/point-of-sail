@@ -1248,9 +1248,9 @@ force — and it paints red.
 
 ### 4.3 The speed arrow
 
-Length encodes absolute speed. Color compares current speed against what this
+Length encodes absolute speed. Colour compares current speed against what this
 boat would be doing, on this heading in this wind, if both sails were trimmed
-perfectly.
+perfectly (planned: pos-dmg.3).
 
 The length law is linear:
 
@@ -1363,15 +1363,21 @@ than the whole shape scaling together. Below about 0.14 kt there is no arrow at
 all: the boat is not under way, and a round-capped stub off the stem that never
 went away would stop reading as motion.
 
-That reference comes from a **ghost simulation** — a second, invisible
-integrator running the same model with optimal trim, in parallel. It's cheap and
-it keeps a single source of truth.
+**The colour's reference is a ghost simulation** (planned: pos-dmg.3) — a
+second, invisible integrator running the same model at optimal trim, in
+parallel. It is cheap, and it keeps one source of truth for what "trimmed
+perfectly" means.
 
-Two references are in play and that's intentional:
+**Two references are in play, and the difference between them is the point:**
 
-- **Sail color** — instantaneous, local. Responds the moment you move a sail.
-- **Speed arrow color** — the whole-boat verdict, and it lags, because speed
-  lags. Trim in properly and watch the arrow slowly go green.
+- **Sail colour** — instantaneous and local. It answers the moment you move a
+  sail.
+- **Speed arrow colour** — the whole-boat verdict, and it **lags**, because speed
+  lags. Trim in properly and watch the arrow go green over the next few seconds.
+
+That lag is a feature rather than an inconsistency: it is the difference between
+*"this sail is set right"* and *"the boat is going as well as it could"*, which
+are two different lessons and arrive at two different speeds.
 
 ### 4.4 Color
 
