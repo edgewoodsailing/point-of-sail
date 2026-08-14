@@ -30,7 +30,9 @@ file — the things with nowhere else to live.
 | Parasitic drag, span efficiency | `FOIL.profileDrag`, `FOIL.spanEfficiency` | `model/tuning.ts` |
 | When cloth starts to shake, and when it has wholly let go | `LUFF.drawingAbove`, `LUFF.collapsedBelow` | `model/tuning.ts` |
 | Where the rig stops collecting force, and how sharply | `DEPOWERING.fullPowerWind`, `DEPOWERING.knee` | `model/tuning.ts` |
-| Hull resistance, the wall, the keel's share | `RESISTANCE.*` | `model/tuning.ts` |
+| Hull resistance, the wall, the keel's share and its stall | `RESISTANCE.*` | `model/tuning.ts` |
+| How long the boat takes to get going, and the mass derived from it | `TERMINAL_FRACTION`, `EFFECTIVE_MASS` | `model/hull.ts` |
+| Integrating speed, and the implicit step | — | `model/simulation.ts` |
 | Assembling the two limbs into one curve | — | `model/foil.ts` |
 | Turning a trim into a force, and where depowering is applied | — | `model/sail.ts` |
 | Whether the polar folds, and how that is detected | — | `model/fold.test.ts` |
@@ -68,15 +70,12 @@ ground alone: the polar still has to meet
 more lift either side of the optimum, which widens the close-hauled trim band and
 makes the boat measurably more forgiving upwind. Three requirements, one number.
 
-**Depowering ↔ the hull-speed wall.** Every force in the model is homogeneous of
-degree two in speed, so before depowering the wall was the only source of
-wind-dependence in the polar — and it is a function of *speed* where the problem
-is a function of the *wind*. It therefore bites hardest where the boat is
-fastest, clipping a reach harder than close hauled and sliding the upwind optimum
-lower as the breeze fills in. A factor on the drive has no such problem: at any
-one wind it multiplies every point of sail alike, which slows the boat without
-bending the polar. That is why the shape is a factor on the whole rig force and
-not a steeper wall.
+**Depowering ↔ the hull-speed wall.** The two are alternatives for the same job
+and only one is the right shape for it: the wall is a function of *speed* where
+the problem is a function of the *wind*, so it bends the polar while a factor on
+the drive does not. That is the whole argument for depowering's existence, and it
+is worked through under [the wall](#the-wall-is-the-only-wind-scale), where the
+measurement that settles it lives.
 
 **Peak lift is flat, and the trim-quality colour reads against it.** Saturating
 the limb broadens the summit as well as lowering it — a real sail has a forgiving
@@ -183,9 +182,100 @@ hold, the boat gets moving smartly, and by the time it is moving the question no
 longer arises. A manoeuvre that looks like the worst case for the exclusion turns
 out to be nearly the best.
 
+### The no-go zone's edge, where the exclusion does bite
+
+The one place ordinary use reaches the limit, and the model's honest domain
+boundary. At the edge of the no-go zone the water charges nothing and has no
+slope, so a hairline of angles has two settled speeds
+([DESIGN §3.5](DESIGN.md#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)).
+`fold.test.ts` bounds it, and owns the arithmetic showing what it is: the rig
+makes some 450 N of side force against 6 N of drive, the keel would need a `Cl`
+of 37 to 202 to hold that, and a foil of any kind tops out near 1.5.
+
+**So the boat would sideslip and [§7](DESIGN.md#7-deliberately-out-of-scope) does
+not let it.** The fold lives in the gap between the keel having stopped paying
+for the side force and the hull still being pinned to its heading — which is to
+say **the no-leeway exclusion stops being a simplification somewhere around a
+knot or two**, and every equilibrium below that is an artefact of it rather than
+a prediction. That is this model's domain limit, and it is why the branches being
+a standstill is not merely tolerable but the only place the artefact can live: as
+soon as the boat is fast enough for the keel to carry its load, the gap closes.
+
+**Three ways out, all measured, all rejected** (`pos-rem` keeps the case open):
+
+- **Widen the stall blend.** A real lever, and it runs the *opposite* way to the
+  obvious one — widening pushes the band to a larger angle and shrinks it, and
+  80° removes it outright, at a cost of under 0.02 kt on the polar. It is
+  rejected because it is spent out of [§4.2](DESIGN.md#42-the-traffic-light)'s
+  account instead: at 80° a boat sheeted flat in 10 kt makes 2.60 kt at TWA 60°
+  where the shipped blend makes 1.20. Buying away *"sheeted flat is a mistake"*
+  to remove a wobble at a standstill is the wrong trade.
+- **Give the water a slope at rest.** A linear damping term needs to beat the
+  drive's slope, which more than doubles the resistance at a knot, recalibrates
+  the whole light-air end, and introduces a second absolute speed scale —
+  falsifying [the wall being the only wind-scale](#the-wall-is-the-only-wind-scale).
+- **Flatten the stalled sail.** `FOIL.plateNormalForce` does nothing here at all,
+  at any value.
+
+**And one middle option, found in the prior art rather than reasoned out.** *By
+the Lee* computes residuary resistance from the Delft series, which is fitted
+down to a Froude number of 0.1 and clamped below it — so under about 1.4 kt its
+hull drag stops falling and sits at a constant. That is exactly the missing slope
+at rest, arrived at by accident: an empirical formula held inside its range
+rather than a decision about low-speed sailing. It is far cheaper than a linear
+term because it stops mattering as soon as the boat moves — **5 N removes the
+fold for about 1% of the polar at every point of sail**. It is not adopted
+because a constant drag at rest is static friction, which water does not have,
+and it would make the boat stop dead in finite time where the integrator says it
+coasts like `1/t`. It is recorded because it is the only thing between doing
+nothing and modelling leeway, and **a later pass that wants the boat to *stay*
+stopped in irons should start here rather than rediscover it.**
+
 ## The hull and the integrator
 
-Not yet split out. [DESIGN §3.5](DESIGN.md#35-hull-resistance-and-integration)
-still carries it, and the coupling that belongs here when it moves is the wall
-exponent's: it is the model's only wind-scale, so steepening it to buy back a
-broad reach sends the pointing angle through the floor as the breeze fills in.
+### The wall is the only wind-scale
+
+**Every force in this model except the hull-speed wall is homogeneous of degree
+two in speed.** Scale the true wind and the boat together and each scales alike,
+so the balance point is preserved and the shape of the polar does not move at
+all. The keel's induced drag looks like the exception and is not — its `1/v²` is
+cancelled by the load it carries, and `WALL_EXPONENT` writes that out. Only the
+wall breaks it, because hull speed is an absolute speed.
+
+The consequence is the single most useful fact about this model's behaviour:
+**everything the polar does as the breeze fills in is the wall exponent's
+doing.** Set the wall term to zero and re-solve the quadratic to hold a 10 kt
+beam reach, and the polar becomes exactly scale-invariant at every wind from 4 to
+30 kt.
+
+**The trade, and why it only runs one way.** The wall bites hardest where the
+boat is fastest, so it clips a reach harder than close hauled — and clipping the
+fast angles is exactly what slides the upwind VMG optimum to a *smaller* angle.
+So sharpening the wall buys a slower beam reach in a breeze at the price of a
+boat that points ever higher in it, which is the opposite of what a keelboat
+does. There is no exponent that holds a beam reach at hull speed in a gale *and*
+holds the pointing angle: doing the first needs something like a 126th power,
+which is a speed clamp rather than a wall, and the pointing is long gone before
+that. **That measurement is why depowering exists** — the wall was being asked to
+do a job it is the wrong shape for.
+
+**Depowering does not make room to raise it again, and that was tried.** The
+obvious hope is that once the cap holds the top of the wind range, the wall can
+be sharpened to buy back the broad reach [§3.6](DESIGN.md#36-calibration-targets)
+calls light. It cannot: at a sixth power with depowering on at every cap from 12
+to 16 kt, the run/beam ratio at 14 kt and the VMG peak both fail. The reason is
+structural rather than a matter of tuning — those two failures live at **14 kt**,
+where the cap is only just beginning to bite, so no setting of it reaches back
+far enough to help without breaking the 10 kt table on the way.
+
+### The integrator
+
+`simulation.ts` documents the implicit step, what it costs and what it buys. The
+part that belongs here is why it stays now that nothing can reach the failure it
+guards against: **what makes that failure unreachable is a tuning constant, not a
+property of the physics.** Depowering caps the drive at its 13 kt value, so the
+boat stops accelerating with the wind and the fourth power is never climbed far
+enough to break the step. Raise `DEPOWERING.fullPowerWind` far enough, or take
+the cap out to try something else, and the wall is waiting exactly where it
+always was. The guard costs one extra term per frame and the trap is one line of
+`tuning.ts` away, which is the wrong margin to run without one.

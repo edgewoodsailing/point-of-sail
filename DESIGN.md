@@ -400,379 +400,69 @@ in [MODEL.md](MODEL.md#where-the-model-stops-being-valid).
 
 ### 3.5 Hull resistance and integration
 
-Resistance rises steeply approaching hull speed:
-
-```text
-R(v) = A·v² + B·v²·(v / v_hull)⁴        v_hull = 2.91 m/s (5.65 kt)
-```
-
-The fourth-power term is a shape, not a theory — it produces the wall a
-displacement hull hits, the one that makes the last half knot cost far more than
-the one before it. What it does _not_ do on its own is keep a Rhodes 19 off nine
-knots in a gale; that promise was made here for a long time and is actually kept
-by [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze), for reasons
-the subsection below works through. It was a sixth power until `pos-lcz`;
-[the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) below is
-the decision that moved it, and it is the one place in this section where a
-number was chosen against something other than the 10 kt polar. Going astern,
-multiply by ≈ 2.5: transom-first with a stalled keel and rudder is genuinely
-much draggier, and students should feel that backing up is slow.
+Resistance rises steeply approaching hull speed — a quadratic term with a
+much steeper one on top of it, which produces the **wall a displacement hull
+hits**, the one that makes the last half knot cost far more than the one before
+it. Going astern is about 2.5× draggier: transom-first with a stalled keel and
+rudder genuinely is, and students should feel that backing up is slow.
 
 **The keel is charged for the rig's side force, and that is what makes a no-go
-zone.** [§3.2](#32-sail-forces)'s lateral component is not free: the keel has to
-generate it, and a foil making lift makes induced drag doing so. The drag of it
-goes as the square of the load over the dynamic pressure —
+zone.** [§3.2](#32-sail-forces)'s lateral component is not free — the keel has to
+generate it, and a foil making lift makes induced drag doing so. That charge is
+almost nothing off the wind and enormous close hauled, where the side force is
+more than twice the drive and the boat is slowest. Without it the model had no
+charge at all for sailing at a large angle to the wind, and still made 3 kt at
+15° off it. No resistance coefficient could have fixed that, since scaling
+resistance slows every point of sail at once while the problem was one end of the
+polar.
 
-```text
-D = k · F_side² / v²
-```
+**Speed is integrated, not solved**, for three reasons that each matter
+elsewhere. Apparent wind depends on speed and speed on apparent wind, and
+integration resolves that loop for free. Negative speeds fall out naturally,
+which [§3.4](#34-backing-a-sail) needs. And snapping instantly to a new speed
+looks wrong: a keelboat takes about ten seconds to get going, and that lag is
+itself a lesson — **trim changes don't pay off instantly.** The boat still does
+not translate; only the speed number evolves.
 
-— which is almost nothing off the wind and enormous close hauled, where the side
-force is more than twice the drive and the boat is slowest. Without it the model
-had no charge at all for sailing at a large angle to the wind: it ran 29% fast
-close hauled and still made 3 kt at TWA 15°, and no resistance coefficient could
-fix that, since scaling `R(v)` slows every point of sail at once while the
-problem was one end of the polar.
-
-`F²/v²` runs away at rest, and that runaway is not physics: a keel asked for
-more than it can carry stalls, and the boat sideslips rather than growing an
-unbounded drag. Worse, in a model with no leeway an unbounded drag would push a
-sheeted-in boat _backwards_ and then reverse as soon as it did. So the keel is
-given a stall — the drag is scaled by how much lift the keel can hold relative
-to how hard it is being asked to pull, a ratio that grows with `v²` because that
-is what a foil's capacity does. That recovers `k·F²/v²` where there is capacity
-to spare and a flat plate's `v²` where there is not, going to zero at rest as
-any water drag must.
-
-Both constants are honestly fudges and live in `tuning.ts` accordingly. The
-scale is about four times what a 3'3" keel's own induced drag comes to, because
-it is also standing in for the heel that side force produces, the leeway the
-hull makes, and the rudder angle needed to hold the course — all of which
-[§7](#7-deliberately-out-of-scope) declines to model separately and all of which
-scale the same way. The stall ceiling turns out to be the constant that sets
-where the no-go zone ends, since the whole upwind quarter runs at or just under
-it.
+That lag is the tuning knob, and the boat's effective mass is derived from it
+rather than the other way round — the lag is the thing anyone can judge by
+watching, and the mass is the thing nobody can. A calibration pass fitting a
+polar has no business deciding how the boat should feel.
 
 #### The wall exponent is the model's only wind-scale
 
-Everything else in this model is _homogeneous of degree two_ in speed. Scale the
-true wind and the boat's speed together by λ, and each force scales by λ²:
-
-- **Sail force** is dynamic pressure times coefficients that depend only on
-  angles. The apparent wind vector scales by λ while its angle stays put, so the
-  coefficients don't move and the force goes as λ².
-- **`A·v²`** is quadratic by construction.
-- **The keel's induced drag** looks like the exception and isn't — worth writing
-  out, because `k·F²/v²` reads like a term that breaks the scaling. Put
-  `F → λ²F` and `v → λv` into `D = k·F²·v²/(v⁴ + S²)`. The saturation
-  `S = k·F/(2·k_stall)` scales as λ², so the numerator gains λ⁴ from `F²` and λ²
-  from `v²` — λ⁶ — while the denominator gains λ⁴ from `v⁴` and from `S²` alike.
-  The ratio is λ². The `1/v²` is real, and it is cancelled by the load it
-  carries.
-
-So the balance `F_drive = R(v)` is preserved under λ, and the _shape_ of the
-polar does not move at all.
-
-The wall term is the exception, because `v_hull` is an absolute speed:
-`B·v^(n+2)/v_hull^n` scales by the (n+2)th power instead. That is not a detail.
-Set `B` to zero and re-solve `A` to hold the 10 kt beam reach, and the polar
-becomes exactly scale-invariant — a 45° upwind VMG peak, a run at 0.58 of a beam
-reach, and a beam reach of 0.555 kt per knot of true wind, at _every_ wind from
-4 to 30 kt. **So the wall is the sole source of wind-dependence in this model,
-and everything the polar does as the breeze fills in is the exponent's doing.**
-
-Which is why the exponent is a design decision and not a knob, and why `pos-lcz`
-moved it from 6 to 4 rather than the other way. The wall bites hardest where the
-boat is fastest, so it clips a reach harder than it clips close hauled — and
-clipping the fast angles is precisely what slides the upwind VMG optimum to a
-_smaller_ angle. Sharpening the wall therefore buys a slower beam reach in a
-breeze at the cost of a boat that points ever higher in it, which is the
-opposite of what a keelboat does. Measured, holding the 10 kt beam reach at 5.55
-kt by re-solving `B` each time:
-
-| exponent | 10 kt polar (45/90/135/180) | VMG peak, 6→14 kt | run/beam at 14 kt | beam at 20 kt | beam at 30 kt |
-| -------- | --------------------------- | ----------------- | ----------------- | ------------- | ------------- |
-| 4        | 4.18 5.55 4.73 3.71         | 49° → 40°         | 0.74              | 7.59          | 8.88          |
-| 6        | 4.29 5.55 4.83 3.79         | 49° → 39°         | 0.78              | 7.07          | 7.95          |
-| 10       | 4.42 5.55 4.96 3.85         | 49° → 38°         | 0.83              | 6.54          | 7.07          |
-| 20       | 4.53 5.55 5.13 3.87         | 49° → 37°         | 0.88              | 6.08          | 6.34          |
-
-There is no row that keeps a beam reach at hull speed in a breeze _and_ holds
-the pointing angle, because within this term there is only the one knob — which
-is the measurement that sent the problem to
-[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze). Holding a beam
-reach at or under hull speed at 30 kt while [§3.6](#36-calibration-targets)'s
-table survives needs an exponent of about 126 — a speed clamp, not a wall — and
-the pointing is long gone well before that. Pulling the 10 kt beam reach down to
-make room instead fails a different way: the run sits at ≈ 3.85 kt in every
-configuration, being far enough below the wall to be untouched by it, so a
-slower beam reach simply breaks "a run is notably slower than a reach".
-
-Four is that trade taken deliberately toward the range the simulator opens in.
-It costs the broad reach two more points of the shortfall
-[§3.6](#36-calibration-targets) already calls structural. What it buys is that
-the three lessons the model exists to teach hold their shape across the 6–14 kt
-[§2.1](#21-initial-state-a-random-solvable-problem) actually opens on.
-
-The honest reading is that the wall was being asked to do a job it is the wrong
-shape for, and for a while it was left doing it badly: a beam reach reached 7.59
-kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and a
-Rhodes 19 does neither. `calibration.test.ts` pinned that as an accepted cost
-rather than a target, so that it could not drift quietly in either direction
-while the term that could fix it was still a bead.
-
-That term is now
-[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze), and
-it settles the question this whole subsection is about. What holds a real Rhodes
-19 down in a breeze is not extra water drag but the rig giving up: it heels, the
-sail twists off, and the crew eases and feathers. That caps the _drive_ rather
-than clipping the _speed_, and because it acts on every point of sail together
-it is the only kind of term that can slow the boat in a gale without bending the
-polar. With it in place a beam reach settles at 6.37 kt in 20 kt of wind and
-6.40 in 30 — and the exponent above is free to go on being chosen for what it is
-actually good at, which is the shape of the polar in the wind the simulator
-opens in.
-
-**Read that table as a study of the wall by itself, because that is what it
-is.** Every figure in it was measured with §3.2's depowering off, which is the
-only way to see what the exponent alone does, and its two right-hand columns are
-no longer what the model delivers: at exponent 4 the boat now reaches 6.37 kt
-and 6.40 kt in 20 and 30 kt of wind, not 7.59 and 8.88. The comparison the table
-exists to make — that sharpening the wall buys a slower reach at the price of
-the pointing angle — is unaffected, since every row moves together.
-
-**Depowering does not make room to take the exponent back up, and that was
-tried.** The obvious hope is that once the cap holds the top of the wind range,
-the wall is free to be sharpened again to buy back the broad reach
-[§3.6](#36-calibration-targets) calls 9% light. It is not. Measured at a sixth
-power with `B` re-solved to 22.5, and with depowering on at every cap from 12 to
-16 kt, the run/beam ratio at 14 kt lands at 0.765–0.780 against a bound of 0.75
-and the VMG peak falls to 39°. The reason is structural: those two failures live
-at **14 kt**, which is where the cap is only just beginning to bite, so no
-setting of it can reach back far enough to help without breaking the 10 kt table
-on the way. Four stays.
-
-**Speed is integrated, not solved.** Each frame:
-
-```text
-a = (F_drive − R(v)) / m_effective
-v += a · dt
-```
-
-with `m_effective` — boat + two crew + ~15% added mass ≈ 880 kg, which is a
-sanity check on the figure rather than its source; see the lag knob below. Three
-reasons to integrate rather than solve for equilibrium:
-
-1. Apparent wind depends on speed and speed depends on apparent wind.
-   Integration resolves that feedback loop for free; a fixed-point solve has to
-   iterate.
-2. Negative speeds fall out naturally, which matters for
-   [§3.4](#34-backing-a-sail).
-3. Snapping instantly to a new speed looks wrong. A keelboat takes ~10 s to
-   accelerate to hull speed, and that lag is itself a lesson — trim changes
-   don't pay off instantly.
-
-The boat still doesn't _translate_; only the speed number evolves.
-
-**One numerical wrinkle: the resistance is taken implicitly.** Written exactly
-as above, each step charges the resistance the boat felt at the _start_ of the
-interval, and against a fourth power on top of a square that error compounds
-badly. Trimmed for the wind it was in, the boat used to stop settling at around
-80 kt — a tenth-of-a-second step alternating between two speeds forever — and by
-120 kt it diverged to `NaN`, permanently, since every later step adds to it.
-(Those thresholds were 55 kt and 85 kt while the wall was a sixth power; a
-gentler curve is a gentler thing to linearize.)
-
-**Since [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
-depowering, no wind reaches that failure at all**, and it would be dishonest to
-leave the paragraph above reading as a live threat. The drive is capped at its
-13 kt value, so the boat stops accelerating with the wind — re-trimmed for the
-gale it is in, it settles at 6.38–6.40 kt whether it is given 55 kt of wind or a
-thousand, and carrying a trim found in 10 kt it settles at 4.40–4.50 kt. At
-either, the naive step and the implicit one agree to six decimal places with no
-overshoot between them. The step stays implicit anyway, for two reasons that
-have nothing to do with which winds are reachable today: it costs a single extra
-term, and what makes the failure unreachable is now a _tuning constant_ — raise
-`DEPOWERING.fullPowerWind` far enough, or take the cap out to try something
-else, and the fourth power is waiting exactly where it was. The guard is cheap
-and the trap is one line of `tuning.ts` away, which is the wrong margin to run
-without one.
-
-So the step linearizes the resistance about the current speed:
-
-```text
-v += (F_drive − R(v)) · dt / (m_effective + R′(v) · dt)
-```
-
-Same equation to first order — at 60 Hz the correction is about a percent and
-the trajectory matches the naive form to three figures — but the faster the
-water would answer, the smaller the step it takes, so the speed can't run away
-from a curve climbing faster than the step can see. The fixed point is still
-exactly `F_drive = R(v)` and doesn't depend on `dt`.
-
-It does _not_ make overshoot impossible: the step follows a tangent to a convex
-curve, so it aims slightly beyond the balance point. What makes that harmless is
-that resistance grows faster than linearly, so a speed past the balance point
-meets a restoring step larger than the one that took it there, and overshoots
-decay instead of feeding themselves. This clause used to end "and in a gale not
-slightly at all", which was true of the boat that could reach 12 m/s in a gale
-and is not true of one whose drive is capped: from rest in 200 kt the first step
-is now 0.06 m/s against a balance of 3.29, and the approach is monotone.
-
-**`settle()` runs real frames, and that is not an oversight.** Long steps look
-free — where resistance dominates, the update becomes a Newton step and lands in
-ten iterations rather than three hundred — but the _drive_ is not in the
-linearization, and it can fall with speed faster than resistance rises. Then a
-long step isn't a step toward anything: at five seconds, a sloop in 10 kt at TWA
-105 with the sails eased to 80° alternates between 1.667 and 1.834 m/s forever,
-46 N out of balance. Frame-length steps have an argument rather than a survey
-behind them — the underlying equation is a one-dimensional flow, so speed moves
-to the nearest balance point and stops, because there is nowhere else to go —
-and the tests assert the balance itself, not just that the number stopped
-moving. The cost is iterations, which are cheap.
-
-**The lag is the tuning knob; the mass is derived from it.** What
-[`tuning.ts`](#6-architecture) exposes is the thing anyone can judge by watching
-— _time to reach ~63% of terminal speed from rest_, starting at **10 s**, about
-right for a keelboat. `hull.ts` inverts the closed form
-`v(t) = v_t·tanh(t·A·v_t/m)` to get `m_effective` from it, so that calibrating
-the resistance can't move the lag out from under us. The anchor holds at the
-reference speed and stretches away from it: the lag works out as
-`10 s · v_hull / v_terminal`, so a calibration pass that leaves the boat
-settling slower will also leave it a little slower off the mark. If it reads as
-sluggish when comparing two trim settings back to back, we shorten the time;
-it's a feel decision to be made against the running thing.
-
-Before calibration this landed at ≈ 877 kg, agreeing with the 880 kg estimate
-above to within 1% — two routes to one number, and the reason that estimate is
-quoted as a sanity check rather than used as an input. Calibration raised the
-resistance by a quarter and carried the derived mass to ≈ **1092 kg** with it,
-so the two now differ by 24%. That is the anchor stretching rather than
-breaking, and the ten seconds was kept rather than shortened to hold the mass
-down: the lag is the thing anyone can judge by watching and the mass is the
-thing nobody can, and a pass fitting a polar has no business deciding how the
-boat should feel. Read the gap as the boat feeling slightly heavier off the mark
-than its displacement argues for, or as the resistance sitting at the top of its
-plausible range; the evidence doesn't distinguish them. `hull.test.ts` holds the
-derived mass to 600–1200 kg, so a pass that needs more room has to say so out
-loud.
+Every other force here is homogeneous of degree two in speed: scale the wind and
+the boat together and they all scale alike, so the *shape* of the polar does not
+move. The wall is the exception, because hull speed is an absolute speed. **So
+everything the polar does as the breeze fills in is the wall exponent's doing**,
+which is why it is a design decision rather than a knob, and why it cannot be
+asked to hold the boat down in a gale as well —
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering does
+that. The trade it sits on, and why depowering does not free it to move, are in
+[MODEL.md](MODEL.md#the-wall-is-the-only-wind-scale).
 
 #### Quadratic drag has no slope at rest, and that gives the no-go zone an edge
 
-Both charges above vanish at least as fast as `v²` — the hull's quadratic term
-and the wall on top of it, and the keel's induced drag, which goes as `v²` at
-low speed where the stall term dominates the denominator. So at rest they are
-not merely small: they are zero, and so is their _slope_. That has a consequence
-at exactly one place in the polar, and it is worth writing down because it looks
-like a bug and is not.
+Every charge the water makes vanishes as `v²` or faster, so at rest they are not
+merely small — they are zero, and so is their slope. At the true wind angle where
+the drive from rest passes through zero, that leaves rest as a balance point held
+by nothing but the drive's own slope, which is positive: the moment the boat has
+way on, the apparent wind hauls forward, the angle of attack comes off the stall,
+and the sail makes more.
 
-At the true wind angle where the drive from rest passes through zero — the edge
-of the no-go zone — rest is a balance point. Whether it is a _stable_ one is
-decided by the drive's own slope, unopposed, since the water contributes none.
-That slope is positive: the moment the boat has way on, the apparent wind hauls
-forward, the angle of attack comes down off the stall, and the sail makes more.
-Measured at that boundary it runs 0.29 to 15.95 N/(m/s) across the 0.5–30 kt the
-tests sweep, on both rigs — scaling with the wind up to the 13 kt depowering
-knee and falling away above it. So rest there is **unstable**, and the boat runs
-away from it — astern if it started astern, ahead if it started ahead — until
-the quadratic drag catches up a couple of tenths of a knot out.
+So rest there is **unstable**, and the boat runs away from it until the drag
+catches up a couple of tenths of a knot out. Which is to say the model reproduces
+the reason a boat has to be pushed off a mooring — below some speed it cannot
+generate the drive to get going, and above it it can.
+[§3.4](#34-backing-a-sail)'s whole mechanic is that fact, and one hairline of
+angles having two answers is the same fact seen from the other side.
 
-Which is to say the model reproduces the reason a boat has to be pushed off a
-mooring: below some speed it cannot generate the drive to get going, and above
-it it can. [§3.4](#34-backing-a-sail)'s whole mechanic is that fact. Having it
-also mean that one hairline of angles has two answers is the same fact seen from
-the other side.
-
-**It is bounded and it is small.** The band is half a degree of TWA wide at trim
-0 and needs the sheet almost exactly flat: it survives a quarter of a degree of
-ease, at a slightly wider angle and a smaller split, and half a degree is clean.
-Swept across §5's whole wind range at a tenth of a knot, both rigs and every
-trim the sheet can hold, the widest split is 0.699 kt and the fastest either
-branch ever reaches is 0.482 kt, both on the sloop sheeted flat at TWA 64.88° in
-12.8 kt — the peak sits at
-[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s 13 kt knee,
-where the drive stops growing with the wind and the water's scale does not. The
-boat is stopped on both branches, so nothing that is sailing has two answers.
-`fold.test.ts` locates the boundary by bisection rather than by sweeping for it
-and holds those two figures.
-
-**These equilibria are not claims about the world, and that is the honest reason
-they stay.** The rig at that angle is making 450 N of side force and about 6 N
-of drive. The keel has to hold the 450, and keel lift goes as `v²`, so at half a
-knot it has a few percent of the capacity it has at three. This section's own
-`keelStall` is what models it giving up — measured at the branches the keel is
-charging **0.6–0.8%** of the side force as drag, against the 22% ceiling it sits
-at within a percent when the boat is actually sailing close hauled.
-
-Put a number on how far past the keel this is. Taking the effective keel area
-implied by this section's own reading of that ceiling — 0.22 as "crabbing at
-12°", which for an aspect-ratio-3 foil is `Cl` ≈ 0.79 and so ≈ 0.37 m² at the
-close-hauled load — the keel would need a `Cl` of **37 on the ahead branch and
-202 on the astern one** to hold what the rig is making. A foil of any kind tops
-out near 1.5. It is short by twenty-five to a hundred and thirty times, and it
-could carry that load only above about **2 kt**. Nothing about the estimate is
-delicate: a keel four times larger is still short by seven to thirty-four times
-and only moves the floor to about 1.2 kt.
-
-So the boat would sideslip, and [§7](#7-deliberately-out-of-scope) does not let
-it. **The fold lives in the gap between the keel having stopped paying for the
-side force and the hull still being pinned to its heading** — which is to say
-§7's no-leeway exclusion stops being a simplification somewhere around a knot or
-two, and every equilibrium below that is an artefact of it rather than a
-prediction. That is the domain limit of this model, it covers the windward side
-of the centreline as well as the leeward, and it is why the branches being a
-standstill is not merely tolerable but the only place the artefact can live: as
-soon as the boat is fast enough for the keel to carry its load, the gap closes.
-`pos-i4o` is the demonstration — it moved the band from a 2.5 kt fast branch,
-where the boat is sailing and the model should be believed, to half a knot.
-
-**Three ways out, all rejected, and the measurements are the point.**
-
-- _Move the stall blend._ It is a real lever, in the opposite direction from the
-  obvious one: narrowing drops the band to a smaller angle and widens the split
-  (20° → TWA 35.9°, 1.639 kt), widening pushes it up and shrinks it (70° → TWA
-  86.9°, 0.275 kt) and 80° removes it — all measured on the same sweep as the
-  0.699 kt above, rather than beside it on a coarser one. It costs nothing
-  against [§3.6](#36-calibration-targets) — the polar at optimal trim moves
-  under 0.02 kt out to 80°. It is spent entirely out of
-  [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
-  flat in 10 kt, settled from rest: at the shipped 50° the boat makes 1.20 kt at
-  TWA 60°, drifts astern at 75° and sits still at 90°; at 80° it makes 2.60,
-  2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.699 kt
-  wobble at a standstill is the wrong trade.
-- _Give the water a slope at rest._ A linear damping term would do it, and needs
-  `C > 15.95 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N
-  against the hull's 7.4 — it more than doubles the resistance at a knot,
-  recalibrates the whole light-air end, and introduces a second absolute speed
-  scale, which falsifies
-  [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) being
-  the model's only source of wind-dependence.
-- _Flatten the stalled sail._ `FOIL.plateNormalForce` does nothing here at all —
-  identical band at every value from 0.7 to 1.6.
-
-**And one that is cheaper than any of them, found in the prior art rather than
-reasoned out.** _By the Lee_ computes residuary resistance from the Delft
-series, which is fitted for Froude numbers of 0.1 to 0.6, and clamps below that
-— so under about 1.4 kt its hull drag stops falling with speed and sits at a
-constant. That is exactly the missing slope at rest, arrived at by accident: it
-is an empirical formula being held inside its range, not a decision about
-low-speed sailing. A constant floor is far cheaper here than a linear term,
-because it stops mattering as soon as the boat is moving — **5 N removes the
-fold and costs about 1% of the polar at every point of sail in 10 kt** (4.19 →
-4.15 kt close hauled, 5.58 → 5.56 on a beam reach), against the linear term's
-doubling at a knot. It is not adopted, and the reason is not the price: a
-constant drag at rest is static friction, which water does not have, and it
-would make the boat stop dead in finite time where
-[§3.5's integration](#35-hull-resistance-and-integration) says it coasts like
-`1/t`. It is recorded because it is the one middle option between doing nothing
-and modelling leeway, and a later pass that wants the boat to _stay_ stopped in
-irons should start here rather than rediscover it.
-
-So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
-pre-`pos-i4o` curve the same band sat at TWA 36.3°–37.5° and split 2.934 kt with
-a 2.498 kt fast branch — a boat genuinely sailing on one of them. Giving the
-attached limb a maximum shrank it more than fourfold and moved it to where both
-branches are a standstill, which is the most any of these constants can do.
+It is bounded and it is tiny: half a degree of true wind angle wide, needing the
+sheet almost exactly flat, and **the boat is stopped on both branches**, so
+nothing that is sailing has two answers. `fold.test.ts` locates it by bisection
+and holds the figures. What it actually marks is the edge of this model's domain,
+which [MODEL.md](MODEL.md#where-the-model-stops-being-valid) records along with
+the three ways out that were measured and rejected.
 
 ### 3.6 Calibration targets
 
