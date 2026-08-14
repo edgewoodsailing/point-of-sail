@@ -7,7 +7,7 @@ decisions_, not the project history. Rework design changes into the text; don't
 simply append them as an amendment. Remove outdated history.
 
 Design that isn't built yet **is** in scope, and is written in the present tense
-like everything else, marked only by a bead reference: `(planned: pos-740.1)`.
+like everything else, marked only by a bead reference: `(planned: pos-…)`.
 Write the sentence so that deleting the parenthetical leaves it true — then
 shipping the feature is one deletion rather than a rewrite. The reference is the
 whole of the status claim, which is what keeps this document from going stale on
@@ -42,7 +42,11 @@ not available on the water — see [§7](#7-deliberately-out-of-scope).
 
 ### Rhodes 19 as the model
 
-The drawing and the physics are modeled after Rhodes 19 keelboats from Stuart Marine, which are the boats used at Edgewood Sailing School. These boats have modern, computer-designed rudders (not class legal) that track straight and have little-to-no-weather helm, reinforcing the decision to de-emphasize steering in the interface.
+The drawing and the physics are modeled after Rhodes 19 keelboats from Stuart
+Marine, which are the boats used at Edgewood Sailing School. These boats have
+modern, computer-designed rudders (not class legal) that track straight and have
+little-to-no-weather helm, reinforcing the decision to de-emphasize steering in
+the interface.
 
 ### Why heading and wind are separate gestures
 
@@ -112,8 +116,8 @@ without repacking at every call site, and there is one definition of "the wind"
 rather than two that could drift apart.
 
 That's it. No history, no session, no stored client state; reload resets
-everything, as the objectives require. A bare URL opens on a fresh random problem
-(planned: pos-740.1); a URL carrying parameters opens on exactly what it
+everything, as the objectives require. A bare URL opens on a fresh random
+problem (planned: pos-740.1); a URL carrying parameters opens on exactly what it
 describes (planned: pos-740.2) — see
 [§6.3](#63-url-parameters-as-the-configuration-surface).
 
@@ -137,10 +141,9 @@ trigonometry scattered around.
 
 The page opens on a **randomized situation with the sails visibly mistrimmed**
 (planned: pos-740.1), so the student's first sight is a problem to either solve
-or ignore. This fits
-the no-scaffolding position better than any label could: instead of telling a
-student what to do, the simulator just presents something obviously wrong and
-lets curiosity do the rest.
+or ignore. This fits the no-scaffolding position better than any label could:
+instead of telling a student what to do, the simulator just presents something
+obviously wrong and lets curiosity do the rest.
 
 Randomization is bounded to keep every opening state non-degenerate:
 
@@ -213,7 +216,7 @@ more punishing than a badly trimmed jib. That asymmetry is worth preserving.
 
 ### 3.1 Apparent wind
 
-Modeled always; **displayed only behind a toggle** (default off).
+The apparent wind is the most critical value when sailing:
 
 ```text
 V_apparent = V_trueWind − V_boat
@@ -242,249 +245,69 @@ in the part that teaches: a student who bears away and feels the sails need
 easing is being taught by the apparent wind, at every wind speed, exactly as
 before.
 
-The exception is stated in the rule rather than left implicit in the code. It
-would have been possible to leave this sentence untouched — `simulation.ts`
-applies the factor outside the force assembly, so "sail forces" narrowly
-construed never touch the true wind — but an exception that survives only
-because of _where_ a factor happens to be applied is the kind of thing that
-quietly stops being true. §3.2 records why that seam was chosen; this paragraph
-records that the seam is not what makes the claim honest.
+Apparent wind is drawn as a **telltale**: a length of yarn in the rigging,
+streaming with it and rippling as it goes — the same instrument the real boat
+uses, so what a student reads here transfers to the water without translation. It
+carries no arrowhead, because the one thing it must not look like is a vector.
+**Only the most windward of the three is shown** — port upper shroud, starboard
+upper, or backstay, whichever stands furthest into the wind and so has the
+cleanest air. Drawing just that one teaches which telltale to read at a given
+point of sail by demonstration rather than by saying so.
 
-When the toggle is on we draw both vectors from a common origin with the
-connecting boat-speed vector, so the triangle itself is visible — that triangle
-_is_ the lesson.
+**Its length is foreshortening, not a speed reading.** The view is from above and
+a becalmed telltale hangs straight down, so the honest picture is the same yarn
+seen nearly end-on rather than a shorter one: it collapses to a stub in a
+near-calm and stands out fully by about 2.5 kt of apparent wind, and past that it
+stops changing. A telltale answers *which way*, and the two velocity arrows
+already own *how fast*.
 
 ### 3.2 Sail forces
 
-Each sail is treated as a thin cambered foil of finite span.
+Each sail is a thin cambered foil of finite span. Lift acts perpendicular to the
+apparent wind and drag along it; summed over both sails and resolved along the
+heading, that is the **driving force**. The lateral component is not discarded —
+[§3.5](#35-hull-resistance-and-integration) charges the keel for it.
 
-**Aspect ratio** from `luff² / area`, the standard sail convention:
+Two regimes, and the second is not a footnote. Below the stall the sail works as
+a foil and lift does the driving. Past it it is a flat plate: on a dead run it
+stands square to the wind, lift is zero, and the boat is being **pushed** rather
+than lifted. Downwind sailing only works because the model says so.
 
-- Main: `24² / 118.6` ≈ **4.9**
-- Jib: `17² / 56.5` ≈ **5.1**
+Between them the stall is gradual rather than a cliff, which is what a soft sail
+does — and it is load-bearing rather than a nicety. A sharp stall makes the boat
+_bistable_: the same trim in the same wind settles at two different speeds
+depending on where it started, because a sail eased for the apparent wind at
+speed is stalled at the apparent wind at rest and cannot climb back out. That
+failure mode is the one to check any change to the sail model against, and it is
+[MODEL.md](MODEL.md#the-speed-fold) that carries it.
 
-**Lift-curve slope**, corrected for finite span:
-
-```text
-a = 2π·AR / (AR + 2)        // main: ≈ 4.45 /rad  (0.078 /deg)
-```
-
-**Attached flow** (|α| below stall, α_stall ≈ 18°):
-
-```text
-Cl = a · α, turning over at Cl_max      // the saturation below
-Cd = Cd0 + (a · α)² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
-```
-
-giving `Cl ≈ 1.4` at the stall — a realistic figure for a soft sail. The curve
-does not _peak_ there: it tops out at ≈ **1.63 near 24°**, which is where the
-optimal-trim search actually sits at every point of sail in
-[§3.6](#36-calibration-targets).
-
-#### The attached limb has a maximum of its own
-
-`Cl = a·α` is a straight line, and a straight line has no maximum. For a long
-time nothing in the model supplied one — `Cl` reached 4.66 at α = 60°, against
-the 1.2–1.6 a real cambered sail can hold — and the only thing that ever brought
-the curve down was the crossfade into the flat plate. **So peak lift was not a
-quantity this model held. It was an artefact of where the blend happened to
-catch a ramp that was still climbing**, and it could not be moved without moving
-the post-stall falloff, because they were the same knob.
-
-That cost more than tidiness. The descent from that accidental peak was _steeper
-than the attached limb's own rise_ — 0.102 per degree down against 0.078 up —
-and a falling lift curve on a boat is a feedback loop: slowing swings the
-apparent wind aft, which raises α, which past the peak cuts lift, which slows
-the boat further. Where the loop closed, the boat had **two** settled speeds at
-one trim and picked whichever its history led it to. `pos-i4o` found it 2.90 kt
-wide, about 4° from the optimal trim, which is ordinary trimming.
-
-So the attached limb saturates, using the same rounded-corner `min` as
-[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze):
-
-```text
-Cl_attached = a·α / (1 + |a·α / Cl_max|^p)^(1/p)      // Cl_max = 1.7, p = 16
-```
-
-Exact for small incidence, asymptotic to `Cl_max`, smooth in between. `Cl_max`
-is an asymptote rather than the peak: the realised maximum is ≈ 1.63, because
-the blend starts pulling the curve down before it has finished approaching. The
-sharpness matters as much as the ceiling — at `p = 6` the softening reaches 4.4%
-down at the stall angle, which is thin-aerofoil theory quietly ceasing to be
-thin-aerofoil theory; at 16 it is 0.27% and only the top bends.
-
-**Drag is charged against `a·α`, not against the lift actually delivered**, and
-that asymmetry is doing real work rather than being an oversight left over from
-before the ceiling existed. Below the maximum the two are the same number and
-this is ordinary induced drag. Past it, the incidence the sail cannot turn into
-lift goes into separated flow — it costs drag and pays nothing, which is what a
-stall _is_. Charge the delivered lift instead and the fold comes back (measured:
-0.70 kt at 3 kt of wind, 1.00 kt at 6), because the sail stops being penalised
-for being oversheeted just as its lift stops answering.
-
-**The blend is not made redundant by this**, which was worth checking, since a
-limb that turns over physically might have left the crossfade with nothing to
-do. It has not: with the ceiling in place and the blend left at its old 20°, the
-fold returns at 2.40 kt. The stall is still the crossfade's doing. What changed
-is that the two constants now govern different things — `Cl_max` the peak, the
-width the falloff — where before one number did both badly. _"We gave it a
-maximum, so the blend is cosmetic now" is the simplification to resist, and that
-figure is why._
-
-**The peak is flatter than it was, and §4.2 leans on it.** Saturating the limb
-does not just lower the summit, it broadens it: `Cl` is within 0.4% of its
-maximum from 22.7° to 24.9°, where the old curve turned over more definitely.
-That is the more physical shape — a real sail has a forgiving best trim rather
-than a knife edge — but it means "the optimal trim" is a fuzzier idea than it
-was, and the optimal-trim search's argmax can move by a fraction of a degree on
-a rounding difference. Anything comparing a trim to _the_ optimum wants a
-tolerance rather than an equality.
-
-**One lesson from finding this, which is about method rather than sails.** The
-fold was hunted with a sweep over trims and winds, and a sweep can only fail to
-find a counterexample — it cannot establish there is none. Three passes at this
-bug reported settings as fold-free that a finer grid showed folding by 1.4 kt.
-The trap has a second door that is easy to miss after you have shut the first:
-sampling the _speed_ axis bounds what can be seen too, and not merely how
-precisely. Detecting a fold means resolving the stretch where the net force is
-positive, between the unstable root and the upper stable one — not the gap
-between the two stable branches, which is much wider and is the natural thing to
-reason about. At a saddle-node the branches are born coalescent, so that stretch
-shrinks to nothing as a fold appears: **no step size removes the band where a
-fold is real and invisible; it only moves it.** `fold.test.ts` states its
-resolution, shows it against a grid ten times finer, and proves it can catch the
-narrowest fold this model makes rather than only an obvious one.
-
-**Past stall**, blend over ~50° into the flat-plate model — a normal force
-`Cn = k·sinα` resolved along and across the flow:
-
-```text
-Cl = k · sin α · cos α
-Cd = Cd0 + k · sin²α          // k ≈ 1.1
-```
-
-The flat-plate limb is not a detail — it is what makes downwind sailing work at
-all. On a dead run the sail is square to the wind at α = 90°, where lift is zero
-and `Cd = k`. The boat is being pushed, not lifted, and the model should say so.
-
-Two numbers there were settled by calibration and are worth flagging, because a
-first reading of the physics gives different ones.
-
-`k` is **1.1, not the textbook 2.0**. Two is a flat plate of _infinite_ span; at
-a sail's aspect ratio the flow spills round the ends and the figure is nearer
-1.2, and a soft sail — twisted, its head falling off, its jib in the main's wind
-shadow — comes in under that. This single constant sets the speed of a run and
-nothing else in the model can substitute for it, so getting it wrong is
-expensive: at 2.0 the run came out a full knot fast.
-
-The blend is **~50°, not ~10°**, and that width is not cosmetic. A sharper stall
-makes the model _bistable_ on a reach — the same boat at the same trim in the
-same wind settling at 3.7 kt or 5.1 kt depending on whether it started from rest
-— because a sail eased for the apparent wind at speed is stalled at the apparent
-wind at rest, and with a cliff at the stall it cannot climb back out.
-
-It went 10° → 20° in `pos-fo1.4` and 20° → 50° in `pos-i4o`, and the second move
-is the one that says what this constant can and cannot do. 20° was enough at the
-trim the optimal-trim search finds and nowhere else; widening _inside the old
-parameterisation_ could not fix the rest, because it **relocated** the fold into
-lighter air rather than removing it — a gentler fall closes the same loop at a
-lower speed — and no width was clean at every wind while the polar still met
-[§3.6](#36-calibration-targets). What made 50° work is that the attached limb
-now has its own maximum, so the width governs the falloff alone. Swept at every
-wind from 2 to 10 kt, 31° still folds — by 0.9 kt at 4 kt — and **32° is the
-narrowest width that is clean everywhere**; 50° sits half again past that, where
-the old 20° sat 1.43× past its own 14°.
-
-**Where the search for this fix did _not_ lead is worth recording**, because
-both directions look plausible and cost a week each. The keel's induced drag is
-not implicated: delete it and the fold gets _worse_ (3.52 kt against 2.87 at 10
-kt), so [§3.5](#35-hull-resistance-and-integration)'s `keelStall` — which has no
-headroom anyway — is neither the cause nor the cure. And neither limb folds on
-its own: a pure attached curve is monotone with nothing to feed back on, and a
-pure flat plate peaks gently at 0.55. **Only the join between them has a segment
-steep enough to close the loop**, which is what pointed at the parameterisation
-rather than at either piece of physics.
-
-**Force assembly.** Lift acts perpendicular to the apparent wind, drag along it.
-Sum both sails, rotate into the boat frame, and take the component along the
-heading as **driving force**. The lateral component is _not_ discarded — see
-[§3.5](#35-hull-resistance-and-integration), where the keel is charged for it.
+**The best trim is forgiving rather than a knife edge.** Lift stays within half a
+percent of its maximum across a couple of degrees, which is the more physical
+shape and is what [§4.2](#42-the-traffic-light)'s colour ramp reads against. The
+mechanism, the constants and what trades against what are in
+[MODEL.md](MODEL.md#the-sail-force-model); the constants themselves are
+documented where they live, in `model/tuning.ts`.
 
 #### Depowering: the rig stops collecting force in a breeze
 
-Everything above scales with the square of the wind, and a rig that did only
-that would sail a Rhodes 19 at nine knots in a gale. A real one stops collecting
-force well before that. It heels, so the sail plan leans out of the horizontal
-and presents less of itself square to the wind; the sail twists off at the head;
-and the crew ease, feather, flatten and reef. So the whole rig force is
-multiplied by
+Force scales with the square of the wind, and a rig that did only that would sail
+a Rhodes 19 at nine knots in a gale. A real one stops collecting force long
+before: it heels, so the sail plan leans out of the horizontal and presents less
+of itself square to the wind; the sail twists off at the head; and the crew ease,
+feather, flatten and reef.
 
-```text
-k(W) = (1 + r^16)^(−1/16)        r = (W_true / 13 kt)²
-```
+So the rig carries **full sail up to 13 kt** of true wind, and above that the
+force **holds at what it reached there** rather than going on growing. That is
+meant to be visible: run the wind up past 13 kt and the boat plainly stops
+gaining speed, which is what the top third of [§5](#5-direct-manipulation)'s
+0–20 kt range is for.
 
-which is `min(1, q_full/q)` with the corner rounded off: full sail up to 13 kt,
-and above it `k` falls as `1/q`, so **the force stops growing and holds at what
-it reached there**. [§7](#7-deliberately-out-of-scope) excludes heel from the
-_drawing_ — top-down can only hint at it — and says in the same breath that it
-is paid for without being shown. This is one of the two ways it is paid for: the
-force heel costs the rig, charged without an angle ever being computed, exactly
-as [§3.5](#35-hull-resistance-and-integration)'s `sideForce` is four times a
-bare keel's induced drag because it carries the _drag_ heel produces, along with
-leeway and rudder angle. Nothing here forbids computing a heel angle; what the
-subsection below establishes is that doing so would make a worse boat.
-
-**Why a term of this shape was the only one that could work.** Every force in
-the model is homogeneous of degree two in speed, so
-[§3.5](#the-wall-exponent-is-the-models-only-wind-scale)'s wall was the sole
-source of wind-dependence in the polar — and it is a function of _speed_ when
-the problem is a function of the _wind_. It therefore bites hardest where the
-boat is fastest, clipping a reach harder than close hauled and sliding the
-upwind optimum lower as the breeze fills in. A factor on the drive has no such
-problem: at any one wind it multiplies every point of sail by the same number,
-which is precisely what slows the boat without bending the polar.
-
-**It is keyed to the true wind, and that is a decision rather than a
-convenience.** [§3.1](#31-apparent-wind) says sail forces come from the apparent
-wind and never from the true wind, and this does not break that rule: `k` is not
-an aerodynamic coefficient but _how much sail is being carried_, which a crew
-choose for the wind of the day rather than for the flow over the cloth at this
-instant. The alternative was measured and is worse. Keyed to the apparent wind,
-a run — which has the lowest apparent wind of any point of sail — is depowered
-_least_, so the run/beam ratio at 14 kt runs from 0.74 to between 0.75 and 0.79,
-breaking [§3.6](#36-calibration-targets)'s "a run is notably slower than a
-reach" at exactly the wind [§2.1](#21-initial-state-a-random-solvable-problem)
-opens in, and the fastest point of sail slides from TWA 95° to 110–115°.
-
-The mechanism this stands in for was measured too, and it is also worse. Driving
-`k` from the side force — the honest reading of "it heels", since heeling moment
-is what runs a crew out of righting moment — puts run/beam at 30 kt between 0.97
-and 1.09, a run as fast as a beam reach, and barely touches the top speed at
-all: 8.82–8.86 kt against 8.91 undepowered, because the fastest angles make
-little side force and escape the cap. **Heel is the right cause; its effect has
-to be spread evenly to be any use.**
-
-**The knee is sharp because the calibration table is tight.** The 10 kt broad
-reach sits at 4.78 kt against a 4.68 floor — about a fifth of the 10% tolerance
-[§3.6](#36-calibration-targets) quotes — so a knee soft enough to reach back
-into 10 kt breaks the table outright. At an exponent of 4 it does; at 16 the
-whole 4–10 kt range is unchanged to four decimal places and only 12 kt onward
-moves at all. The sharpness buys the separation between the range that is
-calibrated and the range this term is for.
-
-**Where it is applied matters, and it is not inside the force assembly.**
-`sail.ts` computes `k` and `simulation.ts` applies it, so `rigForce` reports the
-rig at full power and nothing in [§4.2](#42-the-traffic-light)'s trim-quality
-ratio ever sees it. That is deliberate. The colour divides this trim's drive by
-the best trim's, and a factor common to both cancels — except against the
-_floored_ denominator `max(best, 0.05·q·A)`, which carries no such factor.
-Scaling the forces upstream would leave that floor binding further out as the
-breeze filled in: measured, the apparent wind angle below which it binds would
-run from 8.2° at 10 kt to 11.5° at 20, 17.3° at 30 and 30.3° at 45, creeping the
-near-no-go fade across a third of the upwind quarter in a gale. Applied at the
-integrator's seam, §4.2 is left exactly as it was designed. The price is that
-`rigForce` returns a force that is not the one accelerating the boat, which the
-naming in `sail.ts` carries.
+[§7](#7-deliberately-out-of-scope) keeps heel out of the _drawing_ — a top-down
+view can only hint at it — and says in the same breath that it is paid for
+without being shown. This is one of the two ways it is paid for. Nothing here
+forbids computing a heel angle; [MODEL.md](MODEL.md#depowering) records that
+doing so makes a worse boat, and the three other shapes this factor could have
+taken.
 
 ### 3.3 Luffing
 
@@ -1215,7 +1038,7 @@ the sails' own coefficients, or a resistance curve steeper than §3.5 can afford
 
 `pos-i4o` bought a point of it back, and by exactly the route this paragraph
 predicts rather than by tuning harder: giving the attached limb a maximum of its
-own ([§3.2](#the-attached-limb-has-a-maximum-of-its-own)) changes the _shape_ of
+own ([MODEL.md](MODEL.md#what-trades-against-what)) changes the _shape_ of
 the lift curve rather than its scale, which is the one kind of change that can
 move a broad reach relative to a beam reach. It was not done for this figure —
 it was done to stop the boat having two settled speeds at one trim — and a point
@@ -1982,8 +1805,7 @@ against 29.8% dead downwind; at 0.5 or better, 13.6% against 50.6%. About four
 times more forgiving downwind, and nothing anywhere says so.
 
 Those figures were 6.2/30.0 and 11.5/50.8 — "getting on for five times" — before
-`pos-i4o` widened [§3.2](#the-attached-limb-has-a-maximum-of-its-own)'s stall
-blend. A softer stall leaves more lift either side of the optimum, which widens
+`pos-i4o` widened the [stall blend](MODEL.md#what-trades-against-what). A softer stall leaves more lift either side of the optimum, which widens
 the close-hauled band; the run band is drag-driven, never goes near the blend,
 and did not move. The lesson is unchanged in kind and slightly weaker in degree,
 which is the honest way round: it is the _model_ that says how forgiving a run
@@ -2553,8 +2375,8 @@ accident.
 ### The ring as a target
 
 The drawn line is **thin** — `--pos-rule-wind` puts it at 1.5 px on a phone and
-3.4 px on a desktop — and nothing could be dragged by it. **What is
-draggable is all the water the boat is not standing on.**
+3.4 px on a desktop — and nothing could be dragged by it. **What is draggable is
+all the water the boat is not standing on.**
 
 An earlier design gave the wind an _annulus_: 22 CSS px outward from the drawn
 ring and inward as far as the arrow's tip, deliberately asymmetric so that the
