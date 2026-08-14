@@ -477,135 +477,44 @@ Constants get tuned until the polar hits roughly these marks in 10 kt true:
 | Run                      | 180° | ≈ 3.5 kt     | ≈ 3.0 kt     | **3.71 kt**       |
 | **Closest useful angle** | —    | **≈ 45°**    | **≈ 55°**    | **44°**           |
 
-Beam reach fastest, run notably slower, and a no-go zone that simply _is_ rather
-than being drawn on. These are the model layer's unit tests, in
-`calibration.test.ts`.
+**Beam reach fastest, run notably slower, and a no-go zone that simply _is_
+rather than being drawn on.** Those three are the lessons; the numbers are how
+they are held. Targets are quoted to about 10%, and `calibration.test.ts` is the
+authority — it holds every figure above and fails loudly when a constant is
+nudged carelessly.
 
-The right-hand column is where `pos-fo1.4` left the sloop and `pos-lcz` last
-moved it; every figure is inside the ~10% the targets are quoted to. Two of them
-are worth reading rather than just checking.
+Two entries want reading rather than checking.
 
-The **broad reach is 8% light, and structurally so.** The table puts a beam
-reach and a broad reach 0.2 kt apart while the driving force at 135° is barely
-half what it is at 90° — that needs resistance going as `v¹⁰`, and this
-section's curve is a square under a fourth power, which tops out at `v⁶`. No
-further tuning closes that gap.
+**The broad reach is 8% light, structurally.** It is inside tolerance and it is
+not going to improve: closing it needs a resistance curve steeper than
+[§3.5](#the-wall-exponent-is-the-models-only-wind-scale) can afford, and no
+amount of further tuning substitutes. `calibration.test.ts` carries the proof and
+[MODEL.md](MODEL.md#what-a-uniform-factor-cannot-do) says why the obvious
+candidate cannot help.
 
-It used to read that "a different resistance curve would", and that was too
-generous to the resistance. A steeper wall does close some of it — at a sixth
-power this figure was 7% light and at a twentieth it is 1% — but
-[§3.5](#the-wall-exponent-is-the-models-only-wind-scale) shows what that costs:
-the wall is the model's only wind-scale, so steepening it to buy the broad reach
-sends the pointing angle through the floor as the breeze fills in. `pos-lcz`
-went the other way and spent two points of this figure to hold the pointing,
-leaving about one point of margin against the tolerance.
-
-It then used to read that what was wanted was a term acting on the _drive_, and
-that `pos-d7u` would be it. That has landed, and it did **not** buy this figure
-back — which is worth recording rather than quietly deleting, because it was a
-reasonable guess and it was wrong.
-[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze) is
-exactly such a term and it cannot help here, for the same reason it is useful
-everywhere else: it is a single factor multiplying the whole rig, so at any one
-wind it scales a broad reach and a beam reach by precisely the same amount and
-their _ratio_ does not move at all. It also sits at 1.000 in 10 kt by
-construction, so it is not even present in this table. Closing this gap needs
-something that changes the _shape_ of the force curve rather than its scale —
-the sails' own coefficients, or a resistance curve steeper than §3.5 can afford
-— and until something does, 8% light is where the broad reach stays.
-
-`pos-i4o` bought a point of it back, and by exactly the route this paragraph
-predicts rather than by tuning harder: giving the attached limb a maximum of its
-own ([MODEL.md](MODEL.md#what-trades-against-what)) changes the _shape_ of
-the lift curve rather than its scale, which is the one kind of change that can
-move a broad reach relative to a beam reach. It was not done for this figure —
-it was done to stop the boat having two settled speeds at one trim — and a point
-is all it is worth. The gap remains structural.
-
-The **closest useful angle is read as the peak of upwind VMG**, which is what a
-sailor means by it and what a test can check. It came out at 30–35° before
-calibration — a boat that points like nothing afloat — and the constant that
-moved it is the keel's stall ceiling in
+**The closest useful angle is read as the peak of upwind VMG**, which is what a
+sailor means by it and what a test can check. Before calibration it came out at
+30–35° — a boat that points like nothing afloat — and the constant that moved it
+is the keel's stall ceiling in
 [§3.5](#35-hull-resistance-and-integration).
 
-The **main-only column is not yet met** and is not this section's to meet: it
-belongs to [§3.7](#37-sailing-under-main-alone)'s upwind bonus, which changes
-the sloop numbers too and so has to recalibrate against this table.
+**The main-only column is not this section's to meet.** It belongs to
+[§3.7](#37-sailing-under-main-alone)'s upwind bonus, which moves the sloop
+numbers too and so has to recalibrate against this table (planned: pos-bh6).
 
 **This table is one wind speed, and the model knows it.**
-[§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt
-and [§5](#5-direct-manipulation) lets the wind be set anywhere from 0 to 20 kt —
-the top of the range the school teaches in — so the three qualitative lessons
-have to survive a range the table says nothing about. `pos-lcz` narrowed the
-drift to where the same bounds hold across the whole opening range, and
-`pos-d7u`'s depowering then stopped the _pointing angle_ drifting above it:
+[§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
+[§5](#5-direct-manipulation) lets the wind be set from 0 to 20, so the three
+lessons have to survive a range the table says nothing about. They do: the
+closest useful angle holds inside 40–50° at every wind from 4 kt to 45, and a run
+stays under 75% of a beam reach across the whole opening range.
 
-```text
-wind      4     6     8    10    12    14    16    20    30    45
-angle    50°   48°   46°   44°   42°   41°   41°   41°   41°   41°
-run/beam 0.53  0.57  0.62  0.67  0.71  0.74  0.76  0.79  0.83  0.86
-beam kt  2.93  4.08  4.93  5.58  6.10  6.34  6.36  6.37  6.40  6.41
-k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
-```
-
-The bottom row is
-[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering
-factor, and the shape of the table is its doing. Through 10 kt it is 0.99999 and
-every figure is the undepowered one to four decimals; at 12 kt it has taken a
-tenth of a percent; from 14 kt the rig stops collecting force and the boat stops
-accelerating. The closest useful angle stays inside 40–50° at every wind from 4
-kt to 45 — the same band the 10 kt test pins — where before `pos-lcz` it ran to
-39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
-
-**Why the angle row went flat is worth spelling out, because "the boat is slower
-so the wall bites less" is the obvious explanation and it is not the one.**
-[§3.5](#35-hull-resistance-and-integration) says the keel's stall ceiling is
-what sets where the no-go zone ends, and that ceiling is a _ratio_ — the largest
-fraction of the side force the keel can charge as drag, 0.22. A ratio is
-invariant under scaling the side force, so depowering cannot move it: measured
-close hauled, the keel charges 0.2170 of the side force in 10 kt, 0.2139 in 12,
-0.2143 in 14, 0.2170 in 16, 0.2197 in 20 and 0.2190 in 30 — **97–100% of the
-ceiling at every wind**, where before it sat there only at the wind it was
-calibrated in. Hold the boat's speed still and scale the force, and the upwind
-end of the polar stops moving because the constant that governs it has nothing
-left to respond to. That is the mechanism behind the 41–42° row above, and it is
-the reason depowering fixed the _pointing angle_ rather than merely capping the
-speed.
-
-**The run/beam row still drifts, and it is worth being clear that depowering was
-never going to stop it.** A uniform factor scales a run and a beam reach by the
-same number, so it cannot move their ratio at any one wind; what moves the ratio
-across winds is that the boat's speed is now pinned while the wind keeps rising,
-so the apparent wind draws further aft at any given point of sail and the run
-gains on the reach. 0.87 at 45 kt is a real boat in a real gale, and the lesson
-the tests pin — a run under 75% of a beam reach — holds across the whole opening
-range, which is where §2.1 puts the student.
-
-**The 14 kt knife edge is gone, and it is the clearest thing depowering
-bought.** This section used to warn that the figure landed on 40° against a
-bound of 40° with no margin, and that buying a degree back by nudging the keel's
-stall ceiling had been considered and declined because it would move the boat to
-make a test comfortable. The peak is a discrete argmax over a very flat maximum
-— the winning degree beats its runner-up by between 0.01% and 0.09% across the
-opening range — so at 14 kt a rounding difference could flip the answer to 39°
-and turn the suite red with nothing having changed. It is now 41°, winning from
-40°, so both are inside the bound, as they already were at every other wind. The
-flatness is unchanged; what moved is where the pair sits.
-
-**The beam reach in a lot of wind is fixed, and that was `pos-d7u`'s whole
-point.** It reads 6.37 kt at 20 kt of wind and 6.40 at 30, against a 5.65 kt
-hull speed — 12% and 13% over, where before it was 34% and 57%, and where before
-`pos-lcz` it was 25% and 41%. Not _at_ hull speed, and deliberately not: a beam
-reach is the one point of sail a displacement boat holds a little past it, and
-this section's own 10 kt figure is already 5.55 kt against a 5.65 kt hull speed,
-so there was never room to cap much harder without taking this table with it.
-The honest cost is on the last row of the table above — above about 13 kt the
-wind stops making the boat faster, because that is what a capped rig means.
-
-The last row matters as much as the speeds. Main-only falls off _hardest close
-hauled_ — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
-point as high at all. Both are the job of [§3.7](#37-sailing-under-main-alone),
-and the pointing figure is the one a student actually sees.
+**A beam reach settles a little past hull speed on purpose** — 5.58 kt against
+5.65 in the table, and about 6.4 kt in anything from 14 kt of wind upward. A
+displacement boat does hold a beam reach slightly past hull speed, and capping
+harder would take this table with it. The honest cost is that **above about 13 kt
+more wind stops making the boat faster**, which is what a capped rig means and is
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s doing.
 
 ### 3.7 Sailing under main alone
 

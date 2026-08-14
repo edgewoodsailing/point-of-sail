@@ -77,12 +77,48 @@ the drive does not. That is the whole argument for depowering's existence, and i
 is worked through under [the wall](#the-wall-is-the-only-wind-scale), where the
 measurement that settles it lives.
 
-**Peak lift is flat, and the trim-quality colour reads against it.** Saturating
-the limb broadens the summit as well as lowering it — a real sail has a forgiving
-best trim rather than a knife edge. The consequence for anything downstream:
-"the optimal trim" is fuzzier than it looks, and the optimal-trim search's argmax
-can move by a fraction of a degree on a rounding difference. Compare a trim to
-*the* optimum with a tolerance, never an equality.
+**Peak lift is flat, and so is upwind VMG — anything picking an argmax off this
+model is picking off a plateau.** Saturating the attached limb broadens the
+summit as well as lowering it, which is the more physical shape: a real sail has
+a forgiving best trim rather than a knife edge. The same is true a level up,
+where the best upwind angle beats its runner-up degree by between 0.01% and
+0.09%. So "the optimal trim" and "the closest useful angle" are both fuzzier than
+they look, and either can move by a whole degree on a rounding difference.
+**Compare against an optimum with a tolerance, never an equality**, and expect a
+test that pins an argmax to be brittle in a way that says nothing about the boat.
+
+### What a uniform factor cannot do
+
+Depowering multiplies the whole rig by one number, which is exactly what makes it
+the right shape for slowing the boat in a breeze — at any one wind it scales
+every point of sail alike, so it does not bend the polar. The same property is a
+hard limit, and it explains two separate observations that otherwise look like
+tuning failures:
+
+- **It cannot close the broad reach's 8% shortfall.** A single factor scales a
+  broad reach and a beam reach by the same amount, so their *ratio* does not move
+  at all — and at 10 kt the factor is 1.000 by construction, so it is not even
+  present in that table. Closing that gap needs something that changes the
+  *shape* of the force curve rather than its scale.
+- **It cannot stop the run/beam ratio drifting across winds** — and what drifts
+  is not the factor's doing either. The boat's speed is pinned while the wind
+  keeps rising, so the apparent wind draws further aft at any given point of
+  sail, and a run gains on a reach. That is a real boat in a real gale, not a
+  defect.
+
+The one thing that *did* move the broad reach was a shape change — giving the
+attached limb its own maximum bought about a point of it, by the route this
+section predicts rather than by tuning harder. It was done for
+[the fold](#the-speed-fold), and a point is all it is worth.
+
+**The pointing angle is the case that looks like a counterexample and is not.**
+Depowering did flatten it across the wind range, and the obvious explanation —
+*the boat is slower, so the wall bites less* — is the wrong one. What sets where
+the no-go zone ends is the keel's stall ceiling, and that is a **ratio**: drag
+over side force. A ratio is invariant under scaling the side force, so depowering
+cannot move it, and the upwind end of the polar stops drifting because the
+constant governing it has nothing left to respond to. `RESISTANCE.keelStall`
+carries the measurements.
 
 ### Luffing and the two edge-on states
 
