@@ -1258,20 +1258,21 @@ The length law is linear:
 length = SPEED_REACH · |speed| / HULL.hullSpeed
 ```
 
-`SPEED_REACH` is derived rather than declared, and **the direction of that
-derivation reversed.** It used to be what was left of `contentRadius` once the
-bow and the gap were accounted for — a length chosen to fill a band. It is now
-`VELOCITY_SCALE × hull speed`, because the two velocity arrows share one scale
-([§4.1](#41-whats-drawn)) and the ring's radius is solved so that hull speed
-lands exactly on it. So a full-length arrow still means _hull speed_, which is a
-thing worth recognising; what changed is that the length now also means
-_comparable to the wind arrow_, which is the more valuable of the two.
+`SPEED_REACH` is **derived, not declared**: it is `VELOCITY_SCALE × hull speed`,
+because both velocity arrows are drawn to one scale ([§4.1](#41-whats-drawn)) and
+the wind ring's radius is solved so that a full-scale arrow lands exactly on it.
+The identity closes at both ends. The wind's arrow reaches the ring at
+[§5](#5-direct-manipulation)'s 20 kt ceiling; the boat's reaches it at hull
+speed, its 1.23 m of shaft added to a tail that starts 3.12 m out — 4.35 m, which
+is the ring's radius exactly.
 
-**The arrow shrank at hull speed**, from 2.08 m to 1.227 m. That is not a
-regression: the boat genuinely _is_ several times slower than the top of the
-wind range, and the proportions being true is the entire point. What the drawing
-lost in the boat's arrow it more than got back in the 1.30× zoom the same
-derivation bought.
+**So the boat's arrow is much the shorter of the two, and that is a proportion
+being true rather than something to correct.** Hull speed is 5.65 kt against a
+20 kt ceiling, so the boat's arrow runs 28% of a full-scale wind arrow — the same
+28% the two speeds themselves stand in, which is the whole of what one shared
+scale buys. Drawing each to fill its own band instead would make them alike and
+say the boat keeps pace with the wind, which is the one thing this drawing must
+not say.
 
 Above hull speed the arrow overruns and crosses the wind ring; see
 [§4.1](#41-whats-drawn) for why that is allowed and what makes it safe.
