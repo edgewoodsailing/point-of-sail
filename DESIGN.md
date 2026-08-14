@@ -2401,6 +2401,75 @@ rather than a thing to correct for.
 An iPad flat on a table, in a small group, plus phones. That means: **no hover
 state exists**, touch targets must be large, and targets will overlap.
 
+### The interface is direct manipulation, and it owes a low-precision path
+
+**Both halves of that are decided** (pos-z7p), and the second half is the one
+that took an argument, so the reasoning is recorded rather than the conclusion
+alone.
+
+**Every quantity is set by touching the thing it belongs to.** Not because
+direct manipulation is fashionable but because the tool has exactly one job: a
+student looking at a boat, not at an interface. A slider puts a widget between
+the two, says a quantity in a number where the drawing already says it in a
+shape, and is a second thing that has to be kept in step. The early prototype
+was all sliders; they have been removed one at a time, the last of them in this
+section, and none is coming back. That is settled and is not a gap.
+
+**What it costs is a requirement, not a debt.** A drag is now the only gesture in
+the app, and a drag is the most demanding thing a hand can be asked for — far
+more than a tap. Three problems follow from that, they were found separately, and
+they all point the same way:
+
+- **Scale.** Development happens on a big-screen Mac, where there is precision to
+  spare and the problem is invisible. A phone is where many students will meet
+  this, and it is where the precision goes. The measurements in §4.5 are the same
+  story in ink: the drawing shrinks to the short axis, and so does every target
+  on it.
+- **Precision.** The model has structure finer than a fingertip can address. The
+  window of trims that drive forward at all is about 1.7° wide at AWA 4.4°
+  (`attachedTrimSeed`), and [§3.4](#the-sheet-sets-a-limit-not-an-angle)'s gybe
+  rule — by the lee by as much as the boom is eased — is taught by stepping the
+  wind a degree at a time and having a student predict where the boom goes. A
+  finger gets "somewhere around there", which is the vagueness the rule exists to
+  replace.
+- **Tremor.** Excellent sailors have tremors, and this school has taught students
+  who do. Essential tremor is the most common movement disorder and gets more
+  common with age, which is squarely the adult-education demographic. **The
+  capability that matters is not "can see and touch a screen" but "can hold a
+  sustained, precise drag on a 22 px target"**, and those are different motor
+  tasks. Adaptive sailing is well established — para sailing was Paralympic
+  through 2016, the Hansa 303 exists as a class, sip-and-puff rigs race — so a
+  student who cannot drag precisely is not a student who cannot sail.
+
+So the app owes **a second input path that asks for less finger precision.** Not
+a second interface, and emphatically not a keyboard mirror of every control —
+that is the sliders again in another costume. The form is **undecided**; the
+shape currently favoured is a selection step, by Tab *or by a single tap*, that
+makes adjustment controls appear for the selected thing. Tap-to-select matters as
+much as Tab: the primary scenario is an iPad flat on a table, where there is no
+keyboard at all, so a keyboard-only answer would miss the main case.
+
+**The wind is the first thing that path should serve**, and the reason is
+pedagogical rather than mechanical. Its two quantities come off one finger, which
+means bearing cannot be changed without disturbing speed unless the hand traces a
+constant-radius arc freehand. That is easy to misadjust, and the design gets away
+with it today only because the points being taught turn on wind *direction* far
+more than on wind *speed*. Decoupling the two is worth more here than smoothing
+either one.
+
+**What is deliberately not claimed.** The app does not support screen readers and
+should not say it does. The pedagogy here *is* the picture — the sail luffing, the
+trim ramp on the cloth — so a spoken version of this tool would be a different
+tool, not this one with labels. Naming the standard rather than gesturing at it:
+the app fails **WCAG 2.1.1 Keyboard** (Level A) today and will keep failing it
+until the path above lands, and what the path above describes is almost exactly
+**WCAG 2.2's 2.5.7 Dragging Movements** (Level AA) — "achievable by a single
+pointer without dragging". Worth knowing that 2.5.7 has an exception for cases
+where dragging is essential, which is arguable here; the decision is to build the
+alternative rather than lean on the exception. Conformance is not the reason for
+any of this. The reason is a student on a phone getting the answer the model
+actually has.
+
 ### Gestures
 
 | Element | Gesture | Notes |
@@ -2561,14 +2630,16 @@ quantities on one gesture is the whole design now; a second control for one of
 them was a redundancy that had to be kept in step, and the kind that goes stale
 quietly.
 
-**It cost the simulator its only keyboard route, and that is a debt rather than a
-decision.** The slider was the one focusable element in the app; there are now
-**zero**. Every quantity — heading, wind bearing, wind speed, both sheets — is
-pointer-only, and nothing here is reachable by keyboard or announced to a screen
-reader. That is recorded as a gap in the shipped design rather than an oversight
-to be discovered: it is `pos-z7p`, it is now the whole of the accessibility
-story rather than a shortfall in it, and the app should not go in front of
-students who need it until that lands.
+**It cost the simulator its only focusable element**, and there are now **zero**:
+every quantity — heading, wind bearing, wind speed, both sheets — is pointer-only,
+and reachable by dragging or not at all. That is not the argument against removing
+the slider, because a slider was never the right answer to it; what the removal
+did was make the real requirement unavoidable. The requirement, its three
+independent reasons, and what is and is not being claimed are all
+[at the head of this section](#the-interface-is-direct-manipulation-and-it-owes-a-low-precision-path);
+the work is `pos-z7p`. **This gesture is the one that path should serve first**,
+for the reason recorded there: its two quantities ride on one finger, and the
+lessons turn on direction far more than on speed.
 
 **The range is 0 to 20 knots**, in whole-knot steps, and both ends are chosen
 rather than inherited. Zero has to be reachable: a boat that will not stop is a
