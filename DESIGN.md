@@ -1180,15 +1180,12 @@ of it. The colors inherit the truth of the model instead of restating a rule.
 
 And it comes out that way. Measured on the main in 10 kt of apparent wind, the
 trims reading 0.8 or better span 7.0% of the sail's legal range close hauled
-against 29.8% dead downwind; at 0.5 or better, 13.6% against 50.6%. About four
-times more forgiving downwind, and nothing anywhere says so.
-
-Those figures were 6.2/30.0 and 11.5/50.8 — "getting on for five times" — before
-`pos-i4o` widened the [stall blend](MODEL.md#what-trades-against-what). A softer stall leaves more lift either side of the optimum, which widens
-the close-hauled band; the run band is drag-driven, never goes near the blend,
-and did not move. The lesson is unchanged in kind and slightly weaker in degree,
-which is the honest way round: it is the _model_ that says how forgiving a run
-is, and the model's stall got softer.
+against 29.8% dead downwind; at 0.5 or better, 13.6% against 50.6% — **about
+four times more forgiving downwind, and nothing anywhere says so.** That ratio is
+the model's own rather than a target: it moves with the
+[stall blend](MODEL.md#what-trades-against-what), which widens the close-hauled
+band while leaving the run's alone, since a run's is drag-driven and never goes
+near the stall.
 
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
