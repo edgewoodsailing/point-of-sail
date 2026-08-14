@@ -675,8 +675,8 @@ crinkle still says "this sail has let go" with nothing on the page moving.
 
 #### How the camber is drawn — and, for the jib, felt
 
-**The depth is no longer only a drawing.** It lives in `model/sail.ts` now,
-because for the jib it sets the chord (see
+**The depth is not only a drawing.** It lives in `model/sail.ts`, because for
+the jib it sets the chord (see
 [the jib's foot is cloth](#the-jibs-foot-is-cloth-not-a-bar)), the chord sets
 where the clew is, and that sets the angle of attack and therefore the force.
 For the **main** it remains purely visual — a boom is a spar and holds its chord
@@ -738,23 +738,21 @@ the flow is attached, but the flat-plate limb of [§3.2](#32-sail-forces) makes
 `Cl = 2 sinα cosα`, which reverses at |α| = 90° where the belly does not.
 
 Using `sin α` whole rather than only for its sign is a _depth_ decision rather
-than a knife-edge one. That is a correction to what this section used to say,
-and the thing that changed was [§3.3](#33-luffing) rather than the drawing: this
-passage was written when the fraction folded about zero alone, and pos-aa2
-folded it about 90° as well. Both knife edges are now carried by the fraction:
+than a knife-edge one, because **both knife edges are carried by the collapsed
+fraction** ([§3.3](#33-luffing)) rather than by this term:
 
 - **α → 0** — edge-on and luffing. `(1 − collapsedFraction)` is _identically_ 0
   across |α| ≤ 2°, so the side flip at the luff happens in the middle of a band
   of exactly flat sail.
 - **α → ±180°** — the flow arrives at the leech instead, a flogging sail making
   nothing. §3.3 collapses the sail here too, so the term is identically 0 across
-  |α| ≥ 178° and this flip is equally invisible. It was not always: before
-  pos-aa2 the fraction was blind to this state and called such a sail fully
-  drawing, and `sin α` was the only thing standing between the drawing and a
-  maximum-amplitude pop in a state a student reaches by easing on a run.
+  |α| ≥ 178° and this flip is equally invisible. Were the fraction blind to that
+  state — folded about zero alone — `sin α` would be the only thing standing
+  between the drawing and a maximum-amplitude pop in a state a student reaches by
+  easing on a run.
 
-So `sin α` is no longer load-bearing at either edge, and it stays for what it
-does _between_ them — setting the depth by incidence. Measured on the main at
+So `sin α` carries no edge, and it stays for what it does _between_ them —
+setting the depth by incidence. Measured on the main at
 saturated pressure, the drawn camber is 0.058 m at α = 7°, 0.122 m at 15° and
 0.473 m at 90°; with only the sign it would be 0.473 m at all three, which is
 full camber on a sail 7° off luffing and close hauled indistinguishable from a
@@ -878,9 +876,9 @@ accessibility tree, which is what "absent entirely" has to mean.
 
 #### Why no standing rigging _spans_
 
-An earlier version of this section drew the headstay, on the argument that it
-kept the boat reading as a sloop with its jib struck rather than as a different
-boat. That argument doesn't survive contact with the drawing.
+The tempting case for drawing the headstay is that it keeps the boat reading as
+a sloop with its jib struck, rather than as a different boat. That argument
+doesn't survive contact with the drawing.
 
 The boat has **six stays**, and drawing exactly one of them misrepresents the
 rig. Worse, it asks the viewer to care about a stay's _horizontal span_, which
@@ -904,8 +902,7 @@ deck attachment points.** Dots, not spans, which is what a deck-level drawing
 can honestly show — where a stay _lands_ is a fact about the deck, where it
 _goes_ is a fact about a vertical the drawing has no axis for.
 
-They earn their place twice over, and neither reason was available when the
-question was first asked. The **lowers** are what the boom fetches up on and so
+The marks earn their place twice over. The **lowers** are what the boom fetches up on and so
 what sets `SWING_LIMIT`, which means showing where they land makes the boom's
 travel limit visible rather than merely enforced. The **uppers and the
 backstay** are where the yarn is tied, so the telltale below has somewhere to
@@ -937,9 +934,9 @@ each. The uppers go forward (spreader geometry) and the lowers aft (where they
 resist the mast bending forward under headstay load). Being wrong about it moves
 a dot fourteen inches and nothing else.
 
-**Small and definite, rather than large and faint.** A first attempt drew them
-at 0.07 m in a lightened ink and they read as _dirt on_ the deck rather than
-hardware _on_ it. The fix runs both dials together, and they are one decision: a
+**Small and definite, rather than large and faint.** Drawn the other way — 0.07 m
+in a lightened ink — they read as _dirt on_ the deck rather than hardware _on_
+it. The fix runs both dials together, and they are one decision: a
 chainplate is a place a wire lands, so it wants to be nearly dimensionless — and
 being small is exactly what lets it take the hull's ink at full strength without
 competing with the mast. A faint mark reads as a mistake; a tiny sharp one reads
@@ -1008,9 +1005,9 @@ one on a sail.
 
 #### The jib's foot is cloth, not a bar
 
-The jib's clew used to swing on a circle of radius `JIB.foot` about its tack,
-which is the geometry of a **jib boom** — a spar the boat does not have. A
-sail's foot is a length of cloth: bellied out it spans less across than it
+A clew swinging on a circle of radius `JIB.foot` about its tack is the geometry
+of a **jib boom** — a spar the boat does not have. A sail's foot is a length of
+cloth: bellied out it spans less across than it
 measures along, and the clew comes forward as it fills.
 
 **The shape is a circular arc, and that is not an approximation.** A sail has no
@@ -1026,13 +1023,9 @@ curve with no boat dimensions in it, tabulated once at load. **There is no
 equilibrium to iterate toward**: the depth arrives from the pressure model and
 the geometry does the rest.
 
-**This makes camber and chord one quantity where they were two.** Before it,
-`camberDepth` could report a belly no 7'6" of cloth could make at that chord. It
-also moved that function from `render/` into `model/`: while a sail's depth was
-only ever _drawn_ it could live in the renderer, but the depth now sets the
-chord, the chord sets where the clew is, and that sets the angle of attack and
-therefore the force. The old claim that "camber affects no force" stopped being
-true the day this landed.
+**Camber and chord are one quantity, not two.** Uncoupled, `camberDepth` can
+report a belly no 7'6" of cloth could make at that chord — which is why it lives
+in `model/` rather than `render/`, and why camber is a force for this sail.
 
 **And the mast is in the way.** The foot cannot pass through the spar, so the
 clew's bearing is kept out of the mast's shadow — 1.47°, from a 4-inch section
@@ -1140,8 +1133,7 @@ follows along instead of quietly letting the boat grow into the wind ring. The
 bands nest strictly, and a test says so.
 
 `contentRadius` leaves 2.28 m clear of the bow and, because the pivot is the
-midpoint of LOA, exactly the same astern — so sternway is no longer the cramped
-case it was when the boat turned about the mast.
+midpoint of LOA, exactly the same astern — so sternway is not the cramped case.
 
 It is a **reservation, not a clamp**, and the speed arrow takes it up on exactly
 that. The arrow is calibrated so that its tip lands on `contentRadius` at hull
