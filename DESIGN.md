@@ -1389,9 +1389,9 @@ discovering after the fact that our amber is washed out.
 
 #### The validated ramp
 
-Sail color carries meaning, and roughly 8% of boys have some red-green
-deficiency, so the ramp was designed and then checked under simulation rather
-than assumed. Five anchor stops from worst to best:
+Sail colour carries meaning and roughly 8% of boys have some red-green
+deficiency, so the ramp was **designed and then checked under simulation**
+rather than assumed. Five anchor stops, worst to best:
 
 | Quality | OKLCH                    | sRGB (reference only) |
 | ------- | ------------------------ | --------------------- |
@@ -1404,123 +1404,40 @@ than assumed. Five anchor stops from worst to best:
 These are anchors, not the palette. Quality is continuous, so the runtime
 interpolates between them **in OKLCH** — which is the point of authoring there.
 Interpolating the same endpoints through sRGB would put a muddy desaturated sag
-in the middle of the ramp, exactly where "getting warmer" needs to read clearly.
-The palette module clamps chroma to gamut on the way out.
+in the middle, exactly where "getting warmer" needs to read clearly. The sRGB
+column is documentation for this file only; the code emits OKLCH.
 
-The sRGB column is documentation for this file only; the code emits OKLCH.
+**What carries this ramp is lightness.** The anchors run `L` 52 → 62 → 72 → 80 →
+86, and simulated relative luminance climbs from one end to the other without a
+reversal under protanopia, deuteranopia _and_ tritanopia — measured across the
+interpolated ramp rather than at the five anchors. A colourblind student cannot
+name these colours the way a classmate does, but the ramp still reads as steadily
+brightening, which is the only thing it is for.
 
-**On matching the rest of the site:** these hues happen to land on the same
-anchors the registrar app's palette uses (red 30, amber 75, green 145), which
-came out of testing rather than out of deference — the earlier candidate ended
-on a mint green at hue 170, and swapping it for a conventional green at 145
-_improved_ the ramp, spacing the perceptual steps more evenly. So it's a free
-alignment, not a constraint. The simulator is a drawing of a boat, not a page of
-the site, and it should look like whatever serves the drawing. Where the two
-diverge, the drawing wins.
+**That is deliberately not a blue–yellow argument**, which is the obvious way to
+build a red-to-green ramp, since blue–yellow is the axis red-green deficiency
+preserves. It does not survive measurement here: the quality-¼ anchor is
+authored a little outside sRGB, so its blue clamps to zero and the series
+reverses across the first quarter under both red-green deficiencies. Lightness is
+also the stronger guarantee, because it covers all three deficiency types rather
+than the two red-green ones.
 
-**What carries this ramp is lightness.** The five anchors run OKLCH `L` 52 → 62
-→ 72 → 80 → 86, and that rise survives simulation. Under protanopia,
-deuteranopia _and_ tritanopia the simulated relative luminance climbs from one
-end to the other without a reversal — measured over 200 samples of the
-interpolated ramp, not merely at the five anchors, and with one caveat about
-emitted precision recorded below:
+`render/palette.test.ts` re-runs both checks on every commit and is where the
+detail lives: the simulation model and its corroborating references, the measured
+per-quarter rise against the looser floor the test actually guards, the
+quantisation caveat that makes the honest claim "monotonic to within the emitted
+precision", and the record of why retuning the amber to rescue the blue claim
+cannot work. **The ramp is not to be adjusted to make a blue assertion pass.**
 
-| Deficiency   | Simulated relative luminance across the five stops |
-| ------------ | -------------------------------------------------- |
-| Protanopia   | 0.07 → 0.17 → 0.32 → 0.51 → 0.71                   |
-| Deuteranopia | 0.16 → 0.26 → 0.39 → 0.53 → 0.64                   |
-| Tritanopia   | 0.14 → 0.22 → 0.36 → 0.51 → 0.66                   |
-
-Machado, Oliveira & Fernandes (2009) at severity 1.0. Viénot, Brettel & Mollon
-(1999) agrees on the two red-green cases, which are the ones it models —
-tritanopia needs the two-plane construction of Brettel, Viénot & Mollon (1997).
-Neither is implemented here, so treat those as corroboration rather than as
-something this repository can re-derive for you; Machado is the one the tests
-run.
-
-The smallest quarter-rise is 0.082, so the ramp reads along its whole length
-instead of doing all its work at one end. `render/palette.test.ts` re-runs both
-checks on every commit — but note it floors the quarters at 0.05, deliberately
-loose enough to let an anchor move without letting a quarter flatten. That 0.082
-is a measurement, not the guarded threshold; if the two ever have to agree,
-tighten the test rather than trusting this sentence.
-
-A colorblind student can't name these colors the way their classmate does, but
-the ramp still reads to them as steadily brightening, which is the only thing it
-is for. That is one mechanism rather than two, and a stronger guarantee than a
-hue-based one would be, because it covers all three deficiency types rather than
-only the two red-green ones.
-
-**One caveat on "no reversal", since this section is now in the business of
-claiming only what it can show.** It holds of the ideal unquantized ramp at
-every resolution measured, out to 100 000 samples, and of the emitted ramp at
-the 200 samples the test measures. It does not hold of the emitted ramp sampled
-arbitrarily finely: `clampToGamut` floors chroma to the 1e-4 step the module
-prints at, and near an anchor — where `smoothstep` flattens the lightness rise
-to almost nothing — a single quantization step down in chroma can just outweigh
-the gain. Sample 25× finer and tritanopia dips by 6e-5, about one part in ten
-thousand of the ramp's range. That is a rounding artifact of emitting a finite
-decimal rather than anything an eye could find, but the honest claim is
-"monotonic to within the emitted precision".
-
-**What the ramp does _not_ rest on is the blue–yellow axis.** That is worth
-stating, because it's the obvious argument for a red-to-green ramp — blue–yellow
-is precisely the axis red-green deficiency preserves — and here it doesn't work.
-The quality-¼ anchor is authored a little _outside_ sRGB — its linear blue is
-−5.7e-4, so it shows as 0 once clamped and displayed — while the red anchor at
-quality 0 has 23. Every dichromat model preserves the S-cone signal, so no
-honest simulation can make that amber bluer than that red. Simulated blue runs
-10 → 0 → 59 → 86 → 147 under deuteranopia and 18 → 0 → 43 → 65 → 134 under
-protanopia: ordered across the top three quarters, reversed across the first.
-Only tritanopia — the case a blue–yellow argument doesn't cover — is monotonic
-in blue, at 36 → 85 → 132 → 172 → 213.
-
-**Retuning the amber to make the blue claim true isn't worth attempting**, and
-this is the record of why, because desaturating that anchor is the fix that
-suggests itself and it does not work. Anchor-only monotonicity in both red-green
-cases needs the chroma at 52° inside a narrow window of roughly 0.131–0.146; the
-value that first looks right, around 0.12, makes protanopia _worse_ (18 → 54 →
-43 → 65 → 134). Measured on the interpolated ramp rather than at the five
-anchors, no chroma works at all: the best case anywhere, near 0.1305, still dips
-4.4/255 under protanopia, and it falls just outside the window above, so nothing
-satisfies both criteria at once. The amber can't be fixed on its own — the red
-anchor would have to move too, and the rest of the ramp with it — and the prize
-would be the weaker of the two guarantees.
-
-**An earlier version of this section claimed the reverse** — that the ramp "does
-not survive on lightness", and that a first attempt holding a monotonically
-rising `L` inverted under deuteranopia, the amber going brightest and the
-saturated green end darkest, because a chromatic green collapses toward gray
-when the M-cone response is remapped. That mechanism is not general. It appears
-in no ramp reconstructible from what was written down here: the shipped anchors,
-a mint-green end at 170°, the green pushed to chroma 0.30, and a shallower `L`
-rise all keep deuteranopian luminance monotonic with the green end brightest.
-The anchors of the ramp that failed were never recorded, so it can't be ruled
-out that one did invert — but whatever happened there, the shipped ramp holds
-exactly the rising `L` described as failing, and that is what carries it.
-
-An earlier candidate ended on a mint green at hue 170, on the assumption that
-buying CVD separation meant giving up traffic-light green. Testing said
-otherwise: the conventional green at 145 spaces the five steps more evenly.
-Perceptual distance between consecutive anchors — OKLab ΔE, ×1000 — runs
-124/119/114/110 for the shipped ramp against 124/119/114/162 for the mint
-version, whose last step is half again as long as the ones before it. The
-ordinary choice was simply the better one. It buys nothing on blue, though: the
-mint ramp's simulated deuteranopia blue is 10 → 0 → 59 → 86 → 196, reversed in
-the same place and for the same reason.
-
-The bad blue table and the bad spacing figures were probably one mistake. That
-version glossed the mint candidate's spacing as "lopsided 24/44/75/38" — which
-is not a spacing at all, but the successive differences of the deuteranopia blue
-series it had quoted a few paragraphs above (34, 58, 102, 177, 215). One set of
-four numbers was doing duty as two unrelated quantities, which is about as clear
-a sign as one gets that a single simulation was run once and its output then
-read twice, into two claims it didn't support. Its partner figure, 30/40/31/47,
-matches nothing measurable about either ramp — not hue, not OKLab ΔE, not
-lightness, not any simulated channel series — so it is best treated as
-unattributable rather than as a spacing that came out wrong. For reference, the
-shipped ramp's hue gaps are 22/23/35/35 and its ΔE spacing is the
-124/119/114/110 above.
+**On matching the rest of the site:** these hues land on the same anchors the
+registrar app's palette uses (red 30, amber 75, green 145), and that came out of
+testing rather than deference. The earlier candidate ended on a mint green at hue
+170, on the assumption that buying CVD separation meant giving up traffic-light
+green; the conventional green at 145 spaces the five perceptual steps more evenly
+— OKLab ΔE ×1000 of 124/119/114/110 against the mint version's
+124/119/114/162, whose last step is half again as long as the ones before it. So
+the alignment is free rather than a constraint. The simulator is a drawing of a
+boat, not a page of the site, and where the two diverge the drawing wins.
 
 #### OKLCH in SVG: one real constraint
 

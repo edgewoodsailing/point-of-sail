@@ -217,12 +217,21 @@ describe("colour-vision deficiency (the §4.4 acceptance criterion)", () => {
    *   protanopia    18 →   0 →  43 →  65 → 134
    *   tritanopia    36 →  85 → 132 → 172 → 213
    *
-   * An earlier §4.4 claimed a monotonic blue channel across the red-green cases
-   * on figures that do not reproduce. pos-kxg corrected the section, and §4.4
-   * now carries these measurements along with why retuning the amber cannot
-   * rescue the blue claim. Read it before adding a blue assertion here — the
-   * prose was what was wrong, not the ramp, and the ramp is not to be "fixed"
-   * here to make a test pass.
+   * **Retuning the amber to rescue a blue claim does not work**, and this is the
+   * record of why, because desaturating that anchor is the fix that suggests
+   * itself. Anchor-only monotonicity in both red-green cases needs the chroma at
+   * 52° inside a narrow window of roughly 0.131–0.146; the value that first
+   * looks right, around 0.12, makes protanopia *worse* — 18 → 54 → 43 → 65 →
+   * 134. Measured on the interpolated ramp rather than at the five anchors, no
+   * chroma works at all: the best case anywhere, near 0.1305, still dips 4.4/255
+   * under protanopia, and it falls just outside the window above, so nothing
+   * satisfies both criteria at once. The amber cannot be fixed on its own — the
+   * red anchor would have to move too, and the rest of the ramp with it — and
+   * the prize would be the weaker of the two guarantees.
+   *
+   * So **the ramp is not to be "fixed" here to make a blue assertion pass.**
+   * Lightness is what carries it, which is §4.4's claim and the thing these
+   * tests exist to hold.
    */
 
   const DEFICIENCIES = ["protanopia", "deuteranopia", "tritanopia"] as const;
