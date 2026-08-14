@@ -28,6 +28,7 @@ file — the things with nowhere else to live.
 | Where the stall begins, and how wide the blend is | `FOIL.stallAngle`, `FOIL.stallBlendWidth` | `model/tuning.ts` |
 | Flat-plate normal force — sets the speed of a run, alone | `FOIL.plateNormalForce` | `model/tuning.ts` |
 | Parasitic drag, span efficiency | `FOIL.profileDrag`, `FOIL.spanEfficiency` | `model/tuning.ts` |
+| When cloth starts to shake, and when it has wholly let go | `LUFF.drawingAbove`, `LUFF.collapsedBelow` | `model/tuning.ts` |
 | Where the rig stops collecting force, and how sharply | `DEPOWERING.fullPowerWind`, `DEPOWERING.knee` | `model/tuning.ts` |
 | Hull resistance, the wall, the keel's share | `RESISTANCE.*` | `model/tuning.ts` |
 | Assembling the two limbs into one curve | — | `model/foil.ts` |
@@ -83,6 +84,35 @@ best trim rather than a knife edge. The consequence for anything downstream:
 "the optimal trim" is fuzzier than it looks, and the optimal-trim search's argmax
 can move by a fraction of a degree on a rounding difference. Compare a trim to
 *the* optimum with a tolerance, never an equality.
+
+### Luffing and the two edge-on states
+
+A sail lies along the flow at α = 0 and again at α = ±180°, and the collapse
+thresholds are read against whichever is nearer. That fold buys **nothing in
+newtons** — the foil curve already reports a sail making nothing at both — and it
+was still the right call, for a reason worth keeping because it generalises: the
+collapsed fraction drives the *flutter* as well as the force, so leaving it at
+zero near ±180° would have the model assert *fully drawing* about a sail that is
+flogging, and the drawing would then have to paper over one of the model's own
+numbers. **A model whose renderer has to correct it has the number wrong.**
+
+**LUFF's thresholds ↔ the mainsheet clamp.** These are set in different files and
+neither knows about the other, but they meet at the same geometry: the sheet
+clamp holds the boom on its stop until α reaches ±180°, and the fraction reaches
+1 in the last couple of degrees before that. So the approach to a gybe is the
+sail walking up the collapse band and letting go at the top of it — two rules a
+student is taught separately, arriving from one angle. Widening `LUFF` or
+changing the clamp moves the same event, and this is the only place that says so.
+
+**Which trims reach the leech-first state, since it is not the obvious ones.**
+α = AWA + trim, so *easing* on a reach moves α **away** from 180°, not toward it.
+It takes the boom near the centreline with the wind nearly dead astern, or the
+boom out on what has become the windward side. Both are ordinary: an
+under-trimmed main on a run, and sailing by the lee.
+
+`LUFF` documents the thresholds and the fold; `collapsedFraction` and
+`collapseFrom` in `model/sail.ts` document why the fraction and the edge are two
+values rather than one signed one, and what the fraction is doing at 175°.
 
 ### The speed fold
 

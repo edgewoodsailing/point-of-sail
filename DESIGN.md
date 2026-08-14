@@ -312,112 +312,33 @@ taken.
 ### 3.3 Luffing
 
 Luffing is a _separate concept from trim quality_ and must not be conflated with
-it (see [§4.2](#42-the-traffic-light)).
+it ([§4.2](#42-the-traffic-light)). A sail luffs when it lies along the flow with
+too little incidence to hold its shape; a badly trimmed sail can be drawing
+perfectly and still be slow.
 
-A cambered sail needs some incidence to hold its shape. As the sail comes into
-line with the flow the cloth breaks and the collapse propagates across it. Write
-`d` for how far the sail is from lying along the flow:
+The model reports a **collapsed fraction** — how much of the cloth has let go,
+from none of it to all — and beside it **which edge the collapse is spreading
+from**. One number drives the flutter animation and the force reduction alike,
+which is the whole point: what the student sees and what the boat does cannot
+disagree. The collapsed portion carries no load of either kind, and _which_
+portion it is never enters the force — a third of the cloth carries a third of
+the load whichever third it is — so the edge is a number the drawing spends and
+the physics ignores.
 
-```text
-d ≥ α_full  (≈ 7°)      → sail fully drawing, no flutter
-α_luff < d < α_full     → partial collapse, breaking from an edge inward
-d ≤ α_luff  (≈ 2°)      → fully collapsed, no drive
-```
+**A sail lies along the flow twice, and the second time is the one worth
+teaching.** At zero incidence the wind arrives at the luff and the collapse runs
+aft. At ±180° it arrives at the **leech** instead and the collapse runs forward —
+the boom eased out with the wind coming over the back of the sail. That is
+**sailing by the lee**; it is what precedes an accidental gybe; and a sail that
+goes on looking full and drawing through it teaches precisely the wrong thing.
 
-**The thresholds are magnitudes, not signed angles**, because
-[§3.2](#32-sail-forces)'s `Cl` is odd in α: the sign of α says which _face_ the
-flow strikes, not whether the trim is any good. A well-trimmed sail sits at α ≈
-+15° on starboard tack and α ≈ −15° on port. Signed thresholds would luff the
-whole port tack exactly where starboard draws, and would take the force off a
-backed sail — which is large _negative_ α and must draw fully in reverse, or
-[§3.4](#34-backing-a-sail)'s mooring departure stops working.
-
-What folding about zero gives up is camber asymmetry: a real cambered sail keeps
-drawing a little past nominal zero incidence, on one side only. Representing
-that honestly needs memory of which side the camber has popped to, which the
-model does not carry and should not grow.
-
-**The distance `d` is measured from the nearer of the two edge-on states, not
-from zero.** A sail lies along the flow twice: at α = 0, where the wind arrives
-at the luff, and at α = ±180°, where it arrives at the _leech_ instead — a boom
-eased right out on a run, with the wind coming over the back of the sail. So
-
-```text
-d = min(|α|, 180° − |α|)
-```
-
-which is even about 90° as well as about zero.
-
-_This was decided rather than assumed, and it could have gone the other way._
-Against it: [§3.2](#32-sail-forces) already handles α ≈ 180° correctly and
-without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the _boat_
-was ever wrong and the change buys nothing measurable in newtons — it zeroes a
-force that was already negligible. For it, and decisive: the collapsed fraction
-is the one number that drives the flutter as well as the force, so a fraction of
-zero at α = 180° is the model asserting _fully drawing_ about a sail that is
-flogging. The drawing would then show a sail collapsed and dead still at the
-same moment, which is exactly the undertrimmed-looks-like-overtrimmed confusion
-[§4.2](#42-the-traffic-light) exists to prevent. A model that needs the renderer
-to paper over one of its numbers has the number wrong.
-
-**Which trims actually get there**, since the answer is not the obvious one. α =
-AWA + trim, so _easing_ on a reach moves α **away** from 180°, not toward it —
-on a broad reach at AWA 140° a boom right out on the shrouds sits at α = 50°.
-The leech-first state needs the boom near the centreline with the wind nearly
-dead astern, or the boom out on the windward side. Both are ordinary:
-
-- **A main sheeted flat on a run.** Under-trimmed, not over-eased.
-- **Sailing by the lee** — bearing away past dead downwind until the wind
-  crosses behind the sail, with the boom still out on what has now become the
-  windward side. At AWA −105° with the boom eased to port at 80°, α = +175°.
-
-The second is the one that earns the change. Sailing by the lee is what precedes
-an accidental gybe, and a sail that goes on looking full and drawing through it
-is teaching precisely the wrong thing.
-
-It is also the state the boom now _holds_, which is what makes the band worth
-having rather than a curiosity. [§3.4](#the-sheet-sets-a-limit-not-an-angle)'s
-clamp keeps the boom on its stop until α reaches ±180°, so the sail spends the
-whole approach to a gybe walking up this band — flatter, shaking from the leech
-— and goes over at the top of it, with the last 2° fully collapsed. The fraction
-reaching 1 just as the boom lets go is one geometry seen from two sides rather
-than two thresholds that have to be kept in step: both are α arriving at the
-leech.
-
-The fold costs almost nothing elsewhere. It reaches only `|α| > 173°`; the rest
-of the polar is untouched by construction, and backing survives it — a backed
-sail head to wind sits at α = 90°, which folds to 90° either way. The corner
-`min` puts at α = 90° is not a crease in the result: 90° is more than ten times
-`α_full`, so the smoothstep is saturated with zero slope on both sides of it and
-the fraction is flat at zero straight through.
-
-We compute a **collapsed fraction** ∈ [0,1] — how much of the sail has let go —
-and, beside it, the **edge the collapse propagates from**: the luff or the
-leech. The fraction drives both the flutter animation and the force reduction,
-so what the student sees and what the boat does can never disagree. It scales
-the whole force, lift and drag alike: the collapsed portion is simply not
-working. _Which_ portion it is does not enter the force at all — a third of the
-cloth carries a third of the load whichever third it is — so the edge is a
-number the drawing spends and the physics ignores.
-
-The edge falls straight out of the fold. The two limbs of `min(|α|, 180° − |α|)`
-_are_ the two edge-on states: below 90° the flow is arriving at the luff and the
-collapse runs aft, above it the flow is arriving at the leech and the collapse
-runs forward. Reporting the fraction alone would not do, and the error it would
-leave is not a sliver — the fraction is 0.35 at α = 175° and does not reach 1
-until 178°, so through the first half of that band a drawing measured from the
-luff would shake the forward third of a sail whose _after_ end is the one
-letting go. Keeping [§4.1](#41-whats-drawn)'s deformation hook honest is the
-whole reason the second field exists.
-
-The two are reported separately rather than folded into one signed fraction. A
-sign would have to flip at α = 90°, which is exactly where the fraction is zero
-and there is no collapse to attribute to an edge, and every consumer would then
-spend a line recovering a magnitude before it could use one. As it stands,
-between the bands the fraction is 0 and the edge merely names the one a collapse
-_would_ arrive at; the tie at exactly |α| = 90° is broken toward the luff and is
-unobservable, because nothing reads the edge without also reading a fraction of
-zero.
+It is also the state the boom _holds_.
+[§3.4](#the-sheet-sets-a-limit-not-an-angle)'s sheet clamp keeps the boom on its
+stop until the wind comes round the leech, so the approach to a gybe **is** the
+sail walking up this band — flattening, shaking from its after end — and going
+over at the top of it. Two rules of thumb a student is taught, and one geometry
+underneath: see [MODEL.md](MODEL.md#luffing-and-the-two-edge-on-states). The
+thresholds themselves are `LUFF`, in `model/tuning.ts`.
 
 ### 3.4 Backing a sail
 
