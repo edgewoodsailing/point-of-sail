@@ -343,193 +343,60 @@ thresholds themselves are `LUFF`, in `model/tuning.ts`.
 ### 3.4 Backing a sail
 
 Edgewood teaches getting under way from a mooring by physically pushing the boom
-forward, so this is a first-class mechanic rather than an edge case.
+forward, so this is a **first-class mechanic rather than an edge case**, and the
+gesture says so: a sail on the windward side is not a trim, it is a state a hand
+is holding.
 
-Normally the wind holds the boom to leeward and the sheet stops it coming in. A
-sail on the _windward_ side is not a trim state — it's a state a hand is
-holding. So:
+So the user may drag a sail past its natural side, and while the pointer is down
+it stays where it is put. The flow attacks the other face, the driving force goes
+negative, speed integrates negative, and the speed arrow flips to the stern. On
+release the sail swings across in about 0.4 s and the boat sails off on the trim
+it already had — the whole mooring departure in one continuous gesture.
 
-- The user may drag a sail past its natural side.
-- While the pointer is down, the sail stays where it's put (`mainHeld` /
-  `jibHeld`), the flow attacks the other face, and the force reverses.
-- Driving force goes negative, `speed` integrates negative, and the speed arrow
-  flips to the stern — exactly as the objectives describe.
-- **On release the sail swings across**, animated.
-
-Holding your finger down to hold the boom out is an unusually direct mapping
-between the gesture and the real physical act.
-
-**Where it swings to.** The sail returns to the _mirror_ of the angle it was at
-before being pushed across — same trim, other side. This is what the sheet does
-on the real boat: its length hasn't changed, so it stops the boom at the same
-angle it would have on the other tack. The full mooring departure then plays out
-in one continuous gesture: push the boom across, boat gathers sternway, release,
-boom swings over, sail fills, boat sails off on the trim it already had.
-
-The swing takes ~0.4 s, and **the model keeps running normally throughout** —
-the sail angle is simply animating. Backward drive dies, forward drive builds,
-and the speed arrow shrinks, flips, and grows again on its own. Nothing needs
-special-casing, and the student sees the whole reversal as one continuous
-physical event.
-
-The jib backs by the same mechanism, which is the other classic way off a
-mooring.
+**The model runs normally throughout.** Backward drive dies, forward drive
+builds, and the arrow shrinks, flips and grows again on its own. Nothing about
+backing is special-cased; the sail angle is simply animating while the physics
+carries on. Holding a finger down to hold the boom out is an unusually direct
+mapping between the gesture and the real physical act, and the jib backs by the
+same mechanism — the other classic way off a mooring.
 
 #### The sheet sets a limit, not an angle
 
-Everything above is now a _consequence_ rather than a mechanism, and the change
-that made it so is the most load-bearing one in this document.
+**A mainsheet is a length of rope.** A rope cannot tell the boom which side to be
+on and cannot push it anywhere — it can only stop it going further out. Which
+side, and how far in, is the wind's business. So `RigTrim` carries the sheet as a
+**limit**, and the sail's angle becomes state that evolves: with no hand on it
+the boom weathervanes toward the flow until the sheet stops it.
 
-**A mainsheet is a length of rope.** A rope cannot tell the boom which side to
-be on and cannot push it anywhere — it can only stop it going further out. Which
-side, and how far in, is the wind's business. Modelling the sheet as an absolute
-angle asserts the opposite: that the boom holds whatever bearing it was left at
-however the boat turns under it, which is the one thing a real boom
-conspicuously does not do.
+That is the most load-bearing decision in the model, because everything a student
+recognises falls out of it and **none of it is special-cased**:
 
-So `RigTrim` carries `mainSheet` — the limit — and `mainAngle` becomes state
-that evolves. With no hand on it the boom is a weathervane: it comes to rest
-where the cloth lies along the flow, which is angle of attack zero. Turning the
-boom by δ moves α by δ, so the turn it wants is `−α`, and the sheet then clamps
-it:
+- **The boat tacks its own mainsail.** Turn up through the wind and the boom
+  crosses to the mirror of where it was, unassisted.
+- **It gybes when the wind gets round the leech, and not before** — the boat has
+  to be by the lee by as much as the boom is eased. Sheeted flat it goes almost
+  at once past dead downwind; eased right out it holds nearly to the beam, then
+  slams through the centreline.
+- **Over-ease and the sail flogs**, and then refills on its own: the boat slows,
+  the apparent wind swings aft, and the sheet starts binding again.
+- **Push the boom across on a run and it stays there.** With the wind on the
+  after face of the cloth there is nothing to swing it back, so a run is stable
+  on either side — which is wing and wing.
+- **Push it across with the wind forward of the leech and it returns** to the
+  mirror of where it was held. Same trim, other side; the mooring departure needs
+  no swing-back mechanism.
 
-```text
-  natural = clamp(current − α, −sheet, +sheet)
-```
+**The jib obeys the same rule with a differently shaped stop.** A boom pivots on
+the mast, so its sheet limits an angle; a jib's clew is a corner of cloth on a
+rope, free to sit anywhere the foot and the sheet both allow. That works out to
+the same expression with the interval shifted off the centreline — and the shift
+is the fact of the boat: **the main tacks itself and the jib has to be tacked.**
+Put the wind on the other bow and the clew stops to windward, aback, while the
+boom has already crossed.
 
-**`current − α` is `−awa`, but only modulo a full turn, and which representative
-you take is the whole behaviour of a gybe.** Taking the one nearest the
-centreline, `normalizeSigned(−awa)`, gybes the boom at exactly AWA 180° however
-far out it is sheeted — because that expression changes sign there. Nothing
-about the sail does: α is perfectly continuous through a dead run, and it was
-only the branch that jumped.
-
-The reachable representative is the physical one. The moment the cloth makes
-about the mast is odd in α and vanishes at _both_ edge-on states — at α = 0,
-where the wind meets the luff, and at α = ±180°, where it meets the leech — so
-the boom is driven toward zero along the α axis and cannot wrap through the
-leech-first state on the way. While the wind is on the after face of the sail it
-is pressing the boom outward, into its stop, and a rope cannot pull it back in.
-The two branches agree wherever `|α| < 90°`, which is every trim from close
-hauled round to a broad reach, so this changes the deep running end of the polar
-and nothing else.
-
-**Everything falls out of that one expression, and none of it is
-special-cased:**
-
-- **Sailing.** Close hauled, `|−awa|` still exceeds the sheet, so the boom sits
-  _on its stop_ and the sheet is what sets the angle of attack. True at every
-  point of sail a student uses — which is why the old absolute-angle model got
-  this case right and survived as long as it did.
-- **Easing too far.** Ease past `|awa|` and the clamp stops binding: the boom
-  reaches the weathervane, α goes to zero and the sail flogs. And then a genuine
-  feedback loop nobody wrote appears — the boat slows, the apparent wind swings
-  _aft_, the clamp starts binding again and the sail refills. Measured: eased in
-  a 66° apparent wind the boat fell from 5.01 kt to 4.35 while the wind moved
-  −63.4° → −66.5°.
-- **Tacking, unassisted.** Turn the boat up through the wind and α changes sign
-  with `awa`; the clamp changes side with it and the boom crosses on its own,
-  from one stop to the mirror of it. Measured through a tack the boat loses 0.4
-  kt.
-- **Gybing when the wind gets round the leech, and not before.** Bear away
-  through dead downwind and nothing happens — the wind is still on the after
-  face of the sail, still pressing the boom out against its stop, and the boat
-  sails **by the lee** with the boom where it was. The boom goes when α reaches
-  ±180°, which on the stop is
-
-    ```text
-      |awa| = 180° − sheet
-    ```
-
-    — _the boat has to be by the lee by as much as the boom is eased_, which is
-    the rule of thumb a student is taught rather than a number this model
-    invented. Sheeted flat at 10° it gybes 10° past dead downwind; eased to 80°
-    it holds until the apparent wind is 10° from the beam, and then slams
-    **through the centreline** to the other stop in about half a second. The
-    bound is `SWING_LIMIT`, so it is also a guarantee: a boom nobody is holding
-    is never carried to windward of the beam.
-
-    Measured, bearing away at 3°/s from a broad reach with the main out at 80°
-    and the jib at 55°: the jib backs at AWA −125° and the boom goes at −100°,
-    more than 20° of turning apart. **The headsail backs first and the boom
-    follows**, which is the order it happens in on the water and which the old
-    model could not show at all — it took both across together, at 180°, with
-    the boat barely by the lee.
-
-- **The swing-back above, derived rather than animated.** Push the boom to
-  windward and let go _with the wind forward of the leech_: the sheet is
-  `|angle|`, the wind is on the other side, so the natural angle is its mirror.
-  "Same trim, other side" is what the clamp says; there is no swing-back
-  mechanism and there does not need to be. The mooring departure this exists for
-  happens head to wind, where the proviso is nowhere near binding.
-- **Wing and wing, past that same threshold.** The proviso is not a hedge — it
-  is the gybe rule read from the other end, and one boundary decides both. Push
-  the boom to windward while the boat is _by the lee of it_,
-  `|awa| > 180° − sheet`, and there is no back-pressure to swing it back: the
-  wind is on the after face of the cloth and holds it where you put it. So on a
-  run the boom is stable on **either** side, which is what wing and wing is. The
-  old model could not hold that position at all — it flopped the boom back to
-  leeward however the sails were set.
-
-`mainHeld` — in the state and inert since it was added — is what the hand uses:
-while it is set the boom does not move, because a hand on it outranks the wind.
-
-#### The jib: the same sentence, a differently shaped stop
-
-A boom pivots on the mast, so its sheet limits an _angle_. A jib's clew is a
-corner of cloth on a rope: it can be anywhere the foot allows — a circle about
-the tack — and anywhere the sheet allows, a circle about the car. It sits where
-those two cross, and the wind picks which crossing.
-
-Written out, that collapses back into the same formula. With `β` the bearing
-from tack to car and `d` their distance,
-
-```text
-  cos(b − β) = (chord² + d² − sheet²) / (2·chord·d)
-  natural = clamp(current − α, a₀ − h, a₀ + h)
-      a₀ = the angle whose clew lies nearest the car (12.6°, toward that car)
-      h  = acos of the above
-```
-
-**So the jib is the main with the interval shifted off centre**, and the main is
-the special case where the car sits on the centreline, `a₀ = 0`, and the
-interval is symmetric. The unwrapped target carries over with everything else,
-and for the same reason: a jib has a leech too, and its clew is held out on the
-sheet by the wind on the after face of the cloth exactly as the boom is.
-
-**That asymmetry is the real one on the water.** Because the jib's interval is
-not centred on zero, tacking the boat does not tack the jib: sheeted to
-starboard at 1.0 m the clew may lie anywhere in −12.2°…+37.4°, so putting the
-wind on the starboard bow clamps it at −12.2° and it stops there, to windward,
-aback — while the main has crossed on its own. **The main tacks itself and the
-jib has to be tacked.** Measured through a tack: main +15° → −15°, jib +27.3° →
-−2.1°, and the boat 0.3 kt slower for the backed headsail until someone tends
-it.
-
-**The car is chosen, not measured**, because there is nothing to measure it
-against: the class rules control the mast, boom, spinnaker pole, standing
-rigging, sails, keel and rudder and say _nothing_ about jib sheeting. It sits
-midway between the lower chainplate and the centreline, at that chainplate's
-station. The figure to check it against is not its coordinates but what it makes
-a bar-taut jib do — **12.6°** off the centreline, which is about where a Rhodes
-19's jib sits sheeted flat. Adjustable cars are deliberately not modelled: they
-mostly change _twist_, and [§7](#7-deliberately-out-of-scope) does not model
-twist, so a movable car would be a control with nothing on the other end.
-
-**This manoeuvre is inside the model's domain, and it is worth saying so because
-the section that follows gives a reason to wonder.**
-[§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
-records that below a knot or two the keel cannot hold the side force the rig is
-making, so §7's no-leeway exclusion stops being a simplification — and a backed
-sail is the obvious place to worry, since it is deliberately a large force at no
-speed. Measured, it is not: backed to 45°–90° anywhere from head to wind out to
-TWA 45° in 10 kt, the boat settles at **2.1–2.8 kt of sternway**, and the keel
-is charging 0–22% of the side force against its 22% ceiling — at or under
-capacity throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5. The
-reason is that backing makes its force mostly as _drag_, straight down the
-boat's axis: at 90° of backed trim the side force is a couple of newtons. So the
-boat gets moving smartly, and by the time it is moving the question does not
-arise.
+The geometry is in `naturalMainAngle` and `naturalJibAngle` in `model/sail.ts`,
+the sheet lead in `JIB_CAR`; what this costs at the edge of the model's domain is
+in [MODEL.md](MODEL.md#where-the-model-stops-being-valid).
 
 ### 3.5 Hull resistance and integration
 

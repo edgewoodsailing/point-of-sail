@@ -157,6 +157,32 @@ least, and DESIGN §3.6's "a run is notably slower than a reach" breaks at exact
 the wind the simulator opens in. Both failures have the same shape — a cap that
 sorts by point of sail is a cap that bends the polar.
 
+## Where the model stops being valid
+
+Every simplification has an edge, and the useful question is never whether one
+exists but whether ordinary use reaches it. This section holds the cases that
+have been *checked* rather than assumed, because each spans a simplification in
+one place and a force in another, and neither file can see both.
+
+**Backing, against the no-leeway exclusion.** [DESIGN §7](DESIGN.md#7-deliberately-out-of-scope)
+excludes leeway, and the hull model records that below a knot or two the keel
+cannot hold the side force the rig is making — so the exclusion stops being a
+simplification down there. A backed sail is the obvious place to worry, since it
+is deliberately a large force at no speed, and the mooring departure this model
+is built around lives exactly there.
+
+Measured, it holds. Backed to 45°–90°, anywhere from head to wind out to TWA 45°
+in 10 kt, the boat settles at **2.1–2.8 kt of sternway** while the keel is
+charging 0–22% of the side force against its 22% ceiling — at or under capacity
+throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5.
+
+**The reason it holds is worth having, because it is not luck.** Backing makes
+its force mostly as *drag*, straight down the boat's axis: at 90° of backed trim
+the side force is a couple of newtons. So there is very little for the keel to
+hold, the boat gets moving smartly, and by the time it is moving the question no
+longer arises. A manoeuvre that looks like the worst case for the exclusion turns
+out to be nearly the best.
+
 ## The hull and the integrator
 
 Not yet split out. [DESIGN §3.5](DESIGN.md#35-hull-resistance-and-integration)
