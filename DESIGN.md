@@ -2,61 +2,61 @@
 
 Working design document. Expands on [OBJECTIVES.md](OBJECTIVES.md).
 
-All open questions are resolved; [§9](#9-open-questions) records what was
-settled. Ready to break into beads.
+Editing note: This document should reflect the _current design goals and
+decisions_, not the project history. Rework design changes into the text; don't
+simply append them as an amendment. Remove outdated history.
+
+Design that isn't built yet **is** in scope, and is written in the present tense
+like everything else, marked only by a bead reference: `(planned: pos-740.1)`.
+Write the sentence so that deleting the parenthetical leaves it true — then
+shipping the feature is one deletion rather than a rewrite. The reference is the
+whole of the status claim, which is what keeps this document from going stale on
+its own: it stops asserting what is built and points at the one place that is
+current. Once a bead closes, its reference is history and goes the way of the
+rest — the archaeology belongs in the commit message and the bead, where it
+already is. `npm run lint` enforces this; see `scripts/check-design-refs.mjs`.
 
 ---
 
 ## 1. The core idea
 
-A **test tank**, not a game. The boat never moves across the screen. The student
-poses a situation — heading, wind direction, wind speed, sail trim — and the
-simulator answers the question *"how fast would this boat go, and why?"*
+The project provides sailing instructors and students with a **test tank** where
+they can explore points of sail and sail trim. It includes a complex physics
+model to make the lessons more realistic, but most of that complexity is hidden
+from the user. The user interface is designed to provide an interactive middle
+ground between typical whiteboard presentations on points of sail and the
+experience of students skippering a sailboat. The goal is to help students
+translate those abstract diagrams into the things they will see and the actions
+they need to take when they are on the water.
 
-Everything follows from that framing:
-
-- No rudder, no navigation, no waypoints, no scrolling world.
-- Every control is instantly reversible; there is no way to "lose".
-- The only output is boat speed, and the only way to influence it is trim and
-  angle. That narrowness is the point.
+Rather than modeling a rudder control and turning radius, we allow the student
+to set the boat heading directly. This is consistent with how point-of-sail
+diagrams are drawn, and frankly, steering is the easiest part of skippering a
+boat, as long as it is moving. This project focuses on sail trim and the
+resulting boat speed.
 
 The intended interaction is play. A student pushes the boat around, sees the
 sails go red, pulls them in, sees green, and forms the connection themselves. We
-deliberately do not label, annotate, or instruct — see [§7](#7-deliberately-out-of-scope).
+deliberately do not label, annotate, or instruct, because these affordances are
+not available on the water — see [§7](#7-deliberately-out-of-scope).
 
-### The central abstraction happens to match Edgewood's boats
+### Rhodes 19 as the model
 
-"Set the boat on a heading and it stays there" is the assumption the whole test
-tank rests on. On most boats it's a convenient fiction — you hold a heading by
-working against weather helm, and the helm is part of the feel of every point of
-sail.
-
-The school's boats carry RudderCraft rudders that are not class legal but are
-computer-optimized for the hull, and weather helm is nearly eliminated: at
-almost all points of sail you can release the tiller and the boat tracks
-straight. So the simulator's central simplification isn't an abstraction these
-students have to translate — it's close to a description of the boat they sail.
-It also means a student at the helm has attention free to watch the sails, which
-is the same narrowing of focus the simulator is built around.
-
-Worth recording because it makes several later decisions cheaper: no rudder, no
-weather helm, and a heading that simply holds are all more defensible here than
-they would be at another school. The exceptions — overpowered, heavily heeled,
-or unstable dead downwind — are cases we've scoped out for independent reasons.
+The drawing and the physics are modeled after Rhodes 19 keelboats from Stuart Marine, which are the boats used at Edgewood Sailing School. These boats have modern, computer-designed rudders (not class legal) that track straight and have little-to-no-weather helm, reinforcing the decision to de-emphasize steering in the interface.
 
 ### Why heading and wind are separate gestures
 
 Physically, rotating the hull and rotating the wind are the same operation —
 only the angle between them enters the model. We keep them as two distinct
 gestures anyway, because they are two completely different experiences on the
-water: *"I turned the boat"* versus *"the wind shifted and now my trim is
-wrong."* Teaching that those feel different but mean the same thing is one of
+water: _"I turned the boat"_ versus _"the wind shifted and now my trim is
+wrong."_ Teaching that those feel different but mean the same thing is one of
 the simulator's main jobs.
 
 This has a rendering consequence: **the boat stays fixed in the frame and the
-wind rotates around it.** When the student drags the hull, the hull rotates. When
-they drag the wind, the wind arrow rotates — and the points-of-sail graduations
-sweep with it, since they are anchored to the wind's own bearing
+wind rotates around it.** When the student drags the hull, the hull rotates.
+When they drag the wind, the wind arrow rotates — and the points-of-sail
+graduations sweep with it, since they are anchored to the wind's own bearing
 ([§5](#5-direct-manipulation)). Both change the same underlying number, but the
 animation makes them feel like different events.
 
@@ -68,87 +68,89 @@ The complete simulation state is small enough to fit on a napkin:
 
 ```ts
 interface SimState {
-  // Environment: direction the wind blows FROM, world frame, plus its speed
-  wind: TrueWind;             // { from: Radians, speed: MetersPerSecond }
+    // Environment: direction the wind blows FROM, world frame, plus its speed
+    wind: TrueWind; // { from: Radians, speed: MetersPerSecond }
 
-  // Boat: where the bow points, and the signed speed — negative is astern
-  motion: BoatMotion;         // { heading: Radians, speed: MetersPerSecond }
+    // Boat: where the bow points, and the signed speed — negative is astern
+    motion: BoatMotion; // { heading: Radians, speed: MetersPerSecond }
 
-  // Trim: where the sails ARE, and what the sheets will LET them do (§3.4).
-  // The angles are chord angles relative to the boat's centreline, positive =
-  // clew to starboard; they are state that evolves, not inputs that are held.
-  // The sheets are the inputs, and they are limits.
-  trim: RigTrim;              // { mainAngle, jibAngle: Radians
-                              //   mainSheet: Radians   — how far out the boom may go
-                              //   jibSheet: Meters     — car-to-clew length
-                              //   jibSheetSide: -1|+1  — which car is working
-                              //   jibSet: boolean }    — main alone (§3.7)
+    // Trim: where the sails ARE, and what the sheets will LET them do (§3.4).
+    // The angles are chord angles relative to the boat's centreline, positive =
+    // clew to starboard; they are state that evolves, not inputs that are held.
+    // The sheets are the inputs, and they are limits.
+    trim: RigTrim; // { mainAngle, jibAngle: Radians
+    //   mainSheet: Radians   — how far out the boom may go
+    //   jibSheet: Meters     — car-to-clew length
+    //   jibSheetSide: -1|+1  — which car is working
+    //   jibSet: boolean }    — main alone (§3.7)
 
-  // Is the user physically forcing a sail against the wind right now?
-  mainHeld: boolean;
-  jibHeld: boolean;
+    // Is a finger on this sail right now? While one is, the model stops moving
+    // it and the wind gets no vote — which is what makes backing work (§3.4).
+    mainHeld: boolean;
+    jibHeld: boolean;
 }
 ```
 
 **The two kinds of field in `trim` are worth telling apart**, because the
 distinction is the whole of [§3.4](#34-backing-a-sail). `mainSheet`, `jibSheet`
-and `jibSheetSide` are what a student sets: rope, and which rope. `mainAngle` and
-`jibAngle` are where the wind has put the sails given those settings — they
+and `jibSheetSide` are what a student sets: rope, and which rope. `mainAngle`
+and `jibAngle` are where the wind has put the sails given those settings — they
 change every frame with no input at all, which is what makes the boat tack its
-own mainsail. A caller that wants to place the sails *and have them stay* has to
+own mainsail. A caller that wants to place the sails _and have them stay_ has to
 set both, which is what `cleatedAt()` in `model/sail.ts` is for: trim to here,
 then cleat it.
 
-Note `jibSheet` is a **length in metres**, not an angle. That is what the student
-holds, and the map from it to an angle is the two-circle geometry of §3.4 rather
-than anything linear.
+Note `jibSheet` is a **length in metres**, not an angle. That is what the
+student holds, and the map from it to an angle is the two-circle geometry of
+§3.4 rather than anything linear.
 
 The first three fields are **not** new types invented for the state. `TrueWind`
 and `BoatMotion` come from `model/wind.ts` and `RigTrim` from `model/sail.ts`,
 where they already exist as the argument types `apparentWind()` and `rigForce()`
 take. Grouping the state the same way means it can be handed to the physics
 without repacking at every call site, and there is one definition of "the wind"
-rather than two that could drift apart. An earlier draft of this section listed
-the same nine values flat; the grouping is the only difference.
+rather than two that could drift apart.
 
-That's it. No history, no session, no stored client state. A bare URL opens on a
-fresh random problem, as the objectives require; a URL carrying parameters opens
-on exactly what it describes — see
+That's it. No history, no session, no stored client state; reload resets
+everything, as the objectives require. A bare URL opens on a fresh random problem
+(planned: pos-740.1); a URL carrying parameters opens on exactly what it
+describes (planned: pos-740.2) — see
 [§6.3](#63-url-parameters-as-the-configuration-surface).
 
 ### Conventions
 
-| Concern | Decision |
-| --- | --- |
-| Angles | Radians internally, degrees only at the UI edge |
-| Zero angle | Screen-up / north |
+| Concern            | Decision                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| Angles             | Radians internally, degrees only at the UI edge                                     |
+| Zero angle         | Screen-up / north                                                                   |
 | Positive direction | Clockwise (compass convention, and matches SVG's y-down axis via `(sin θ, −cos θ)`) |
-| Wind direction | Stored as the direction the wind blows **from**, the way sailors say it |
-| Units | SI internally (m, m/s, N, kg); knots only for display |
-| Speed sign | Positive forward, negative astern |
+| Wind direction     | Stored as the direction the wind blows **from**, the way sailors say it             |
+| Units              | SI internally (m, m/s, N, kg); knots only for display                               |
+| Speed sign         | Positive forward, negative astern                                                   |
 
-Fixing these early matters more than which one we pick. Sign errors in a
-sailing model are miserable to debug, so the model layer will have a small set
-of named helpers (`angleBetween`, `toBoatFrame`, `normalizeSigned`) and no raw
+Fixing these early matters more than which one we pick. Sign errors in a sailing
+model are miserable to debug, so the model layer will have a small set of named
+helpers (`angleBetween`, `toBoatFrame`, `normalizeSigned`) and no raw
 trigonometry scattered around.
 
 ### 2.1 Initial state: a random, solvable problem
 
-The page opens on a **randomized situation with the sails visibly mistrimmed**,
-so the student's first sight is a problem to either solve or ignore. This fits
+The page opens on a **randomized situation with the sails visibly mistrimmed**
+(planned: pos-740.1), so the student's first sight is a problem to either solve
+or ignore. This fits
 the no-scaffolding position better than any label could: instead of telling a
 student what to do, the simulator just presents something obviously wrong and
 lets curiosity do the rest.
 
 Randomization is bounded to keep every opening state non-degenerate:
 
-| Quantity | Range | Why bounded |
-| --- | --- | --- |
-| True wind angle | 40°–160° off the bow, random tack | Excludes the no-go zone (nothing works, frustrating) and the dead run (trim barely matters, no problem to solve) |
-| Wind speed | 6–14 kt | Enough to move, not a survival storm |
-| Wind direction | Uniform 0–360° | The whole scene is arbitrarily oriented |
-| Trim error | Random sign and magnitude, landing quality in ~0.3–0.8 | Visibly wrong, not absurd |
-| Sails backed | Never | Backing is something the student discovers, not inherits |
+| Quantity        | Range                                                  | Why bounded                                                                                                      |
+| --------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| True wind angle | 40°–160° off the bow, random tack                      | Excludes the no-go zone (nothing works, frustrating) and the dead run (trim barely matters, no problem to solve) |
+| Wind speed      | 6–14 kt                                                | Enough to move, not a survival storm                                                                             |
+| Wind direction  | Uniform 0–360°                                         | The whole scene is arbitrarily oriented                                                                          |
+| Trim error      | Random sign and magnitude, landing quality in ~0.3–0.8 | Visibly wrong, not absurd                                                                                        |
+| Sails backed    | Never                                                  | Backing is something the student discovers, not inherits                                                         |
 
 Three details that matter more than they look:
 
@@ -173,15 +175,15 @@ the boat hasn't got going yet. Starting settled means the arrow is already
 saying something, and fixing trim visibly improves it.
 
 Randomizing the world orientation rather than always putting the wind at the top
-is deliberate: it reinforces that only the *relative* angle matters, and the
+is deliberate: it reinforces that only the _relative_ angle matters, and the
 perimeter wind arrow keeps it legible however it lands.
 
 A nice classroom side effect: three iPads on a table means three different
 problems. Students can't copy each other, but they can compare — which is a
 better conversation anyway.
 
-All of this applies to the **bare** URL. A URL carrying state parameters restores
-that state instead of randomizing — see
+All of this applies to the **bare** URL. A URL carrying state parameters
+restores that state instead of randomizing — see
 [§6.3](#63-url-parameters-as-the-configuration-surface).
 
 ---
@@ -194,16 +196,16 @@ will not defend them to three digits.
 
 Rhodes 19 reference figures:
 
-| Dimension | Value |
-| --- | --- |
-| LOA / LWL / beam | 19'2" / 17'9" / 7'0" |
-| Displacement | 1,325 lb (601 kg) |
-| Draft (keel) | 3'3" |
-| Rig | I=15.0, J=6.5, P=24.0, E=9.7 |
-| Main area | ≈ 118.6 sq ft (11.0 m²) |
-| Jib (class rules RB 21.02.04) | luff 17'0", leech 15'1", foot 7'6" |
-| Jib area | ≈ 56.5 sq ft (5.3 m²) straight-edge; the oft-quoted 48.8 is just I·J/2 |
-| Hull speed | 1.34·√17.75 ≈ **5.65 kt** |
+| Dimension                     | Value                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| LOA / LWL / beam              | 19'2" / 17'9" / 7'0"                                                   |
+| Displacement                  | 1,325 lb (601 kg)                                                      |
+| Draft (keel)                  | 3'3"                                                                   |
+| Rig                           | I=15.0, J=6.5, P=24.0, E=9.7                                           |
+| Main area                     | ≈ 118.6 sq ft (11.0 m²)                                                |
+| Jib (class rules RB 21.02.04) | luff 17'0", leech 15'1", foot 7'6"                                     |
+| Jib area                      | ≈ 56.5 sq ft (5.3 m²) straight-edge; the oft-quoted 48.8 is just I·J/2 |
+| Hull speed                    | 1.34·√17.75 ≈ **5.65 kt**                                              |
 
 The roughly two-thirds/one-third main:jib area split matters — it sets how much
 of the feedback comes from each sail, and it means a badly trimmed main is much
@@ -217,9 +219,10 @@ Modeled always; **displayed only behind a toggle** (default off).
 V_apparent = V_trueWind − V_boat
 ```
 
-with `V_boat` along the heading (no leeway — see [§7](#7-deliberately-out-of-scope)).
-From this we get apparent wind speed and **apparent wind angle (AWA)**, measured
-off the bow: 0 = head to wind, ±180 = dead downwind, sign giving the tack.
+with `V_boat` along the heading (no leeway — see
+[§7](#7-deliberately-out-of-scope)). From this we get apparent wind speed and
+**apparent wind angle (AWA)**, measured off the bow: 0 = head to wind, ±180 =
+dead downwind, sign giving the tack.
 
 All **aerodynamic** sail forces are computed from apparent wind, never true
 wind. This is what makes the model teach the right thing: it's why close-hauled
@@ -230,7 +233,7 @@ you speed up.
 than left to be discovered.** It is
 [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering
 factor, and it is not a coefficient — it is a statement of how much sail is up.
-Every *coefficient* in the model still comes from the apparent wind: the angle
+Every _coefficient_ in the model still comes from the apparent wind: the angle
 of attack each sail sees, the lift and drag it makes at that angle, and the
 direction those act in. What the true wind decides is only how much of the rig
 the crew are still carrying, which is a decision made for the wind of the day
@@ -243,13 +246,13 @@ The exception is stated in the rule rather than left implicit in the code. It
 would have been possible to leave this sentence untouched — `simulation.ts`
 applies the factor outside the force assembly, so "sail forces" narrowly
 construed never touch the true wind — but an exception that survives only
-because of *where* a factor happens to be applied is the kind of thing that
+because of _where_ a factor happens to be applied is the kind of thing that
 quietly stops being true. §3.2 records why that seam was chosen; this paragraph
 records that the seam is not what makes the claim honest.
 
 When the toggle is on we draw both vectors from a common origin with the
 connecting boat-speed vector, so the triangle itself is visible — that triangle
-*is* the lesson.
+_is_ the lesson.
 
 ### 3.2 Sail forces
 
@@ -274,7 +277,7 @@ Cd = Cd0 + (a · α)² / (π · AR · e)      // Cd0 ≈ 0.02, e ≈ 0.9
 ```
 
 giving `Cl ≈ 1.4` at the stall — a realistic figure for a soft sail. The curve
-does not *peak* there: it tops out at ≈ **1.63 near 24°**, which is where the
+does not _peak_ there: it tops out at ≈ **1.63 near 24°**, which is where the
 optimal-trim search actually sits at every point of sail in
 [§3.6](#36-calibration-targets).
 
@@ -288,13 +291,13 @@ quantity this model held. It was an artefact of where the blend happened to
 catch a ramp that was still climbing**, and it could not be moved without moving
 the post-stall falloff, because they were the same knob.
 
-That cost more than tidiness. The descent from that accidental peak was
-*steeper than the attached limb's own rise* — 0.102 per degree down against
-0.078 up — and a falling lift curve on a boat is a feedback loop: slowing swings
-the apparent wind aft, which raises α, which past the peak cuts lift, which
-slows the boat further. Where the loop closed, the boat had **two** settled
-speeds at one trim and picked whichever its history led it to. `pos-i4o` found
-it 2.90 kt wide, about 4° from the optimal trim, which is ordinary trimming.
+That cost more than tidiness. The descent from that accidental peak was _steeper
+than the attached limb's own rise_ — 0.102 per degree down against 0.078 up —
+and a falling lift curve on a boat is a feedback loop: slowing swings the
+apparent wind aft, which raises α, which past the peak cuts lift, which slows
+the boat further. Where the loop closed, the boat had **two** settled speeds at
+one trim and picked whichever its history led it to. `pos-i4o` found it 2.90 kt
+wide, about 4° from the optimal trim, which is ordinary trimming.
 
 So the attached limb saturates, using the same rounded-corner `min` as
 [§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze):
@@ -315,7 +318,7 @@ that asymmetry is doing real work rather than being an oversight left over from
 before the ceiling existed. Below the maximum the two are the same number and
 this is ordinary induced drag. Past it, the incidence the sail cannot turn into
 lift goes into separated flow — it costs drag and pays nothing, which is what a
-stall *is*. Charge the delivered lift instead and the fold comes back (measured:
+stall _is_. Charge the delivered lift instead and the fold comes back (measured:
 0.70 kt at 3 kt of wind, 1.00 kt at 6), because the sail stops being penalised
 for being oversheeted just as its lift stops answering.
 
@@ -324,9 +327,9 @@ limb that turns over physically might have left the crossfade with nothing to
 do. It has not: with the ceiling in place and the blend left at its old 20°, the
 fold returns at 2.40 kt. The stall is still the crossfade's doing. What changed
 is that the two constants now govern different things — `Cl_max` the peak, the
-width the falloff — where before one number did both badly. *"We gave it a
+width the falloff — where before one number did both badly. _"We gave it a
 maximum, so the blend is cosmetic now" is the simplification to resist, and that
-figure is why.*
+figure is why._
 
 **The peak is flatter than it was, and §4.2 leans on it.** Saturating the limb
 does not just lower the summit, it broadens it: `Cl` is within 0.4% of its
@@ -334,7 +337,7 @@ maximum from 22.7° to 24.9°, where the old curve turned over more definitely.
 That is the more physical shape — a real sail has a forgiving best trim rather
 than a knife edge — but it means "the optimal trim" is a fuzzier idea than it
 was, and the optimal-trim search's argmax can move by a fraction of a degree on
-a rounding difference. Anything comparing a trim to *the* optimum wants a
+a rounding difference. Anything comparing a trim to _the_ optimum wants a
 tolerance rather than an equality.
 
 **One lesson from finding this, which is about method rather than sails.** The
@@ -342,7 +345,7 @@ fold was hunted with a sweep over trims and winds, and a sweep can only fail to
 find a counterexample — it cannot establish there is none. Three passes at this
 bug reported settings as fold-free that a finer grid showed folding by 1.4 kt.
 The trap has a second door that is easy to miss after you have shut the first:
-sampling the *speed* axis bounds what can be seen too, and not merely how
+sampling the _speed_ axis bounds what can be seen too, and not merely how
 precisely. Detecting a fold means resolving the stretch where the net force is
 positive, between the unstable root and the upper stable one — not the gap
 between the two stable branches, which is much wider and is the natural thing to
@@ -367,7 +370,7 @@ and `Cd = k`. The boat is being pushed, not lifted, and the model should say so.
 Two numbers there were settled by calibration and are worth flagging, because a
 first reading of the physics gives different ones.
 
-`k` is **1.1, not the textbook 2.0**. Two is a flat plate of *infinite* span; at
+`k` is **1.1, not the textbook 2.0**. Two is a flat plate of _infinite_ span; at
 a sail's aspect ratio the flow spills round the ends and the figure is nearer
 1.2, and a soft sail — twisted, its head falling off, its jib in the main's wind
 shadow — comes in under that. This single constant sets the speed of a run and
@@ -375,15 +378,15 @@ nothing else in the model can substitute for it, so getting it wrong is
 expensive: at 2.0 the run came out a full knot fast.
 
 The blend is **~50°, not ~10°**, and that width is not cosmetic. A sharper stall
-makes the model *bistable* on a reach — the same boat at the same trim in the
+makes the model _bistable_ on a reach — the same boat at the same trim in the
 same wind settling at 3.7 kt or 5.1 kt depending on whether it started from rest
 — because a sail eased for the apparent wind at speed is stalled at the apparent
 wind at rest, and with a cliff at the stall it cannot climb back out.
 
 It went 10° → 20° in `pos-fo1.4` and 20° → 50° in `pos-i4o`, and the second move
 is the one that says what this constant can and cannot do. 20° was enough at the
-trim the optimal-trim search finds and nowhere else; widening *inside the old
-parameterisation* could not fix the rest, because it **relocated** the fold into
+trim the optimal-trim search finds and nowhere else; widening _inside the old
+parameterisation_ could not fix the rest, because it **relocated** the fold into
 lighter air rather than removing it — a gentler fall closes the same loop at a
 lower speed — and no width was clean at every wind while the polar still met
 [§3.6](#36-calibration-targets). What made 50° work is that the attached limb
@@ -392,29 +395,29 @@ wind from 2 to 10 kt, 31° still folds — by 0.9 kt at 4 kt — and **32° is t
 narrowest width that is clean everywhere**; 50° sits half again past that, where
 the old 20° sat 1.43× past its own 14°.
 
-**Where the search for this fix did *not* lead is worth recording**, because
+**Where the search for this fix did _not_ lead is worth recording**, because
 both directions look plausible and cost a week each. The keel's induced drag is
-not implicated: delete it and the fold gets *worse* (3.52 kt against 2.87 at
-10 kt), so [§3.5](#35-hull-resistance-and-integration)'s `keelStall` — which has
-no headroom anyway — is neither the cause nor the cure. And neither limb folds
-on its own: a pure attached curve is monotone with nothing to feed back on, and
-a pure flat plate peaks gently at 0.55. **Only the join between them has a
-segment steep enough to close the loop**, which is what pointed at the
-parameterisation rather than at either piece of physics.
+not implicated: delete it and the fold gets _worse_ (3.52 kt against 2.87 at 10
+kt), so [§3.5](#35-hull-resistance-and-integration)'s `keelStall` — which has no
+headroom anyway — is neither the cause nor the cure. And neither limb folds on
+its own: a pure attached curve is monotone with nothing to feed back on, and a
+pure flat plate peaks gently at 0.55. **Only the join between them has a segment
+steep enough to close the loop**, which is what pointed at the parameterisation
+rather than at either piece of physics.
 
 **Force assembly.** Lift acts perpendicular to the apparent wind, drag along it.
 Sum both sails, rotate into the boat frame, and take the component along the
-heading as **driving force**. The lateral component is *not* discarded — see
+heading as **driving force**. The lateral component is _not_ discarded — see
 [§3.5](#35-hull-resistance-and-integration), where the keel is charged for it.
 
 #### Depowering: the rig stops collecting force in a breeze
 
 Everything above scales with the square of the wind, and a rig that did only
-that would sail a Rhodes 19 at nine knots in a gale. A real one stops
-collecting force well before that. It heels, so the sail plan leans out of the
-horizontal and presents less of itself square to the wind; the sail twists off
-at the head; and the crew ease, feather, flatten and reef. So the whole rig
-force is multiplied by
+that would sail a Rhodes 19 at nine knots in a gale. A real one stops collecting
+force well before that. It heels, so the sail plan leans out of the horizontal
+and presents less of itself square to the wind; the sail twists off at the head;
+and the crew ease, feather, flatten and reef. So the whole rig force is
+multiplied by
 
 ```text
 k(W) = (1 + r^16)^(−1/16)        r = (W_true / 13 kt)²
@@ -423,44 +426,43 @@ k(W) = (1 + r^16)^(−1/16)        r = (W_true / 13 kt)²
 which is `min(1, q_full/q)` with the corner rounded off: full sail up to 13 kt,
 and above it `k` falls as `1/q`, so **the force stops growing and holds at what
 it reached there**. [§7](#7-deliberately-out-of-scope) excludes heel from the
-*drawing* — top-down can only hint at it — and says in the same breath that it
+_drawing_ — top-down can only hint at it — and says in the same breath that it
 is paid for without being shown. This is one of the two ways it is paid for: the
 force heel costs the rig, charged without an angle ever being computed, exactly
 as [§3.5](#35-hull-resistance-and-integration)'s `sideForce` is four times a
-bare keel's induced drag because it carries the *drag* heel produces, along with
+bare keel's induced drag because it carries the _drag_ heel produces, along with
 leeway and rudder angle. Nothing here forbids computing a heel angle; what the
 subsection below establishes is that doing so would make a worse boat.
 
 **Why a term of this shape was the only one that could work.** Every force in
 the model is homogeneous of degree two in speed, so
 [§3.5](#the-wall-exponent-is-the-models-only-wind-scale)'s wall was the sole
-source of wind-dependence in the polar — and it is a function of *speed* when
-the problem is a function of the *wind*. It therefore bites hardest where the
+source of wind-dependence in the polar — and it is a function of _speed_ when
+the problem is a function of the _wind_. It therefore bites hardest where the
 boat is fastest, clipping a reach harder than close hauled and sliding the
 upwind optimum lower as the breeze fills in. A factor on the drive has no such
 problem: at any one wind it multiplies every point of sail by the same number,
 which is precisely what slows the boat without bending the polar.
 
 **It is keyed to the true wind, and that is a decision rather than a
-convenience.** [§3.1](#31-apparent-wind) says sail forces come from the
-apparent wind and never from the true wind, and this does not break that rule:
-`k` is not an aerodynamic coefficient but *how much sail is being carried*,
-which a crew choose for the wind of the day rather than for the flow over the
-cloth at this instant. The alternative was measured and is worse. Keyed to the
-apparent wind, a run — which has the lowest apparent wind of any point of sail
-— is depowered *least*, so the run/beam ratio at 14 kt runs from 0.74 to
-between 0.75 and 0.79, breaking [§3.6](#36-calibration-targets)'s "a run is
-notably slower than a reach" at exactly the wind
-[§2.1](#21-initial-state-a-random-solvable-problem) opens in, and the fastest
-point of sail slides from TWA 95° to 110–115°.
+convenience.** [§3.1](#31-apparent-wind) says sail forces come from the apparent
+wind and never from the true wind, and this does not break that rule: `k` is not
+an aerodynamic coefficient but _how much sail is being carried_, which a crew
+choose for the wind of the day rather than for the flow over the cloth at this
+instant. The alternative was measured and is worse. Keyed to the apparent wind,
+a run — which has the lowest apparent wind of any point of sail — is depowered
+_least_, so the run/beam ratio at 14 kt runs from 0.74 to between 0.75 and 0.79,
+breaking [§3.6](#36-calibration-targets)'s "a run is notably slower than a
+reach" at exactly the wind [§2.1](#21-initial-state-a-random-solvable-problem)
+opens in, and the fastest point of sail slides from TWA 95° to 110–115°.
 
-The mechanism this stands in for was measured too, and it is also worse.
-Driving `k` from the side force — the honest reading of "it heels", since
-heeling moment is what runs a crew out of righting moment — puts run/beam at
-30 kt between 0.97 and 1.09, a run as fast as a beam reach, and barely touches
-the top speed at all: 8.82–8.86 kt against 8.91 undepowered, because the
-fastest angles make little side force and escape the cap. **Heel is the right
-cause; its effect has to be spread evenly to be any use.**
+The mechanism this stands in for was measured too, and it is also worse. Driving
+`k` from the side force — the honest reading of "it heels", since heeling moment
+is what runs a crew out of righting moment — puts run/beam at 30 kt between 0.97
+and 1.09, a run as fast as a beam reach, and barely touches the top speed at
+all: 8.82–8.86 kt against 8.91 undepowered, because the fastest angles make
+little side force and escape the cap. **Heel is the right cause; its effect has
+to be spread evenly to be any use.**
 
 **The knee is sharp because the calibration table is tight.** The 10 kt broad
 reach sits at 4.78 kt against a 4.68 floor — about a fifth of the 10% tolerance
@@ -475,7 +477,7 @@ calibrated and the range this term is for.
 rig at full power and nothing in [§4.2](#42-the-traffic-light)'s trim-quality
 ratio ever sees it. That is deliberate. The colour divides this trim's drive by
 the best trim's, and a factor common to both cancels — except against the
-*floored* denominator `max(best, 0.05·q·A)`, which carries no such factor.
+_floored_ denominator `max(best, 0.05·q·A)`, which carries no such factor.
 Scaling the forces upstream would leave that floor binding further out as the
 breeze filled in: measured, the apparent wind angle below which it binds would
 run from 8.2° at 10 kt to 11.5° at 20, 17.3° at 30 and 30.3° at 45, creeping the
@@ -486,7 +488,7 @@ naming in `sail.ts` carries.
 
 ### 3.3 Luffing
 
-Luffing is a *separate concept from trim quality* and must not be conflated with
+Luffing is a _separate concept from trim quality_ and must not be conflated with
 it (see [§4.2](#42-the-traffic-light)).
 
 A cambered sail needs some incidence to hold its shape. As the sail comes into
@@ -500,21 +502,21 @@ d ≤ α_luff  (≈ 2°)      → fully collapsed, no drive
 ```
 
 **The thresholds are magnitudes, not signed angles**, because
-[§3.2](#32-sail-forces)'s `Cl` is odd in α: the sign of α says which *face* the
-flow strikes, not whether the trim is any good. A well-trimmed sail sits at
-α ≈ +15° on starboard tack and α ≈ −15° on port. Signed thresholds would luff
-the whole port tack exactly where starboard draws, and would take the force off
-a backed sail — which is large *negative* α and must draw fully in reverse, or
+[§3.2](#32-sail-forces)'s `Cl` is odd in α: the sign of α says which _face_ the
+flow strikes, not whether the trim is any good. A well-trimmed sail sits at α ≈
++15° on starboard tack and α ≈ −15° on port. Signed thresholds would luff the
+whole port tack exactly where starboard draws, and would take the force off a
+backed sail — which is large _negative_ α and must draw fully in reverse, or
 [§3.4](#34-backing-a-sail)'s mooring departure stops working.
 
 What folding about zero gives up is camber asymmetry: a real cambered sail keeps
-drawing a little past nominal zero incidence, on one side only. Representing that
-honestly needs memory of which side the camber has popped to, which the model
-does not carry and should not grow.
+drawing a little past nominal zero incidence, on one side only. Representing
+that honestly needs memory of which side the camber has popped to, which the
+model does not carry and should not grow.
 
 **The distance `d` is measured from the nearer of the two edge-on states, not
 from zero.** A sail lies along the flow twice: at α = 0, where the wind arrives
-at the luff, and at α = ±180°, where it arrives at the *leech* instead — a boom
+at the luff, and at α = ±180°, where it arrives at the _leech_ instead — a boom
 eased right out on a run, with the wind coming over the back of the sail. So
 
 ```text
@@ -523,21 +525,21 @@ d = min(|α|, 180° − |α|)
 
 which is even about 90° as well as about zero.
 
-*This was decided rather than assumed, and it could have gone the other way.*
+_This was decided rather than assumed, and it could have gone the other way._
 Against it: [§3.2](#32-sail-forces) already handles α ≈ 180° correctly and
-without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the *boat*
+without help, giving `Cl = 0` and `Cd = Cd0` there, so nothing about the _boat_
 was ever wrong and the change buys nothing measurable in newtons — it zeroes a
 force that was already negligible. For it, and decisive: the collapsed fraction
 is the one number that drives the flutter as well as the force, so a fraction of
-zero at α = 180° is the model asserting *fully drawing* about a sail that is
+zero at α = 180° is the model asserting _fully drawing_ about a sail that is
 flogging. The drawing would then show a sail collapsed and dead still at the
 same moment, which is exactly the undertrimmed-looks-like-overtrimmed confusion
 [§4.2](#42-the-traffic-light) exists to prevent. A model that needs the renderer
 to paper over one of its numbers has the number wrong.
 
-**Which trims actually get there**, since the answer is not the obvious one.
-α = AWA + trim, so *easing* on a reach moves α **away** from 180°, not toward it
-— on a broad reach at AWA 140° a boom right out on the shrouds sits at α = 50°.
+**Which trims actually get there**, since the answer is not the obvious one. α =
+AWA + trim, so _easing_ on a reach moves α **away** from 180°, not toward it —
+on a broad reach at AWA 140° a boom right out on the shrouds sits at α = 50°.
 The leech-first state needs the boom near the centreline with the wind nearly
 dead astern, or the boom out on the windward side. Both are ordinary:
 
@@ -550,7 +552,7 @@ The second is the one that earns the change. Sailing by the lee is what precedes
 an accidental gybe, and a sail that goes on looking full and drawing through it
 is teaching precisely the wrong thing.
 
-It is also the state the boom now *holds*, which is what makes the band worth
+It is also the state the boom now _holds_, which is what makes the band worth
 having rather than a curiosity. [§3.4](#the-sheet-sets-a-limit-not-an-angle)'s
 clamp keeps the boom on its stop until α reaches ±180°, so the sail spends the
 whole approach to a gybe walking up this band — flatter, shaking from the leech
@@ -571,26 +573,26 @@ and, beside it, the **edge the collapse propagates from**: the luff or the
 leech. The fraction drives both the flutter animation and the force reduction,
 so what the student sees and what the boat does can never disagree. It scales
 the whole force, lift and drag alike: the collapsed portion is simply not
-working. *Which* portion it is does not enter the force at all — a third of the
+working. _Which_ portion it is does not enter the force at all — a third of the
 cloth carries a third of the load whichever third it is — so the edge is a
 number the drawing spends and the physics ignores.
 
 The edge falls straight out of the fold. The two limbs of `min(|α|, 180° − |α|)`
-*are* the two edge-on states: below 90° the flow is arriving at the luff and the
+_are_ the two edge-on states: below 90° the flow is arriving at the luff and the
 collapse runs aft, above it the flow is arriving at the leech and the collapse
 runs forward. Reporting the fraction alone would not do, and the error it would
 leave is not a sliver — the fraction is 0.35 at α = 175° and does not reach 1
 until 178°, so through the first half of that band a drawing measured from the
-luff would shake the forward third of a sail whose *after* end is the one
+luff would shake the forward third of a sail whose _after_ end is the one
 letting go. Keeping [§4.1](#41-whats-drawn)'s deformation hook honest is the
 whole reason the second field exists.
 
-The two are reported separately rather than folded into one signed fraction.
-A sign would have to flip at α = 90°, which is exactly where the fraction is
-zero and there is no collapse to attribute to an edge, and every consumer would
-then spend a line recovering a magnitude before it could use one. As it stands,
+The two are reported separately rather than folded into one signed fraction. A
+sign would have to flip at α = 90°, which is exactly where the fraction is zero
+and there is no collapse to attribute to an edge, and every consumer would then
+spend a line recovering a magnitude before it could use one. As it stands,
 between the bands the fraction is 0 and the edge merely names the one a collapse
-*would* arrive at; the tie at exactly |α| = 90° is broken toward the luff and is
+_would_ arrive at; the tie at exactly |α| = 90° is broken toward the luff and is
 unobservable, because nothing reads the edge without also reading a fraction of
 zero.
 
@@ -599,8 +601,8 @@ zero.
 Edgewood teaches getting under way from a mooring by physically pushing the boom
 forward, so this is a first-class mechanic rather than an edge case.
 
-Normally the wind holds the boom to leeward and the sheet stops it coming in.
-A sail on the *windward* side is not a trim state — it's a state a hand is
+Normally the wind holds the boom to leeward and the sheet stops it coming in. A
+sail on the _windward_ side is not a trim state — it's a state a hand is
 holding. So:
 
 - The user may drag a sail past its natural side.
@@ -613,7 +615,7 @@ holding. So:
 Holding your finger down to hold the boom out is an unusually direct mapping
 between the gesture and the real physical act.
 
-**Where it swings to.** The sail returns to the *mirror* of the angle it was at
+**Where it swings to.** The sail returns to the _mirror_ of the angle it was at
 before being pushed across — same trim, other side. This is what the sheet does
 on the real boat: its length hasn't changed, so it stops the boom at the same
 angle it would have on the other tack. The full mooring departure then plays out
@@ -631,20 +633,21 @@ mooring.
 
 #### The sheet sets a limit, not an angle
 
-Everything above is now a *consequence* rather than a mechanism, and the change
+Everything above is now a _consequence_ rather than a mechanism, and the change
 that made it so is the most load-bearing one in this document.
 
-**A mainsheet is a length of rope.** A rope cannot tell the boom which side to be
-on and cannot push it anywhere — it can only stop it going further out. Which
+**A mainsheet is a length of rope.** A rope cannot tell the boom which side to
+be on and cannot push it anywhere — it can only stop it going further out. Which
 side, and how far in, is the wind's business. Modelling the sheet as an absolute
 angle asserts the opposite: that the boom holds whatever bearing it was left at
 however the boat turns under it, which is the one thing a real boom
 conspicuously does not do.
 
-So `RigTrim` carries `mainSheet` — the limit — and `mainAngle` becomes state that
-evolves. With no hand on it the boom is a weathervane: it comes to rest where the
-cloth lies along the flow, which is angle of attack zero. Turning the boom by δ
-moves α by δ, so the turn it wants is `−α`, and the sheet then clamps it:
+So `RigTrim` carries `mainSheet` — the limit — and `mainAngle` becomes state
+that evolves. With no hand on it the boom is a weathervane: it comes to rest
+where the cloth lies along the flow, which is angle of attack zero. Turning the
+boom by δ moves α by δ, so the turn it wants is `−α`, and the sheet then clamps
+it:
 
 ```text
   natural = clamp(current − α, −sheet, +sheet)
@@ -658,7 +661,7 @@ about the sail does: α is perfectly continuous through a dead run, and it was
 only the branch that jumped.
 
 The reachable representative is the physical one. The moment the cloth makes
-about the mast is odd in α and vanishes at *both* edge-on states — at α = 0,
+about the mast is odd in α and vanishes at _both_ edge-on states — at α = 0,
 where the wind meets the luff, and at α = ±180°, where it meets the leech — so
 the boom is driven toward zero along the α axis and cannot wrap through the
 leech-first state on the way. While the wind is on the after face of the sail it
@@ -667,73 +670,75 @@ The two branches agree wherever `|α| < 90°`, which is every trim from close
 hauled round to a broad reach, so this changes the deep running end of the polar
 and nothing else.
 
-**Everything falls out of that one expression, and none of it is special-cased:**
+**Everything falls out of that one expression, and none of it is
+special-cased:**
 
 - **Sailing.** Close hauled, `|−awa|` still exceeds the sheet, so the boom sits
-  *on its stop* and the sheet is what sets the angle of attack. True at every
+  _on its stop_ and the sheet is what sets the angle of attack. True at every
   point of sail a student uses — which is why the old absolute-angle model got
   this case right and survived as long as it did.
 - **Easing too far.** Ease past `|awa|` and the clamp stops binding: the boom
   reaches the weathervane, α goes to zero and the sail flogs. And then a genuine
   feedback loop nobody wrote appears — the boat slows, the apparent wind swings
-  *aft*, the clamp starts binding again and the sail refills. Measured: eased in
+  _aft_, the clamp starts binding again and the sail refills. Measured: eased in
   a 66° apparent wind the boat fell from 5.01 kt to 4.35 while the wind moved
   −63.4° → −66.5°.
 - **Tacking, unassisted.** Turn the boat up through the wind and α changes sign
   with `awa`; the clamp changes side with it and the boom crosses on its own,
-  from one stop to the mirror of it. Measured through a tack the boat loses
-  0.4 kt.
+  from one stop to the mirror of it. Measured through a tack the boat loses 0.4
+  kt.
 - **Gybing when the wind gets round the leech, and not before.** Bear away
   through dead downwind and nothing happens — the wind is still on the after
   face of the sail, still pressing the boom out against its stop, and the boat
   sails **by the lee** with the boom where it was. The boom goes when α reaches
   ±180°, which on the stop is
 
-  ```text
-    |awa| = 180° − sheet
-  ```
+    ```text
+      |awa| = 180° − sheet
+    ```
 
-  — *the boat has to be by the lee by as much as the boom is eased*, which is
-  the rule of thumb a student is taught rather than a number this model
-  invented. Sheeted flat at 10° it gybes 10° past dead downwind; eased to 80° it
-  holds until the apparent wind is 10° from the beam, and then slams **through
-  the centreline** to the other stop in about half a second. The bound is
-  `SWING_LIMIT`, so it is also a guarantee: a boom nobody is holding is never
-  carried to windward of the beam.
+    — _the boat has to be by the lee by as much as the boom is eased_, which is
+    the rule of thumb a student is taught rather than a number this model
+    invented. Sheeted flat at 10° it gybes 10° past dead downwind; eased to 80°
+    it holds until the apparent wind is 10° from the beam, and then slams
+    **through the centreline** to the other stop in about half a second. The
+    bound is `SWING_LIMIT`, so it is also a guarantee: a boom nobody is holding
+    is never carried to windward of the beam.
 
-  Measured, bearing away at 3°/s from a broad reach with the main out at 80° and
-  the jib at 55°: the jib backs at AWA −125° and the boom goes at −100°, more
-  than 20° of turning apart. **The headsail backs first and the boom follows**,
-  which is the order it happens in on the water and which the old model could
-  not show at all — it took both across together, at 180°, with the boat barely
-  by the lee.
+    Measured, bearing away at 3°/s from a broad reach with the main out at 80°
+    and the jib at 55°: the jib backs at AWA −125° and the boom goes at −100°,
+    more than 20° of turning apart. **The headsail backs first and the boom
+    follows**, which is the order it happens in on the water and which the old
+    model could not show at all — it took both across together, at 180°, with
+    the boat barely by the lee.
+
 - **The swing-back above, derived rather than animated.** Push the boom to
-  windward and let go *with the wind forward of the leech*: the sheet is
+  windward and let go _with the wind forward of the leech_: the sheet is
   `|angle|`, the wind is on the other side, so the natural angle is its mirror.
   "Same trim, other side" is what the clamp says; there is no swing-back
   mechanism and there does not need to be. The mooring departure this exists for
   happens head to wind, where the proviso is nowhere near binding.
 - **Wing and wing, past that same threshold.** The proviso is not a hedge — it
   is the gybe rule read from the other end, and one boundary decides both. Push
-  the boom to windward while the boat is *by the lee of it*, `|awa| > 180° −
-  sheet`, and there is no back-pressure to swing it back: the wind is on the
-  after face of the cloth and holds it where you put it. So on a run the boom is
-  stable on **either** side, which is what wing and wing is. The old model could
-  not hold that position at all — it flopped the boom back to leeward however
-  the sails were set.
+  the boom to windward while the boat is _by the lee of it_,
+  `|awa| > 180° − sheet`, and there is no back-pressure to swing it back: the
+  wind is on the after face of the cloth and holds it where you put it. So on a
+  run the boom is stable on **either** side, which is what wing and wing is. The
+  old model could not hold that position at all — it flopped the boom back to
+  leeward however the sails were set.
 
 `mainHeld` — in the state and inert since it was added — is what the hand uses:
 while it is set the boom does not move, because a hand on it outranks the wind.
 
 #### The jib: the same sentence, a differently shaped stop
 
-A boom pivots on the mast, so its sheet limits an *angle*. A jib's clew is a
+A boom pivots on the mast, so its sheet limits an _angle_. A jib's clew is a
 corner of cloth on a rope: it can be anywhere the foot allows — a circle about
 the tack — and anywhere the sheet allows, a circle about the car. It sits where
 those two cross, and the wind picks which crossing.
 
-Written out, that collapses back into the same formula. With `β` the bearing from
-tack to car and `d` their distance,
+Written out, that collapses back into the same formula. With `β` the bearing
+from tack to car and `d` their distance,
 
 ```text
   cos(b − β) = (chord² + d² − sheet²) / (2·chord·d)
@@ -743,27 +748,28 @@ tack to car and `d` their distance,
 ```
 
 **So the jib is the main with the interval shifted off centre**, and the main is
-the special case where the car sits on the centreline, `a₀ = 0`, and the interval
-is symmetric. The unwrapped target carries over with everything else, and for
-the same reason: a jib has a leech too, and its clew is held out on the sheet by
-the wind on the after face of the cloth exactly as the boom is.
+the special case where the car sits on the centreline, `a₀ = 0`, and the
+interval is symmetric. The unwrapped target carries over with everything else,
+and for the same reason: a jib has a leech too, and its clew is held out on the
+sheet by the wind on the after face of the cloth exactly as the boom is.
 
 **That asymmetry is the real one on the water.** Because the jib's interval is
-not centred on zero, tacking the boat does not tack the jib: sheeted to starboard
-at 1.0 m the clew may lie anywhere in −12.2°…+37.4°, so putting the wind on the
-starboard bow clamps it at −12.2° and it stops there, to windward, aback — while
-the main has crossed on its own. **The main tacks itself and the jib has to be
-tacked.** Measured through a tack: main +15° → −15°, jib +27.3° → −2.1°, and the
-boat 0.3 kt slower for the backed headsail until someone tends it.
+not centred on zero, tacking the boat does not tack the jib: sheeted to
+starboard at 1.0 m the clew may lie anywhere in −12.2°…+37.4°, so putting the
+wind on the starboard bow clamps it at −12.2° and it stops there, to windward,
+aback — while the main has crossed on its own. **The main tacks itself and the
+jib has to be tacked.** Measured through a tack: main +15° → −15°, jib +27.3° →
+−2.1°, and the boat 0.3 kt slower for the backed headsail until someone tends
+it.
 
 **The car is chosen, not measured**, because there is nothing to measure it
 against: the class rules control the mast, boom, spinnaker pole, standing
-rigging, sails, keel and rudder and say *nothing* about jib sheeting. It sits
+rigging, sails, keel and rudder and say _nothing_ about jib sheeting. It sits
 midway between the lower chainplate and the centreline, at that chainplate's
 station. The figure to check it against is not its coordinates but what it makes
 a bar-taut jib do — **12.6°** off the centreline, which is about where a Rhodes
 19's jib sits sheeted flat. Adjustable cars are deliberately not modelled: they
-mostly change *twist*, and [§7](#7-deliberately-out-of-scope) does not model
+mostly change _twist_, and [§7](#7-deliberately-out-of-scope) does not model
 twist, so a movable car would be a control with nothing on the other end.
 
 **This manoeuvre is inside the model's domain, and it is worth saying so because
@@ -773,12 +779,13 @@ records that below a knot or two the keel cannot hold the side force the rig is
 making, so §7's no-leeway exclusion stops being a simplification — and a backed
 sail is the obvious place to worry, since it is deliberately a large force at no
 speed. Measured, it is not: backed to 45°–90° anywhere from head to wind out to
-TWA 45° in 10 kt, the boat settles at **2.1–2.8 kt of sternway**, and the keel is
-charging 0–22% of the side force against its 22% ceiling — at or under capacity
-throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5. The reason is
-that backing makes its force mostly as *drag*, straight down the boat's axis: at
-90° of backed trim the side force is a couple of newtons. So the boat gets moving
-smartly, and by the time it is moving the question does not arise.
+TWA 45° in 10 kt, the boat settles at **2.1–2.8 kt of sternway**, and the keel
+is charging 0–22% of the side force against its 22% ceiling — at or under
+capacity throughout, needing a `Cl` of 0.8 at worst where a foil has 1.5. The
+reason is that backing makes its force mostly as _drag_, straight down the
+boat's axis: at 90° of backed trim the side force is a couple of newtons. So the
+boat gets moving smartly, and by the time it is moving the question does not
+arise.
 
 ### 3.5 Hull resistance and integration
 
@@ -789,17 +796,16 @@ R(v) = A·v² + B·v²·(v / v_hull)⁴        v_hull = 2.91 m/s (5.65 kt)
 ```
 
 The fourth-power term is a shape, not a theory — it produces the wall a
-displacement hull hits, the one that makes the last half knot cost far more
-than the one before it. What it does *not* do on its own is keep a Rhodes 19
-off nine knots in a gale; that promise was made here for a long time and is
-actually kept by [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze),
-for reasons the subsection below works through. It was a sixth power until
-`pos-lcz`;
+displacement hull hits, the one that makes the last half knot cost far more than
+the one before it. What it does _not_ do on its own is keep a Rhodes 19 off nine
+knots in a gale; that promise was made here for a long time and is actually kept
+by [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze), for reasons
+the subsection below works through. It was a sixth power until `pos-lcz`;
 [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) below is
 the decision that moved it, and it is the one place in this section where a
-number was chosen against something other than the 10 kt polar.
-Going astern, multiply by ≈ 2.5: transom-first with a stalled keel and rudder is
-genuinely much draggier, and students should feel that backing up is slow.
+number was chosen against something other than the 10 kt polar. Going astern,
+multiply by ≈ 2.5: transom-first with a stalled keel and rudder is genuinely
+much draggier, and students should feel that backing up is slow.
 
 **The keel is charged for the rig's side force, and that is what makes a no-go
 zone.** [§3.2](#32-sail-forces)'s lateral component is not free: the keel has to
@@ -820,7 +826,7 @@ problem was one end of the polar.
 `F²/v²` runs away at rest, and that runaway is not physics: a keel asked for
 more than it can carry stalls, and the boat sideslips rather than growing an
 unbounded drag. Worse, in a model with no leeway an unbounded drag would push a
-sheeted-in boat *backwards* and then reverse as soon as it did. So the keel is
+sheeted-in boat _backwards_ and then reverse as soon as it did. So the keel is
 given a stall — the drag is scaled by how much lift the keel can hold relative
 to how hard it is being asked to pull, a ratio that grows with `v²` because that
 is what a foil's capacity does. That recovers `k·F²/v²` where there is capacity
@@ -838,7 +844,7 @@ it.
 
 #### The wall exponent is the model's only wind-scale
 
-Everything else in this model is *homogeneous of degree two* in speed. Scale the
+Everything else in this model is _homogeneous of degree two_ in speed. Scale the
 true wind and the boat's speed together by λ, and each force scales by λ²:
 
 - **Sail force** is dynamic pressure times coefficients that depend only on
@@ -853,14 +859,14 @@ true wind and the boat's speed together by λ, and each force scales by λ²:
   The ratio is λ². The `1/v²` is real, and it is cancelled by the load it
   carries.
 
-So the balance `F_drive = R(v)` is preserved under λ, and the *shape* of the
+So the balance `F_drive = R(v)` is preserved under λ, and the _shape_ of the
 polar does not move at all.
 
 The wall term is the exception, because `v_hull` is an absolute speed:
 `B·v^(n+2)/v_hull^n` scales by the (n+2)th power instead. That is not a detail.
 Set `B` to zero and re-solve `A` to hold the 10 kt beam reach, and the polar
 becomes exactly scale-invariant — a 45° upwind VMG peak, a run at 0.58 of a beam
-reach, and a beam reach of 0.555 kt per knot of true wind, at *every* wind from
+reach, and a beam reach of 0.555 kt per knot of true wind, at _every_ wind from
 4 to 30 kt. **So the wall is the sole source of wind-dependence in this model,
 and everything the polar does as the breeze fills in is the exponent's doing.**
 
@@ -868,26 +874,25 @@ Which is why the exponent is a design decision and not a knob, and why `pos-lcz`
 moved it from 6 to 4 rather than the other way. The wall bites hardest where the
 boat is fastest, so it clips a reach harder than it clips close hauled — and
 clipping the fast angles is precisely what slides the upwind VMG optimum to a
-*smaller* angle. Sharpening the wall therefore buys a slower beam reach in a
+_smaller_ angle. Sharpening the wall therefore buys a slower beam reach in a
 breeze at the cost of a boat that points ever higher in it, which is the
-opposite of what a keelboat does. Measured, holding the 10 kt beam reach at
-5.55 kt by re-solving `B` each time:
+opposite of what a keelboat does. Measured, holding the 10 kt beam reach at 5.55
+kt by re-solving `B` each time:
 
 | exponent | 10 kt polar (45/90/135/180) | VMG peak, 6→14 kt | run/beam at 14 kt | beam at 20 kt | beam at 30 kt |
-| --- | --- | --- | --- | --- | --- |
-| 4 | 4.18 5.55 4.73 3.71 | 49° → 40° | 0.74 | 7.59 | 8.88 |
-| 6 | 4.29 5.55 4.83 3.79 | 49° → 39° | 0.78 | 7.07 | 7.95 |
-| 10 | 4.42 5.55 4.96 3.85 | 49° → 38° | 0.83 | 6.54 | 7.07 |
-| 20 | 4.53 5.55 5.13 3.87 | 49° → 37° | 0.88 | 6.08 | 6.34 |
+| -------- | --------------------------- | ----------------- | ----------------- | ------------- | ------------- |
+| 4        | 4.18 5.55 4.73 3.71         | 49° → 40°         | 0.74              | 7.59          | 8.88          |
+| 6        | 4.29 5.55 4.83 3.79         | 49° → 39°         | 0.78              | 7.07          | 7.95          |
+| 10       | 4.42 5.55 4.96 3.85         | 49° → 38°         | 0.83              | 6.54          | 7.07          |
+| 20       | 4.53 5.55 5.13 3.87         | 49° → 37°         | 0.88              | 6.08          | 6.34          |
 
-There is no row that keeps a beam reach at hull speed in a breeze *and* holds
+There is no row that keeps a beam reach at hull speed in a breeze _and_ holds
 the pointing angle, because within this term there is only the one knob — which
 is the measurement that sent the problem to
 [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze). Holding a beam
-reach at
-or under hull speed at 30 kt while [§3.6](#36-calibration-targets)'s table
-survives needs an exponent of about 126 — a speed clamp, not a wall — and the
-pointing is long gone well before that. Pulling the 10 kt beam reach down to
+reach at or under hull speed at 30 kt while [§3.6](#36-calibration-targets)'s
+table survives needs an exponent of about 126 — a speed clamp, not a wall — and
+the pointing is long gone well before that. Pulling the 10 kt beam reach down to
 make room instead fails a different way: the run sits at ≈ 3.85 kt in every
 configuration, being far enough below the wall to be untouched by it, so a
 slower beam reach simply breaks "a run is notably slower than a reach".
@@ -899,23 +904,23 @@ the three lessons the model exists to teach hold their shape across the 6–14 k
 [§2.1](#21-initial-state-a-random-solvable-problem) actually opens on.
 
 The honest reading is that the wall was being asked to do a job it is the wrong
-shape for, and for a while it was left doing it badly: a beam reach reached
-7.59 kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and a
+shape for, and for a while it was left doing it badly: a beam reach reached 7.59
+kt in 20 kt of wind and 8.88 kt in 30, against a 5.65 kt hull speed, and a
 Rhodes 19 does neither. `calibration.test.ts` pinned that as an accepted cost
 rather than a target, so that it could not drift quietly in either direction
 while the term that could fix it was still a bead.
 
 That term is now
-[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze),
-and it settles the question this whole subsection is about. What holds a real
-Rhodes 19 down in a breeze is not extra water drag but the rig giving up: it
-heels, the sail twists off, and the crew eases and feathers. That caps the
-*drive* rather than clipping the *speed*, and because it acts on every point of
-sail together it is the only kind of term that can slow the boat in a gale
-without bending the polar. With it in place a beam reach settles at 6.37 kt in
-20 kt of wind and 6.40 in 30 — and the exponent above is free to go on being
-chosen for what it is actually good at, which is the shape of the polar in the
-wind the simulator opens in.
+[§3.2's depowering](#depowering-the-rig-stops-collecting-force-in-a-breeze), and
+it settles the question this whole subsection is about. What holds a real Rhodes
+19 down in a breeze is not extra water drag but the rig giving up: it heels, the
+sail twists off, and the crew eases and feathers. That caps the _drive_ rather
+than clipping the _speed_, and because it acts on every point of sail together
+it is the only kind of term that can slow the boat in a gale without bending the
+polar. With it in place a beam reach settles at 6.37 kt in 20 kt of wind and
+6.40 in 30 — and the exponent above is free to go on being chosen for what it is
+actually good at, which is the shape of the polar in the wind the simulator
+opens in.
 
 **Read that table as a study of the wall by itself, because that is what it
 is.** Every figure in it was measured with §3.2's depowering off, which is the
@@ -944,20 +949,22 @@ v += a · dt
 ```
 
 with `m_effective` — boat + two crew + ~15% added mass ≈ 880 kg, which is a
-sanity check on the figure rather than its source; see the lag knob below.
-Three reasons to integrate rather than solve for equilibrium:
+sanity check on the figure rather than its source; see the lag knob below. Three
+reasons to integrate rather than solve for equilibrium:
 
-1. Apparent wind depends on speed and speed depends on apparent wind. Integration
-   resolves that feedback loop for free; a fixed-point solve has to iterate.
-2. Negative speeds fall out naturally, which matters for [§3.4](#34-backing-a-sail).
+1. Apparent wind depends on speed and speed depends on apparent wind.
+   Integration resolves that feedback loop for free; a fixed-point solve has to
+   iterate.
+2. Negative speeds fall out naturally, which matters for
+   [§3.4](#34-backing-a-sail).
 3. Snapping instantly to a new speed looks wrong. A keelboat takes ~10 s to
-   accelerate to hull speed, and that lag is itself a lesson — trim changes don't
-   pay off instantly.
+   accelerate to hull speed, and that lag is itself a lesson — trim changes
+   don't pay off instantly.
 
-The boat still doesn't *translate*; only the speed number evolves.
+The boat still doesn't _translate_; only the speed number evolves.
 
-**One numerical wrinkle: the resistance is taken implicitly.** Written exactly as
-above, each step charges the resistance the boat felt at the *start* of the
+**One numerical wrinkle: the resistance is taken implicitly.** Written exactly
+as above, each step charges the resistance the boat felt at the _start_ of the
 interval, and against a fourth power on top of a square that error compounds
 badly. Trimmed for the wind it was in, the boat used to stop settling at around
 80 kt — a tenth-of-a-second step alternating between two speeds forever — and by
@@ -972,13 +979,13 @@ leave the paragraph above reading as a live threat. The drive is capped at its
 gale it is in, it settles at 6.38–6.40 kt whether it is given 55 kt of wind or a
 thousand, and carrying a trim found in 10 kt it settles at 4.40–4.50 kt. At
 either, the naive step and the implicit one agree to six decimal places with no
-overshoot between them. The step stays
-implicit anyway, for two reasons that have nothing to do with which winds are
-reachable today: it costs a single extra term, and what makes the failure
-unreachable is now a *tuning constant* — raise `DEPOWERING.fullPowerWind` far
-enough, or take the cap out to try something else, and the fourth power is
-waiting exactly where it was. The guard is cheap and the trap is one line of
-`tuning.ts` away, which is the wrong margin to run without one.
+overshoot between them. The step stays implicit anyway, for two reasons that
+have nothing to do with which winds are reachable today: it costs a single extra
+term, and what makes the failure unreachable is now a _tuning constant_ — raise
+`DEPOWERING.fullPowerWind` far enough, or take the cap out to try something
+else, and the fourth power is waiting exactly where it was. The guard is cheap
+and the trap is one line of `tuning.ts` away, which is the wrong margin to run
+without one.
 
 So the step linearizes the resistance about the current speed:
 
@@ -992,7 +999,7 @@ water would answer, the smaller the step it takes, so the speed can't run away
 from a curve climbing faster than the step can see. The fixed point is still
 exactly `F_drive = R(v)` and doesn't depend on `dt`.
 
-It does *not* make overshoot impossible: the step follows a tangent to a convex
+It does _not_ make overshoot impossible: the step follows a tangent to a convex
 curve, so it aims slightly beyond the balance point. What makes that harmless is
 that resistance grows faster than linearly, so a speed past the balance point
 meets a restoring step larger than the one that took it there, and overshoots
@@ -1003,66 +1010,67 @@ is now 0.06 m/s against a balance of 3.29, and the approach is monotone.
 
 **`settle()` runs real frames, and that is not an oversight.** Long steps look
 free — where resistance dominates, the update becomes a Newton step and lands in
-ten iterations rather than three hundred — but the *drive* is not in the
+ten iterations rather than three hundred — but the _drive_ is not in the
 linearization, and it can fall with speed faster than resistance rises. Then a
-long step isn't a step toward anything: at five seconds, a sloop in 10 kt at
-TWA 105 with the sails eased to 80° alternates between 1.667 and 1.834 m/s
-forever, 46 N out of balance. Frame-length steps have an argument rather than a
-survey behind them — the underlying equation is a one-dimensional flow, so speed
-moves to the nearest balance point and stops, because there is nowhere else to
-go — and the tests assert the balance itself, not just that the number stopped
+long step isn't a step toward anything: at five seconds, a sloop in 10 kt at TWA
+105 with the sails eased to 80° alternates between 1.667 and 1.834 m/s forever,
+46 N out of balance. Frame-length steps have an argument rather than a survey
+behind them — the underlying equation is a one-dimensional flow, so speed moves
+to the nearest balance point and stops, because there is nowhere else to go —
+and the tests assert the balance itself, not just that the number stopped
 moving. The cost is iterations, which are cheap.
 
 **The lag is the tuning knob; the mass is derived from it.** What
 [`tuning.ts`](#6-architecture) exposes is the thing anyone can judge by watching
-— *time to reach ~63% of terminal speed from rest*, starting at **10 s**, about
-right for a keelboat. `hull.ts` inverts the closed form `v(t) = v_t·tanh(t·A·v_t/m)`
-to get `m_effective` from it, so that calibrating the resistance can't move the
-lag out from under us. The anchor holds at the reference speed and stretches away
-from it: the lag works out as `10 s · v_hull / v_terminal`, so a calibration pass
-that leaves the boat settling slower will also leave it a little slower off the
-mark. If it reads as sluggish when comparing two trim settings back to back, we
-shorten the time; it's a feel decision to be made against the running thing.
+— _time to reach ~63% of terminal speed from rest_, starting at **10 s**, about
+right for a keelboat. `hull.ts` inverts the closed form
+`v(t) = v_t·tanh(t·A·v_t/m)` to get `m_effective` from it, so that calibrating
+the resistance can't move the lag out from under us. The anchor holds at the
+reference speed and stretches away from it: the lag works out as
+`10 s · v_hull / v_terminal`, so a calibration pass that leaves the boat
+settling slower will also leave it a little slower off the mark. If it reads as
+sluggish when comparing two trim settings back to back, we shorten the time;
+it's a feel decision to be made against the running thing.
 
 Before calibration this landed at ≈ 877 kg, agreeing with the 880 kg estimate
 above to within 1% — two routes to one number, and the reason that estimate is
 quoted as a sanity check rather than used as an input. Calibration raised the
-resistance by a quarter and carried the derived mass to ≈ **1092 kg** with it, so
-the two now differ by 24%. That is the anchor stretching rather than breaking,
-and the ten seconds was kept rather than shortened to hold the mass down: the lag
-is the thing anyone can judge by watching and the mass is the thing nobody can,
-and a pass fitting a polar has no business deciding how the boat should feel.
-Read the gap as the boat feeling slightly heavier off the mark than its
-displacement argues for, or as the resistance sitting at the top of its plausible
-range; the evidence doesn't distinguish them. `hull.test.ts` holds the derived
-mass to 600–1200 kg, so a pass that needs more room has to say so out loud.
+resistance by a quarter and carried the derived mass to ≈ **1092 kg** with it,
+so the two now differ by 24%. That is the anchor stretching rather than
+breaking, and the ten seconds was kept rather than shortened to hold the mass
+down: the lag is the thing anyone can judge by watching and the mass is the
+thing nobody can, and a pass fitting a polar has no business deciding how the
+boat should feel. Read the gap as the boat feeling slightly heavier off the mark
+than its displacement argues for, or as the resistance sitting at the top of its
+plausible range; the evidence doesn't distinguish them. `hull.test.ts` holds the
+derived mass to 600–1200 kg, so a pass that needs more room has to say so out
+loud.
 
 #### Quadratic drag has no slope at rest, and that gives the no-go zone an edge
 
 Both charges above vanish at least as fast as `v²` — the hull's quadratic term
 and the wall on top of it, and the keel's induced drag, which goes as `v²` at
 low speed where the stall term dominates the denominator. So at rest they are
-not merely small: they are zero, and so is their *slope*. That has a consequence
+not merely small: they are zero, and so is their _slope_. That has a consequence
 at exactly one place in the polar, and it is worth writing down because it looks
 like a bug and is not.
 
 At the true wind angle where the drive from rest passes through zero — the edge
-of the no-go zone — rest is a balance point. Whether it is a *stable* one is
+of the no-go zone — rest is a balance point. Whether it is a _stable_ one is
 decided by the drive's own slope, unopposed, since the water contributes none.
 That slope is positive: the moment the boat has way on, the apparent wind hauls
 forward, the angle of attack comes down off the stall, and the sail makes more.
 Measured at that boundary it runs 0.29 to 15.95 N/(m/s) across the 0.5–30 kt the
 tests sweep, on both rigs — scaling with the wind up to the 13 kt depowering
 knee and falling away above it. So rest there is **unstable**, and the boat runs
-away from it — astern if
-it started astern, ahead if it started ahead — until the quadratic drag catches
-up a couple of tenths of a knot out.
+away from it — astern if it started astern, ahead if it started ahead — until
+the quadratic drag catches up a couple of tenths of a knot out.
 
 Which is to say the model reproduces the reason a boat has to be pushed off a
-mooring: below some speed it cannot generate the drive to get going, and above it
-it can. [§3.4](#34-backing-a-sail)'s whole mechanic is that fact. Having it also
-mean that one hairline of angles has two answers is the same fact seen from the
-other side.
+mooring: below some speed it cannot generate the drive to get going, and above
+it it can. [§3.4](#34-backing-a-sail)'s whole mechanic is that fact. Having it
+also mean that one hairline of angles has two answers is the same fact seen from
+the other side.
 
 **It is bounded and it is small.** The band is half a degree of TWA wide at trim
 0 and needs the sheet almost exactly flat: it survives a quarter of a degree of
@@ -1070,16 +1078,16 @@ ease, at a slightly wider angle and a smaller split, and half a degree is clean.
 Swept across §5's whole wind range at a tenth of a knot, both rigs and every
 trim the sheet can hold, the widest split is 0.699 kt and the fastest either
 branch ever reaches is 0.482 kt, both on the sloop sheeted flat at TWA 64.88° in
-12.8 kt — the peak sits at [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
-13 kt knee, where the drive stops growing with the wind and the water's scale
-does not.
-The boat is stopped on both branches, so nothing that is sailing has two answers.
+12.8 kt — the peak sits at
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s 13 kt knee,
+where the drive stops growing with the wind and the water's scale does not. The
+boat is stopped on both branches, so nothing that is sailing has two answers.
 `fold.test.ts` locates the boundary by bisection rather than by sweeping for it
 and holds those two figures.
 
 **These equilibria are not claims about the world, and that is the honest reason
-they stay.** The rig at that angle is making 450 N of side force and about 6 N of
-drive. The keel has to hold the 450, and keel lift goes as `v²`, so at half a
+they stay.** The rig at that angle is making 450 N of side force and about 6 N
+of drive. The keel has to hold the 450, and keel lift goes as `v²`, so at half a
 knot it has a few percent of the capacity it has at three. This section's own
 `keelStall` is what models it giving up — measured at the branches the keel is
 charging **0.6–0.8%** of the side force as drag, against the 22% ceiling it sits
@@ -1109,43 +1117,44 @@ where the boat is sailing and the model should be believed, to half a knot.
 
 **Three ways out, all rejected, and the measurements are the point.**
 
-- *Move the stall blend.* It is a real lever, in the opposite direction from the
+- _Move the stall blend._ It is a real lever, in the opposite direction from the
   obvious one: narrowing drops the band to a smaller angle and widens the split
-  (20° → TWA 35.9°, 1.639 kt), widening pushes it up and shrinks it (70° →
-  TWA 86.9°, 0.275 kt) and 80° removes it — all measured on the same sweep as the
-  0.699 kt above, rather than beside it on a coarser one. It costs nothing against
-  [§3.6](#36-calibration-targets) — the polar at optimal trim moves under 0.02 kt
-  out to 80°. It is spent entirely out of
+  (20° → TWA 35.9°, 1.639 kt), widening pushes it up and shrinks it (70° → TWA
+  86.9°, 0.275 kt) and 80° removes it — all measured on the same sweep as the
+  0.699 kt above, rather than beside it on a coarser one. It costs nothing
+  against [§3.6](#36-calibration-targets) — the polar at optimal trim moves
+  under 0.02 kt out to 80°. It is spent entirely out of
   [§4.2](#42-the-traffic-light)'s account, exactly as `tuning.ts` warns. Sheeted
   flat in 10 kt, settled from rest: at the shipped 50° the boat makes 1.20 kt at
   TWA 60°, drifts astern at 75° and sits still at 90°; at 80° it makes 2.60,
   2.01 and 1.22 kt. Buying away "sheeted flat is a mistake" to remove a 0.699 kt
   wobble at a standstill is the wrong trade.
-- *Give the water a slope at rest.* A linear damping term would do it, and needs
-  `C > 15.95 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N against
-  the hull's 7.4 — it more than doubles the resistance at a knot, recalibrates
-  the whole light-air end, and introduces a second absolute speed scale, which
-  falsifies [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale)
-  being the model's only source of wind-dependence.
-- *Flatten the stalled sail.* `FOIL.plateNormalForce` does nothing here at all —
+- _Give the water a slope at rest._ A linear damping term would do it, and needs
+  `C > 15.95 N/(m/s)` to beat the drive. At 1 kt that term alone is 8.2 N
+  against the hull's 7.4 — it more than doubles the resistance at a knot,
+  recalibrates the whole light-air end, and introduces a second absolute speed
+  scale, which falsifies
+  [the wall exponent](#the-wall-exponent-is-the-models-only-wind-scale) being
+  the model's only source of wind-dependence.
+- _Flatten the stalled sail._ `FOIL.plateNormalForce` does nothing here at all —
   identical band at every value from 0.7 to 1.6.
 
 **And one that is cheaper than any of them, found in the prior art rather than
-reasoned out.** *By the Lee* computes residuary resistance from the Delft series,
-which is fitted for Froude numbers of 0.1 to 0.6, and clamps below that — so
-under about 1.4 kt its hull drag stops falling with speed and sits at a constant.
-That is exactly the missing slope at rest, arrived at by accident: it is an
-empirical formula being held inside its range, not a decision about low-speed
-sailing. A constant floor is far cheaper here than a linear term, because it
-stops mattering as soon as the boat is moving — **5 N removes the fold and costs
-about 1% of the polar at every point of sail in 10 kt** (4.19 → 4.15 kt close
-hauled, 5.58 → 5.56 on a beam reach), against the linear term's doubling at a
-knot. It is not adopted, and the reason is not the price: a constant drag at rest
-is static friction, which water does not have, and it would make the boat stop
-dead in finite time where
+reasoned out.** _By the Lee_ computes residuary resistance from the Delft
+series, which is fitted for Froude numbers of 0.1 to 0.6, and clamps below that
+— so under about 1.4 kt its hull drag stops falling with speed and sits at a
+constant. That is exactly the missing slope at rest, arrived at by accident: it
+is an empirical formula being held inside its range, not a decision about
+low-speed sailing. A constant floor is far cheaper here than a linear term,
+because it stops mattering as soon as the boat is moving — **5 N removes the
+fold and costs about 1% of the polar at every point of sail in 10 kt** (4.19 →
+4.15 kt close hauled, 5.58 → 5.56 on a beam reach), against the linear term's
+doubling at a knot. It is not adopted, and the reason is not the price: a
+constant drag at rest is static friction, which water does not have, and it
+would make the boat stop dead in finite time where
 [§3.5's integration](#35-hull-resistance-and-integration) says it coasts like
 `1/t`. It is recorded because it is the one middle option between doing nothing
-and modelling leeway, and a later pass that wants the boat to *stay* stopped in
+and modelling leeway, and a later pass that wants the boat to _stay_ stopped in
 irons should start here rather than rediscover it.
 
 So it stays, recorded rather than fixed (`pos-rem`). It is also not new: on the
@@ -1158,16 +1167,16 @@ branches are a standstill, which is the most any of these constants can do.
 
 Constants get tuned until the polar hits roughly these marks in 10 kt true:
 
-| Point of sail | TWA | Sloop | Main only | **Model (sloop)** |
-| --- | --- | --- | --- | --- |
-| Head to wind | 0° | 0 (in irons) | 0 (in irons) | **0** |
-| Close hauled | 45° | ≈ 4.2 kt | ≈ 3.2 kt | **4.19 kt** |
-| Beam reach | 90° | ≈ 5.4 kt | ≈ 4.6 kt | **5.58 kt** |
-| Broad reach | 135° | ≈ 5.2 kt | ≈ 4.4 kt | **4.78 kt** |
-| Run | 180° | ≈ 3.5 kt | ≈ 3.0 kt | **3.71 kt** |
-| **Closest useful angle** | — | **≈ 45°** | **≈ 55°** | **44°** |
+| Point of sail            | TWA  | Sloop        | Main only    | **Model (sloop)** |
+| ------------------------ | ---- | ------------ | ------------ | ----------------- |
+| Head to wind             | 0°   | 0 (in irons) | 0 (in irons) | **0**             |
+| Close hauled             | 45°  | ≈ 4.2 kt     | ≈ 3.2 kt     | **4.19 kt**       |
+| Beam reach               | 90°  | ≈ 5.4 kt     | ≈ 4.6 kt     | **5.58 kt**       |
+| Broad reach              | 135° | ≈ 5.2 kt     | ≈ 4.4 kt     | **4.78 kt**       |
+| Run                      | 180° | ≈ 3.5 kt     | ≈ 3.0 kt     | **3.71 kt**       |
+| **Closest useful angle** | —    | **≈ 45°**    | **≈ 55°**    | **44°**           |
 
-Beam reach fastest, run notably slower, and a no-go zone that simply *is* rather
+Beam reach fastest, run notably slower, and a no-go zone that simply _is_ rather
 than being drawn on. These are the model layer's unit tests, in
 `calibration.test.ts`.
 
@@ -1175,11 +1184,11 @@ The right-hand column is where `pos-fo1.4` left the sloop and `pos-lcz` last
 moved it; every figure is inside the ~10% the targets are quoted to. Two of them
 are worth reading rather than just checking.
 
-The **broad reach is 8% light, and structurally so.** The table puts a beam reach
-and a broad reach 0.2 kt apart while the driving force at 135° is barely half
-what it is at 90° — that needs resistance going as `v¹⁰`, and this section's
-curve is a square under a fourth power, which tops out at `v⁶`. No further tuning
-closes that gap.
+The **broad reach is 8% light, and structurally so.** The table puts a beam
+reach and a broad reach 0.2 kt apart while the driving force at 135° is barely
+half what it is at 90° — that needs resistance going as `v¹⁰`, and this
+section's curve is a square under a fourth power, which tops out at `v⁶`. No
+further tuning closes that gap.
 
 It used to read that "a different resistance curve would", and that was too
 generous to the resistance. A steeper wall does close some of it — at a sixth
@@ -1190,7 +1199,7 @@ sends the pointing angle through the floor as the breeze fills in. `pos-lcz`
 went the other way and spent two points of this figure to hold the pointing,
 leaving about one point of margin against the tolerance.
 
-It then used to read that what was wanted was a term acting on the *drive*, and
+It then used to read that what was wanted was a term acting on the _drive_, and
 that `pos-d7u` would be it. That has landed, and it did **not** buy this figure
 back — which is worth recording rather than quietly deleting, because it was a
 reasonable guess and it was wrong.
@@ -1198,15 +1207,15 @@ reasonable guess and it was wrong.
 exactly such a term and it cannot help here, for the same reason it is useful
 everywhere else: it is a single factor multiplying the whole rig, so at any one
 wind it scales a broad reach and a beam reach by precisely the same amount and
-their *ratio* does not move at all. It also sits at 1.000 in 10 kt by
+their _ratio_ does not move at all. It also sits at 1.000 in 10 kt by
 construction, so it is not even present in this table. Closing this gap needs
-something that changes the *shape* of the force curve rather than its scale —
-the sails' own coefficients, or a resistance curve steeper than §3.5 can
-afford — and until something does, 8% light is where the broad reach stays.
+something that changes the _shape_ of the force curve rather than its scale —
+the sails' own coefficients, or a resistance curve steeper than §3.5 can afford
+— and until something does, 8% light is where the broad reach stays.
 
 `pos-i4o` bought a point of it back, and by exactly the route this paragraph
 predicts rather than by tuning harder: giving the attached limb a maximum of its
-own ([§3.2](#the-attached-limb-has-a-maximum-of-its-own)) changes the *shape* of
+own ([§3.2](#the-attached-limb-has-a-maximum-of-its-own)) changes the _shape_ of
 the lift curve rather than its scale, which is the one kind of change that can
 move a broad reach relative to a beam reach. It was not done for this figure —
 it was done to stop the boat having two settled speeds at one trim — and a point
@@ -1215,19 +1224,20 @@ is all it is worth. The gap remains structural.
 The **closest useful angle is read as the peak of upwind VMG**, which is what a
 sailor means by it and what a test can check. It came out at 30–35° before
 calibration — a boat that points like nothing afloat — and the constant that
-moved it is the keel's stall ceiling in [§3.5](#35-hull-resistance-and-integration).
+moved it is the keel's stall ceiling in
+[§3.5](#35-hull-resistance-and-integration).
 
 The **main-only column is not yet met** and is not this section's to meet: it
 belongs to [§3.7](#37-sailing-under-main-alone)'s upwind bonus, which changes
 the sloop numbers too and so has to recalibrate against this table.
 
 **This table is one wind speed, and the model knows it.**
-[§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt and
-[§5](#5-direct-manipulation) lets the wind be set anywhere from 0 to 20 kt — the
-top of the range the school teaches in — so the three qualitative lessons have to
-survive a range the table says nothing about. `pos-lcz` narrowed the
+[§2.1](#21-initial-state-a-random-solvable-problem) opens anywhere in 6–14 kt
+and [§5](#5-direct-manipulation) lets the wind be set anywhere from 0 to 20 kt —
+the top of the range the school teaches in — so the three qualitative lessons
+have to survive a range the table says nothing about. `pos-lcz` narrowed the
 drift to where the same bounds hold across the whole opening range, and
-`pos-d7u`'s depowering then stopped the *pointing angle* drifting above it:
+`pos-d7u`'s depowering then stopped the _pointing angle_ drifting above it:
 
 ```text
 wind      4     6     8    10    12    14    16    20    30    45
@@ -1237,37 +1247,38 @@ beam kt  2.93  4.08  4.93  5.58  6.10  6.34  6.36  6.37  6.40  6.41
 k        1.00  1.00  1.00  1.00  0.995 0.857 0.660 0.422 0.188 0.083
 ```
 
-The bottom row is [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
-depowering factor, and the shape of the table is its doing. Through 10 kt it is
-0.99999 and every figure is the undepowered one to four decimals; at 12 kt it
-has taken a tenth of a percent; from 14 kt the rig stops collecting force and
-the boat stops accelerating. The closest useful angle stays inside 40–50° at
-every wind from 4 kt to 45 — the same band the 10 kt test pins — where before
-`pos-lcz` it ran to 39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
+The bottom row is
+[§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering
+factor, and the shape of the table is its doing. Through 10 kt it is 0.99999 and
+every figure is the undepowered one to four decimals; at 12 kt it has taken a
+tenth of a percent; from 14 kt the rig stops collecting force and the boat stops
+accelerating. The closest useful angle stays inside 40–50° at every wind from 4
+kt to 45 — the same band the 10 kt test pins — where before `pos-lcz` it ran to
+39° by 14 kt and before `pos-d7u` it went on to 33° by 30 kt.
 
-**Why the angle row went flat is worth spelling out, because "the boat is
-slower so the wall bites less" is the obvious explanation and it is not the
-one.** [§3.5](#35-hull-resistance-and-integration) says the keel's stall ceiling
-is what sets where the no-go zone ends, and that ceiling is a *ratio* — the
-largest fraction of the side force the keel can charge as drag, 0.22. A ratio is
+**Why the angle row went flat is worth spelling out, because "the boat is slower
+so the wall bites less" is the obvious explanation and it is not the one.**
+[§3.5](#35-hull-resistance-and-integration) says the keel's stall ceiling is
+what sets where the no-go zone ends, and that ceiling is a _ratio_ — the largest
+fraction of the side force the keel can charge as drag, 0.22. A ratio is
 invariant under scaling the side force, so depowering cannot move it: measured
 close hauled, the keel charges 0.2170 of the side force in 10 kt, 0.2139 in 12,
 0.2143 in 14, 0.2170 in 16, 0.2197 in 20 and 0.2190 in 30 — **97–100% of the
 ceiling at every wind**, where before it sat there only at the wind it was
-calibrated in. Hold
-the boat's speed still and scale the force, and the upwind end of the polar
-stops moving because the constant that governs it has nothing left to respond
-to. That is the mechanism behind the 41–42° row above, and it is the reason
-depowering fixed the *pointing angle* rather than merely capping the speed.
+calibrated in. Hold the boat's speed still and scale the force, and the upwind
+end of the polar stops moving because the constant that governs it has nothing
+left to respond to. That is the mechanism behind the 41–42° row above, and it is
+the reason depowering fixed the _pointing angle_ rather than merely capping the
+speed.
 
 **The run/beam row still drifts, and it is worth being clear that depowering was
 never going to stop it.** A uniform factor scales a run and a beam reach by the
 same number, so it cannot move their ratio at any one wind; what moves the ratio
-across winds is that the boat's speed is now pinned while the wind keeps
-rising, so the apparent wind draws further aft at any given point of sail and
-the run gains on the reach. 0.87 at 45 kt is a real boat in a real gale, and the
-lesson the tests pin — a run under 75% of a beam reach — holds across the whole
-opening range, which is where §2.1 puts the student.
+across winds is that the boat's speed is now pinned while the wind keeps rising,
+so the apparent wind draws further aft at any given point of sail and the run
+gains on the reach. 0.87 at 45 kt is a real boat in a real gale, and the lesson
+the tests pin — a run under 75% of a beam reach — holds across the whole opening
+range, which is where §2.1 puts the student.
 
 **The 14 kt knife edge is gone, and it is the clearest thing depowering
 bought.** This section used to warn that the figure landed on 40° against a
@@ -1277,22 +1288,21 @@ make a test comfortable. The peak is a discrete argmax over a very flat maximum
 — the winning degree beats its runner-up by between 0.01% and 0.09% across the
 opening range — so at 14 kt a rounding difference could flip the answer to 39°
 and turn the suite red with nothing having changed. It is now 41°, winning from
-40°, so both are inside the bound, as they already were at every other wind.
-The flatness is unchanged; what moved is where the pair sits.
+40°, so both are inside the bound, as they already were at every other wind. The
+flatness is unchanged; what moved is where the pair sits.
 
 **The beam reach in a lot of wind is fixed, and that was `pos-d7u`'s whole
 point.** It reads 6.37 kt at 20 kt of wind and 6.40 at 30, against a 5.65 kt
 hull speed — 12% and 13% over, where before it was 34% and 57%, and where before
-`pos-lcz` it was 25% and 41%. Not *at* hull speed, and deliberately not: a beam
+`pos-lcz` it was 25% and 41%. Not _at_ hull speed, and deliberately not: a beam
 reach is the one point of sail a displacement boat holds a little past it, and
 this section's own 10 kt figure is already 5.55 kt against a 5.65 kt hull speed,
 so there was never room to cap much harder without taking this table with it.
 The honest cost is on the last row of the table above — above about 13 kt the
-wind stops making the boat faster, because that is what a capped rig
-means.
+wind stops making the boat faster, because that is what a capped rig means.
 
-The last row matters as much as the speeds. Main-only falls off *hardest close
-hauled* — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
+The last row matters as much as the speeds. Main-only falls off _hardest close
+hauled_ — roughly 24% down at 45° versus 15% at a beam reach — and it also can't
 point as high at all. Both are the job of [§3.7](#37-sailing-under-main-alone),
 and the pointing figure is the one a student actually sees.
 
@@ -1324,14 +1334,14 @@ free.
 
 **Pointing — and this is where the model as designed would lie.** A real sloop
 under main alone cannot point as high. Ask any student who has sailed the first
-six lessons and then had a jib added: the boat suddenly goes upwind
-*better*, not just faster. But in the model as specified, striking the jib
-removes area uniformly and the no-go zone doesn't widen at all, because the
-angle at which drive goes to zero is set by the foil's lift-to-drag ratio, not
-by how much sail you have. Main and jib have nearly the same aspect ratio here
-(4.9 and 5.1), so removing one barely shifts the average efficiency. The
-simulator would show main-only as *slower everywhere and no worse upwind*, which
-is precisely the wrong lesson for the class this feature exists to serve.
+six lessons and then had a jib added: the boat suddenly goes upwind _better_,
+not just faster. But in the model as specified, striking the jib removes area
+uniformly and the no-go zone doesn't widen at all, because the angle at which
+drive goes to zero is set by the foil's lift-to-drag ratio, not by how much sail
+you have. Main and jib have nearly the same aspect ratio here (4.9 and 5.1), so
+removing one barely shifts the average efficiency. The simulator would show
+main-only as _slower everywhere and no worse upwind_, which is precisely the
+wrong lesson for the class this feature exists to serve.
 
 The reason a real boat behaves otherwise is the **slot effect** — the jib's
 leading edge sits in undisturbed air and the flow through the slot keeps the
@@ -1346,7 +1356,7 @@ it's a fudge in service of the fidelity target, which is that every lesson the
 simulator teaches must be a true lesson.
 
 **Why this constant must never be tuned to zero.** Students ask, in so many
-words, *why bother with the jib if I can sail perfectly well without it?* This
+words, _why bother with the jib if I can sail perfectly well without it?_ This
 bonus is the entire answer. Without it the simulator not only fails to answer
 the question, it actively corroborates the wrong conclusion — jib and no jib
 would differ by a bit of speed and nothing else, and a student comparing the two
@@ -1364,10 +1374,10 @@ the student sets, so there is nowhere for that force to go.
 On most boats that would be a real gap between the simulator and the water. It
 mostly isn't here: the school's RudderCraft rudders — not class legal, but
 heavily optimized for the hull — have nearly eliminated weather helm, and at
-almost all points of sail the boat tracks straight with the tiller released.
-The balance shift from striking the jib is largely absorbed. A student who
-sails main-only at Edgewood does not experience it as *harder to steer*, which
-is exactly what the simulator will show them.
+almost all points of sail the boat tracks straight with the tiller released. The
+balance shift from striking the jib is largely absorbed. A student who sails
+main-only at Edgewood does not experience it as _harder to steer_, which is
+exactly what the simulator will show them.
 
 This doesn't touch **[Q7]**: losing the jib's pointing ability is aerodynamic,
 not a question of helm balance, and it still needs modeling.
@@ -1398,34 +1408,34 @@ Top-down 2-D line drawing, SVG, abstract but proportioned like a Rhodes 19.
 - **Telltale** — yarn in the rigging, streaming with the **apparent** wind. One
   only: whichever of the two uppers and the backstay lies furthest upwind. See
   [the telltale](#the-telltale-the-apparent-wind-without-chrome) below.
-- **Wind ring** — outside the boat, at the perimeter (see [§5](#5-direct-manipulation)):
-  a thin full circle, seven short graduations every 45°, and an arrow at the wind
-  bearing whose **tail sits on the ring and whose length is the wind's speed**,
-  flying inward the way the wind blows and reaching the mast at the top of the
-  range. Drawn translucent and above the boat, because at a strong wind it
-  crosses the sails on purpose.
+- **Wind ring** — outside the boat, at the perimeter (see
+  [§5](#5-direct-manipulation)): a thin full circle, seven short graduations
+  every 45°, and an arrow at the wind bearing whose **tail sits on the ring and
+  whose length is the wind's speed**, flying inward the way the wind blows and
+  reaching the mast at the top of the range. Drawn translucent and above the
+  boat, because at a strong wind it crosses the sails on purpose.
 - **Speed arrow** — a little clear of the bow, or of the stern when speed is
   negative. Its length is the boat's speed **on the same scale as the wind
   arrow**, so the two compose; colored per [§4.3](#43-the-speed-arrow).
 - **Apparent wind overlay** — only when toggled on.
 
 **Two of those are velocities and they are drawn to one scale.** The wind arrow
-and the speed arrow both measure metres per second, and until they shared a scale
-the drawing showed three separate readouts rather than one picture — worse, the
-boat's arrow was the longer per knot, so a 5 kt boat out-drew the 5 kt wind
-pushing it. `VELOCITY_SCALE` in `render/scene.ts` is the single constant both
-read. What that buys is the thing the diagram is for: a student can *see* that
-the wind is three times the boat, and the arrows are then the two sides of a
-vector triangle rather than two gauges that happen to sit near each other.
+and the speed arrow both measure metres per second, and until they shared a
+scale the drawing showed three separate readouts rather than one picture —
+worse, the boat's arrow was the longer per knot, so a 5 kt boat out-drew the 5
+kt wind pushing it. `VELOCITY_SCALE` in `render/scene.ts` is the single constant
+both read. What that buys is the thing the diagram is for: a student can _see_
+that the wind is three times the boat, and the arrows are then the two sides of
+a vector triangle rather than two gauges that happen to sit near each other.
 
-Camber depth is a function of trim and apparent wind pressure. When the collapsed
-fraction is non-zero, a traveling sine wave is superimposed on the collapsed
-portion — amplitude scaling with how deeply it's luffing, and the fluttering
-region spreading across the sail **from the edge the flow arrives at**
-([§3.3](#33-luffing)): aft from the luff in the ordinary case, forward from the
-leech when the wind is coming over the back of the sail. A sail that is *just*
-starting to break shows a small ripple at that edge only, which is exactly what a
-student should learn to spot.
+Camber depth is a function of trim and apparent wind pressure. When the
+collapsed fraction is non-zero, a traveling sine wave is superimposed on the
+collapsed portion — amplitude scaling with how deeply it's luffing, and the
+fluttering region spreading across the sail **from the edge the flow arrives
+at** ([§3.3](#33-luffing)): aft from the luff in the ordinary case, forward from
+the leech when the wind is coming over the back of the sail. A sail that is
+_just_ starting to break shows a small ripple at that edge only, which is
+exactly what a student should learn to spot.
 
 The ripple is three waves across the chord at 3 Hz, scaled to 4% of the chord —
 a quarter of full camber, so a shaking sail can never be read as a drawing one.
@@ -1433,41 +1443,41 @@ Measured on the binding case, the jib on a 320 px phone, a wholly collapsed sail
 shivers 4.4 px peak to peak against a 2.2 px stroke; a sail 35% gone shivers 1.6
 px. **The largest ripple is not the flogging one**: the amplitude envelope tops
 out 5% higher, reaching 0.945 at the cross-fade midpoint described below,
-`collapsedFraction = 0.95`, and a tenth of the way aft, where the end taper stops
-biting — so the biggest thing the drawing shows is 4.61 px on that jib and
+`collapsedFraction = 0.95`, and a tenth of the way aft, where the end taper
+stops biting — so the biggest thing the drawing shows is 4.61 px on that jib and
 5.96 px on the main. That is the value at the taper's corner rather than the
 supremum, which sits `2.2 × 10⁻⁶` higher and a hair inside the taper, because
-`smoothstep`'s slope is zero *at* saturation and not near it. Nothing physical
+`smoothstep`'s slope is zero _at_ saturation and not near it. Nothing physical
 turns on 2.2 × 10⁻⁶ — about 10⁻⁵ px — but the figure is derived rather than
-sampled, and a derived figure is worth quoting accurately.
-It **travels with the flow** at one chord a second, so the ripples run aft
-when the wind arrives at the luff and forward when it arrives at the leech, and
-the jib's clock is offset from the main's so two flogging sails do not read as
-one mechanism. Both ends of the drawn chord are attachments — the mast or the
-jib tack, and the clew — so the amplitude tapers into each over a tenth of the
-chord: the flutter grows out of its fixings rather than spiking off them.
+sampled, and a derived figure is worth quoting accurately. It **travels with the
+flow** at one chord a second, so the ripples run aft when the wind arrives at
+the luff and forward when it arrives at the leech, and the jib's clock is offset
+from the main's so two flogging sails do not read as one mechanism. Both ends of
+the drawn chord are attachments — the mast or the jib tack, and the clew — so
+the amplitude tapers into each over a tenth of the chord: the flutter grows out
+of its fixings rather than spiking off them.
 
 **Under `prefers-reduced-motion: reduce` the ripple is held at a fixed phase
-rather than removed.** The flutter is a *reading*, not an ornament — it is what
-keeps [§4.2](#42-the-traffic-light)'s two red states apart, since undertrimmed is
-red and fluttering while overtrimmed is red and dead still — so a still crinkle
-still says "this sail has let go" with nothing on the page moving.
+rather than removed.** The flutter is a _reading_, not an ornament — it is what
+keeps [§4.2](#42-the-traffic-light)'s two red states apart, since undertrimmed
+is red and fluttering while overtrimmed is red and dead still — so a still
+crinkle still says "this sail has let go" with nothing on the page moving.
 
 #### How the camber is drawn — and, for the jib, felt
 
 **The depth is no longer only a drawing.** It lives in `model/sail.ts` now,
 because for the jib it sets the chord (see
 [the jib's foot is cloth](#the-jibs-foot-is-cloth-not-a-bar)), the chord sets
-where the clew is, and that sets the angle of attack and therefore the force. For
-the **main** it remains purely visual — a boom is a spar and holds its chord at
-`E` whatever the cloth does — so this section's reasoning is unchanged for the
-sail it was written about, and load-bearing for the other one.
+where the clew is, and that sets the angle of attack and therefore the force.
+For the **main** it remains purely visual — a boom is a spar and holds its chord
+at `E` whatever the cloth does — so this section's reasoning is unchanged for
+the sail it was written about, and load-bearing for the other one.
 
 **There is no crew in this shape, and that is the thing to know about it.** A
 real sail's camber is set by its cut and by the controls a crew works — outhaul,
 halyard, backstay, car — none of which are modelled. What is modelled is an
-*untended* sail: `sin α` supplies the incidence and `pressureFactor` inflates the
-cloth as the wind builds.
+_untended_ sail: `sin α` supplies the incidence and `pressureFactor` inflates
+the cloth as the wind builds.
 
 That gets the point of sail right, and by no accident: α is small close hauled
 and large off the wind, so the drawing flattens upwind and fills downwind, which
@@ -1475,16 +1485,17 @@ is what a sailor sees and what the school teaches. **Where it parts company is
 with the wind strength.** Holding a flat close-hauled trim, the model draws 2.3%
 camber in 3 kt of apparent wind and 4.6% in 20 — fuller as it breezes up. For an
 untended sail that is correct: cloth hangs limp in a drifter and inflates in a
-breeze. For a *trimmed* one it is backwards, because a crew powers up in light
+breeze. For a _trimmed_ one it is backwards, because a crew powers up in light
 air and flattens to depower when it blows.
 
 The interesting part is that the crew's response to a breeze is already in the
 model — [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s
-depowering *is* the crew shedding force — so the drawn **shape** and the modelled
-**force** currently disagree about what the crew is doing above about 13 kt. Worth
-reconciling, and not urgent: the disagreement is a couple of percent of chord, it
-moves the jib's chord by under an inch, and closing it means touching the force
-model and recalibrating against [§3.6](#36-calibration-targets).
+depowering _is_ the crew shedding force — so the drawn **shape** and the
+modelled **force** currently disagree about what the crew is doing above about
+13 kt. Worth reconciling, and not urgent: the disagreement is a couple of
+percent of chord, it moves the jib's chord by under an inch, and closing it
+means touching the force model and recalibrating against
+[§3.6](#36-calibration-targets).
 
 Separately, the absolute figures are on the flat side — a working jib is usually
 reckoned at 8–12% draft, against 2–5% here. Also a calibration question rather
@@ -1504,7 +1515,7 @@ check.** Since `flowBearing = chordBearing + α`,
 dot(perpendicular(chordUnit), flowUnit) = cos(90° − α) = sin α
 ```
 
-so the offset's dot product with the direction the wind blows *toward* is
+so the offset's dot product with the direction the wind blows _toward_ is
 `|depth|·|sin α|` — non-negative at every trim, on either tack, by construction.
 `render/sail.test.ts` asserts it over a grid instead of at spot checks.
 
@@ -1512,17 +1523,17 @@ Note what that says about a phrase it is easy to get backwards: **crossing the
 centreline does not flip the bulge — crossing the wind does.** A boom swept from
 port to starboard under a beam wind keeps its belly to leeward the whole way.
 
-The invariant is against the *flow*, not against lift. The two agree wherever the
-flow is attached, but the flat-plate limb of [§3.2](#32-sail-forces) makes
+The invariant is against the _flow_, not against lift. The two agree wherever
+the flow is attached, but the flat-plate limb of [§3.2](#32-sail-forces) makes
 `Cl = 2 sinα cosα`, which reverses at |α| = 90° where the belly does not.
 
-Using `sin α` whole rather than only for its sign is a *depth* decision rather
-than a knife-edge one. That is a correction to what this section used to say, and
-the thing that changed was [§3.3](#33-luffing) rather than the drawing: this
-passage was written when the fraction folded about zero alone, and pos-aa2 folded
-it about 90° as well. Both knife edges are now carried by the fraction:
+Using `sin α` whole rather than only for its sign is a _depth_ decision rather
+than a knife-edge one. That is a correction to what this section used to say,
+and the thing that changed was [§3.3](#33-luffing) rather than the drawing: this
+passage was written when the fraction folded about zero alone, and pos-aa2
+folded it about 90° as well. Both knife edges are now carried by the fraction:
 
-- **α → 0** — edge-on and luffing. `(1 − collapsedFraction)` is *identically* 0
+- **α → 0** — edge-on and luffing. `(1 − collapsedFraction)` is _identically_ 0
   across |α| ≤ 2°, so the side flip at the luff happens in the middle of a band
   of exactly flat sail.
 - **α → ±180°** — the flow arrives at the leech instead, a flogging sail making
@@ -1533,7 +1544,7 @@ it about 90° as well. Both knife edges are now carried by the fraction:
   maximum-amplitude pop in a state a student reaches by easing on a run.
 
 So `sin α` is no longer load-bearing at either edge, and it stays for what it
-does *between* them — setting the depth by incidence. Measured on the main at
+does _between_ them — setting the depth by incidence. Measured on the main at
 saturated pressure, the drawn camber is 0.058 m at α = 7°, 0.122 m at 15° and
 0.473 m at 90°; with only the sign it would be 0.473 m at all three, which is
 full camber on a sail 7° off luffing and close hauled indistinguishable from a
@@ -1541,39 +1552,39 @@ beam reach. `render/sail.ts`'s module docblock carries the measurement.
 
 That visible consequence is chosen deliberately: a close-hauled sail reads
 distinctly flatter than a reaching one, which is true on the water. The pressure
-term is a *floor near calm*, not a growth law — a real sail in 15 kt is flatter
+term is a _floor near calm_, not a growth law — a real sail in 15 kt is flatter
 than the same sail in 5 kt, because you flatten it — so it saturates by 8 kt and
 only bites in a drifter.
 
 The curve is a genuine cubic Bézier with its handles at exactly 1/3 and 2/3
-*along the chord*, which makes the chordwise coordinate `u(t) ≡ t` identically:
+_along the chord_, which makes the chordwise coordinate `u(t) ≡ t` identically:
 the curve parameter **is** the chord fraction. That is what lets the renderer
 emit the bare Bézier when nothing is deforming the sail and a sampled polyline
 when something is, with the samples lying exactly on the same curve rather than
 near it.
 
 **The deformation seam.** `sailPathData` takes an optional per-point hook, which
-is what [§4.2](#42-the-traffic-light)'s companion — the flutter animation — hangs
-on. Three properties of it are load-bearing and should not be traded away:
+is what [§4.2](#42-the-traffic-light)'s companion — the flutter animation —
+hangs on. Three properties of it are load-bearing and should not be traded away:
 
 - Its chord fraction `s` runs 0 at the luff to 1 at the clew, and is a position
   on the **drawn chord** rather than on the collapse's own axis — a travelling
   wave's phase depends on that map staying monotone. **Do not read the
   fluttering region as `s < collapsedFraction`.** [§3.3](#33-luffing)'s fraction
   runs in from whichever edge the flow arrives at, so that form shakes the
-  forward end of a sail whose *leech* is the end letting go, every time the wind
+  forward end of a sail whose _leech_ is the end letting go, every time the wind
   is over the back of the sail. The region is `collapseAt(shape, s) > 0`, where
   `render/sail.ts`'s `collapseAt` reports how deep into the collapse a chord
   fraction lies: 0 outside it, 1 at the breaking edge, the same in either band.
 - It returns a **replacement, not an addend**, so the flutter can flatten the
-  collapsed portion *and* ripple it —
+  collapsed portion _and_ ripple it —
   `offset · (1 − collapseAt(shape, s)) + ripple(s)` — which is what "the
   fluttering region spreads from the breaking edge" requires.
 - It is **never called at the endpoints**. The tack and clew are physical
-  attachments, and the clew is a grab point ([§5](#5-direct-manipulation)), so no
-  animation can walk a touch target off the drawn sail.
+  attachments, and the clew is a grab point ([§5](#5-direct-manipulation)), so
+  no animation can walk a touch target off the drawn sail.
 
-**Detached, then unsupported.** `collapseAt` is an *aerodynamic* ramp: it
+**Detached, then unsupported.** `collapseAt` is an _aerodynamic_ ramp: it
 measures depth into the **detached** region, which is where a partly collapsed
 sail really does shake — the flow has left the cloth at the breaking edge and is
 still attached further along. At **full** collapse there is no pressure gradient
@@ -1581,20 +1592,20 @@ left to measure, and the ramp goes on peaking at the edge the collapse arrived
 from, which for a luff-first collapse is the end pinned to the mast. A sail
 flogging head to wind moves most at its **unsupported** edge, the leech, because
 nothing is holding it. Both are real behaviour in different regimes, so the
-flutter uses each where it is true: pos-dmg.2 cross-fades the amplitude ramp from
-`collapseAt` to a plain chord fraction — 0 at the luff, 1 at the leech — over
-`collapsedFraction ∈ [0.9, 1]`. This section left that decision to the animation
-and the animation made it; what follows is what it costs.
+flutter uses each where it is true: pos-dmg.2 cross-fades the amplitude ramp
+from `collapseAt` to a plain chord fraction — 0 at the luff, 1 at the leech —
+over `collapsedFraction ∈ [0.9, 1]`. This section left that decision to the
+animation and the animation made it; what follows is what it costs.
 
 **Two things stop 0.9 being a magic number, and they are what make the
 cross-fade cheap enough to be worth it.** Below the onset the weight is
-*exactly* 0, because `smoothstep` clamps — so every partial collapse, which is
-the whole of what this section is about, is left byte for byte where `collapseAt`
-puts it, with no ripple outside the collapsed region at all. And on the
-leech-first limb the cross-fade is the **identity**, not a mirror: at full
-collapse from the leech, `collapseAt(shape, s)` already *is* `s` — 0.25 reads
-0.250, 0.90 reads 0.900. The onset itself is |α| = 2.98°. So the entire effect of
-this constant is one case: a sail head to wind, on the luff limb, where
+_exactly_ 0, because `smoothstep` clamps — so every partial collapse, which is
+the whole of what this section is about, is left byte for byte where
+`collapseAt` puts it, with no ripple outside the collapsed region at all. And on
+the leech-first limb the cross-fade is the **identity**, not a mirror: at full
+collapse from the leech, `collapseAt(shape, s)` already _is_ `s` — 0.25 reads
+0.250, 0.90 reads 0.900. The onset itself is |α| = 2.98°. So the entire effect
+of this constant is one case: a sail head to wind, on the luff limb, where
 `collapseAt` is `1 − s` and would otherwise shake the sail hardest against its
 own mast.
 
@@ -1611,7 +1622,7 @@ Two consequences are worth writing down rather than discovering.
   luff, the shake spreads over the whole cloth, and once the chord is wholly
   gone it concentrates at the leech. `render/sail.ts` exposes that normalised
   ramp separately from the envelope, because it is the only form in which the
-  closed form can be *checked*: the envelope multiplies it by the collapsed
+  closed form can be _checked_: the envelope multiplies it by the collapsed
   fraction and by the end taper, and both bite hardest exactly where the ramp
   peaks, so sweeping the envelope tops out around 0.945 and would wave through a
   normaliser understated by 5%. Swept on the ramp itself it reaches exactly 1.
@@ -1621,17 +1632,17 @@ Two consequences are worth writing down rather than discovering.
   peak — 2.2 px of amplitude on a 1024 px iPad, on the single sample at
   `s = 0.969`, at α = 2.55°, where 96.6% of the sail has gone and the drawn
   camber is 0.65 mm. Gating it would trade that smear for a discontinuity in the
-  drawn shape at the boundary, which is worse. `render/sail.test.ts` measures the
-  overhang rather than arguing it away.
+  drawn shape at the boundary, which is worse. `render/sail.test.ts` measures
+  the overhang rather than arguing it away.
 
 **What the flutter costs per frame, and what that does not establish.** The
 animation lives in the sail layer's own `requestAnimationFrame` loop rather than
-in `Layer.update`, because `update` is called when the *state* changes and a
-travelling wave has to move when nothing changes. The split is where the cost is:
-`update` caches the frame's `rigDrawing` — 55 µs for the rig, nearly all of it
-[§4.2](#42-the-traffic-light)'s optimal-trim search — and the loop only re-emits
-the two path strings, measured at 27 µs for both cloths against 2 µs for two
-sails drawing. **And no frame is scheduled at all unless something is
+in `Layer.update`, because `update` is called when the _state_ changes and a
+travelling wave has to move when nothing changes. The split is where the cost
+is: `update` caches the frame's `rigDrawing` — 55 µs for the rig, nearly all of
+it [§4.2](#42-the-traffic-light)'s optimal-trim search — and the loop only
+re-emits the two path strings, measured at 27 µs for both cloths against 2 µs
+for two sails drawing. **And no frame is scheduled at all unless something is
 collapsed**, so the ordinary case costs nothing rather than a little. Those are
 node measurements of JavaScript; they say nothing about SVG parsing, layout or
 rasterisation on a tablet, which is the half no test in this repo can reach.
@@ -1640,61 +1651,61 @@ rasterisation on a tablet, which is the half no test in this repo can reach.
 heavier than the hull, and heavier than the boom, which is only a spar. That is
 not emphasis for its own sake: [§4.2](#42-the-traffic-light) paints this stroke
 with the trim-quality ramp, and a hull-weight line cannot carry a five-stop ramp
-on a tablet seen at an angle. Filling the lens between boom and curve would carry
-it better still and is disqualified, because the lens has zero area exactly when
-the sail is fully luffing — exactly when the light is red. The ramp reaches the
-stroke through a `--pos-sail-ink` custom property set on each sail's group, so
-the colour runs through the CSS parser rather than a presentation attribute
-(§4.4), with plain ink as the fallback.
+on a tablet seen at an angle. Filling the lens between boom and curve would
+carry it better still and is disqualified, because the lens has zero area
+exactly when the sail is fully luffing — exactly when the light is red. The ramp
+reaches the stroke through a `--pos-sail-ink` custom property set on each sail's
+group, so the colour runs through the CSS parser rather than a presentation
+attribute (§4.4), with plain ink as the fallback.
 
 A struck jib is hidden by class rather than by a `display` presentation
-attribute. This is the *inverse* of §4.5's belt-and-braces argument for
+attribute. This is the _inverse_ of §4.5's belt-and-braces argument for
 `vector-effect`, and deliberately: `display: none` is universally supported, so
 there is no missing-support failure to guard against, while a presentation
-attribute loses to any CSS rule that later touches the same property. `display:
-none` is also genuinely absent from painting, hit-testing and the accessibility
-tree, which is what "absent entirely" has to mean.
+attribute loses to any CSS rule that later touches the same property.
+`display: none` is also genuinely absent from painting, hit-testing and the
+accessibility tree, which is what "absent entirely" has to mean.
 
-#### Why no standing rigging *spans*
+#### Why no standing rigging _spans_
 
 An earlier version of this section drew the headstay, on the argument that it
 kept the boat reading as a sloop with its jib struck rather than as a different
 boat. That argument doesn't survive contact with the drawing.
 
 The boat has **six stays**, and drawing exactly one of them misrepresents the
-rig. Worse, it asks the viewer to care about a stay's *horizontal span*, which
+rig. Worse, it asks the viewer to care about a stay's _horizontal span_, which
 is not a thing anyone thinks about while sailing — this is a roughly deck-level
 drawing, at least for the parts that don't move, and a stay is very nearly
-vertical. The headstay in particular then lands on a genuinely confusing
-detail: it meets the deck at the stemhead, an inch from the tip of the bow,
-while `J` measures to the jib's *tack*, which rides about a foot up a stay that
-rakes aft as it climbs and so sits half a foot abaft the stem. Drawing to the
-tack leaves a gap that looks like a bug; drawing to the stem invites "why is
-that one line here and not the others?"
+vertical. The headstay in particular then lands on a genuinely confusing detail:
+it meets the deck at the stemhead, an inch from the tip of the bow, while `J`
+measures to the jib's _tack_, which rides about a foot up a stay that rakes aft
+as it climbs and so sits half a foot abaft the stem. Drawing to the tack leaves
+a gap that looks like a bug; drawing to the stem invites "why is that one line
+here and not the others?"
 
-So the *spans* come out, and the sloop-reads-as-a-sloop worry goes with them: a
+So the _spans_ come out, and the sloop-reads-as-a-sloop worry goes with them: a
 hull with a mast well forward and a boom is not going to be mistaken for
 anything else.
 
 #### The six stays, as deck dots
 
 **The decision that section anticipated has been taken: all six are drawn, as
-deck attachment points.** Dots, not spans, which is what a deck-level drawing can
-honestly show — where a stay *lands* is a fact about the deck, where it *goes* is
-a fact about a vertical the drawing has no axis for.
+deck attachment points.** Dots, not spans, which is what a deck-level drawing
+can honestly show — where a stay _lands_ is a fact about the deck, where it
+_goes_ is a fact about a vertical the drawing has no axis for.
 
 They earn their place twice over, and neither reason was available when the
 question was first asked. The **lowers** are what the boom fetches up on and so
 what sets `SWING_LIMIT`, which means showing where they land makes the boom's
-travel limit visible rather than merely enforced. The **uppers and the backstay**
-are where the yarn is tied, so the telltale below has somewhere to stream from;
-a mark that is also an anchor is no longer decoration. Only the headstay has no
-job of its own, and it costs nothing because it lands exactly where the jib's
-tack already is.
+travel limit visible rather than merely enforced. The **uppers and the
+backstay** are where the yarn is tied, so the telltale below has somewhere to
+stream from; a mark that is also an anchor is no longer decoration. Only the
+headstay has no job of its own, and it costs nothing because it lands exactly
+where the jib's tack already is.
 
 **Drawn six inches inboard of the truth**, which is the same half-foot the jib's
 tack already carries. That inset is not a fudge for its own sake: it is what
-makes the headstay's dot and the jib's tack *the same point* rather than two
+makes the headstay's dot and the jib's tack _the same point_ rather than two
 marks a few pixels apart arguing about which is right. And this being a top-down
 drawing of a three-dimensional boat, no single deck coordinate is the truth
 anyway — a chainplate is a fitting on a near-vertical topside. Pulling the dots
@@ -1703,11 +1714,11 @@ lump in the hull's outline.
 
 **The stations are measured, not guessed.** `RB 20.05` puts the forward
 chainplate no more than 83 inches from the headstay's attachment, which lands it
-one inch *forward* of the mast — a surprising answer, and the right one: the
+one inch _forward_ of the mast — a surprising answer, and the right one: the
 uppers land almost exactly abeam the mast, which is what makes a single spreader
 bisect their angle. `RB 20.06` puts the aft chainplate 13–15 inches abaft it.
 They live in `model/boat.ts` as `CHAINPLATES`, because they are measurements of
-a boat; how far *outboard* each dot sits is read off the drawn sheer instead, so
+a boat; how far _outboard_ each dot sits is read off the drawn sheer instead, so
 a refaired hull moves the dots with it rather than leaving them floating.
 
 **Which pair takes which chainplate is an assumption**, flagged rather than
@@ -1716,9 +1727,9 @@ each. The uppers go forward (spreader geometry) and the lowers aft (where they
 resist the mast bending forward under headstay load). Being wrong about it moves
 a dot fourteen inches and nothing else.
 
-**Small and definite, rather than large and faint.** A first attempt drew them at
-0.07 m in a lightened ink and they read as *dirt on* the deck rather than
-hardware *on* it. The fix runs both dials together, and they are one decision: a
+**Small and definite, rather than large and faint.** A first attempt drew them
+at 0.07 m in a lightened ink and they read as _dirt on_ the deck rather than
+hardware _on_ it. The fix runs both dials together, and they are one decision: a
 chainplate is a place a wire lands, so it wants to be nearly dimensionless — and
 being small is exactly what lets it take the hull's ink at full strength without
 competing with the mast. A faint mark reads as a mistake; a tiny sharp one reads
@@ -1730,73 +1741,73 @@ thing and differ only in importance.
 
 Apparent wind is what this simulator exists to teach ([§3.1](#31-apparent-wind))
 and for a long time **nothing on the drawing showed it**. The ring shows the
-*true* wind, and a student watching only that misreads every sail on the boat.
+_true_ wind, and a student watching only that misreads every sail on the boat.
 
-The fix arrives through the channel the real boat uses: a piece of yarn. It costs
-no label, no toggle and no chrome — it is a physical object that happens to be an
-instrument, which fits [§7](#7-deliberately-out-of-scope)'s no-scaffolding
-position better than any overlay could, and what a student learns from it
-transfers to the water without translation.
+The fix arrives through the channel the real boat uses: a piece of yarn. It
+costs no label, no toggle and no chrome — it is a physical object that happens
+to be an instrument, which fits [§7](#7-deliberately-out-of-scope)'s
+no-scaffolding position better than any overlay could, and what a student learns
+from it transfers to the water without translation.
 
 **One telltale, not three.** The school ties yarn to both uppers and the
-backstay, and the instruction is to read *whichever is furthest upwind*, because
+backstay, and the instruction is to read _whichever is furthest upwind_, because
 it has the cleanest air. Drawing only that one teaches the rule by demonstration
 instead of stating it, and keeps two yarns' worth of clutter off an already
 abstract drawing. The selection has no special cases: in the boat frame, how far
 into the wind an anchor lies is `dot(anchor, unitVector(apparent.angle))` — the
-angle is the direction the wind blows *from*, so that expression *is* its
+angle is the direction the wind blows _from_, so that expression _is_ its
 upwindness. Take the maximum of three. It gives the starboard upper on starboard
 tack, the port upper on port, and the backstay off the wind, without a branch,
 and it hands over at an apparent wind angle of about **103°** — just abaft the
 beam, which is where a sailor would switch.
 
-**It moves, and the motion is most of the point.** A telltale is easy to miss and
-this one has to catch an eye across a table, so it flicks. Two things about how:
-most of the movement is a **sweep about the tie** rather than a transverse
+**It moves, and the motion is most of the point.** A telltale is easy to miss
+and this one has to catch an eye across a table, so it flicks. Two things about
+how: most of the movement is a **sweep about the tie** rather than a transverse
 ripple, because a ripple wobbles a line that keeps pointing the same way — which
-reads as a drawn effect — while swinging the free end reads as *blowing*; and the
-amplitude is deliberately small, because on a mark whose entire content is a
+reads as a drawn effect — while swinging the free end reads as _blowing_; and
+the amplitude is deliberately small, because on a mark whose entire content is a
 bearing, **flutter amplitude is an error bar**. Liveliness and precision pull
 against each other here and the bearing wins once the motion has done its job of
 drawing the eye.
 
-**Three edge cases settled rather than discovered.** The switchover carries a 10°
-dead band, so the yarn does not flick between anchors as the apparent wind
+**Three edge cases settled rather than discovered.** The switchover carries a
+10° dead band, so the yarn does not flick between anchors as the apparent wind
 wanders. Head to wind the two uppers tie exactly, and the incumbent keeps it, so
 the tie breaks deterministically rather than on a rounding difference. And a
-**calm draws the yarn at 30% length** — a becalmed telltale hangs straight *down*,
-and this is a drawing from above, so limp is not a shorter piece of yarn but the
-same yarn foreshortened. Modelling it as a length that collapses is what makes a
-calm read as limp rather than as a missing mark.
+**calm draws the yarn at 30% length** — a becalmed telltale hangs straight
+_down_, and this is a drawing from above, so limp is not a shorter piece of yarn
+but the same yarn foreshortened. Modelling it as a length that collapses is what
+makes a calm read as limp rather than as a missing mark.
 
 **Hull ink, not the wind's blue**, and that is the whole argument. The blue
-belongs to the true wind — the ring and its graduations — and a mark whose entire
-job is to *disagree* with the ring must not look like part of it. The
-disagreement is the lesson, and it lands harder for the two being told apart at a
-glance.
+belongs to the true wind — the ring and its graduations — and a mark whose
+entire job is to _disagree_ with the ring must not look like part of it. The
+disagreement is the lesson, and it lands harder for the two being told apart at
+a glance.
 
-The tack/stemhead distinction still matters to the *model* even with nothing
-drawn, because the jib's clew swings about the tack. It lives in
-`model/boat.ts` as `STATIONS.jibTack`, named so nothing conflates the two again.
+The tack/stemhead distinction still matters to the _model_ even with nothing
+drawn, because the jib's clew swings about the tack. It lives in `model/boat.ts`
+as `STATIONS.jibTack`, named so nothing conflates the two again.
 
-It matters to the drawing too, now that the jib is drawn: the curve starts at the
-tack, half a foot abaft the stem, and not at the bow. Drawing it from the bow
-would put the curve on the wrong radius and leave a gap at the wrong end — the
-same half foot that would have looked like a bug on a forestay looks like one on
-a sail.
+It matters to the drawing too, now that the jib is drawn: the curve starts at
+the tack, half a foot abaft the stem, and not at the bow. Drawing it from the
+bow would put the curve on the wrong radius and leave a gap at the wrong end —
+the same half foot that would have looked like a bug on a forestay looks like
+one on a sail.
 
 #### The jib's foot is cloth, not a bar
 
 The jib's clew used to swing on a circle of radius `JIB.foot` about its tack,
-which is the geometry of a **jib boom** — a spar the boat does not have. A sail's
-foot is a length of cloth: bellied out it spans less across than it measures
-along, and the clew comes forward as it fills.
+which is the geometry of a **jib boom** — a spar the boat does not have. A
+sail's foot is a length of cloth: bellied out it spans less across than it
+measures along, and the clew comes forward as it fills.
 
 **The shape is a circular arc, and that is not an approximation.** A sail has no
-bending stiffness, so it carries no load along itself and its tension is constant
-from tack to clew. Balancing that tension against the pressure across the cloth
-gives `T/R = Δp`, and with both constant, `R` is constant — a curve of constant
-radius is a circular arc. Every circular-arc sail theory starts here.
+bending stiffness, so it carries no load along itself and its tension is
+constant from tack to clew. Balancing that tension against the pressure across
+the cloth gives `T/R = Δp`, and with both constant, `R` is constant — a curve of
+constant radius is a circular arc. Every circular-arc sail theory starts here.
 
 The geometry then costs nothing at runtime. For a half-angle `θ`, an arc of
 length `L` has chord `L·sin θ/θ` and depth `L·(1−cos θ)/(2θ)`, both monotone in
@@ -1808,25 +1819,25 @@ the geometry does the rest.
 **This makes camber and chord one quantity where they were two.** Before it,
 `camberDepth` could report a belly no 7'6" of cloth could make at that chord. It
 also moved that function from `render/` into `model/`: while a sail's depth was
-only ever *drawn* it could live in the renderer, but the depth now sets the
+only ever _drawn_ it could live in the renderer, but the depth now sets the
 chord, the chord sets where the clew is, and that sets the angle of attack and
 therefore the force. The old claim that "camber affects no force" stopped being
 true the day this landed.
 
 **And the mast is in the way.** The foot cannot pass through the spar, so the
-clew's bearing is kept out of the mast's shadow — 1.47°, from a 4-inch section at
-the tack's distance. The band is narrow and the metric correction inside it is a
-fraction of an inch; what it buys is topological. A cambered foot bulges to
-leeward and clears the spar on its own while the sail is *drawing*. It is the
+clew's bearing is kept out of the mast's shadow — 1.47°, from a 4-inch section
+at the tack's distance. The band is narrow and the metric correction inside it
+is a fraction of an inch; what it buys is topological. A cambered foot bulges to
+leeward and clears the spar on its own while the sail is _drawing_. It is the
 **backed** jib, bellying the other way, that needs the guard — and backing is
 exactly the manoeuvre where the old geometry swept the whole foot through the
 mast.
 
 #### The ring's radius is solved, not chosen
 
-`SCENE.windRingRadius` was 5.65 m because someone picked 5.65. It is now derived,
-and the derivation is worth stating because it fixes the scale of the whole
-drawing.
+`SCENE.windRingRadius` was 5.65 m because someone picked 5.65. It is now
+derived, and the derivation is worth stating because it fixes the scale of the
+whole drawing.
 
 Both velocity arrows have a natural maximum that lands on something already
 drawn. The **wind** arrow hangs its tail on the ring and flies inward; its
@@ -1842,29 +1853,30 @@ through both leaves the radius as the only unknown:
 ```
 
 `shortRadius` follows it out to the viewport, so `SHORT_SPAN` drops from 12.0 m
-to 9.24 m and **the whole drawing zooms 1.30×** — the boat's swept disc goes from
-60% of the half-short-axis to 78%. That is the space the wind gave up by becoming
-an overlay instead of a reservation, spent on the boat rather than on water.
+to 9.24 m and **the whole drawing zooms 1.30×** — the boat's swept disc goes
+from 60% of the half-short-axis to 78%. That is the space the wind gave up by
+becoming an overlay instead of a reservation, spent on the boat rather than on
+water.
 
 Two consequences, both intended:
 
-- **`contentRadius` and the ring are now the same circle.** The band reserved for
-  the speed arrow's tip at hull speed *is* the ring, because the ring is solved
-  from that very statement. The reservation and the mark it was reserving for
-  have collapsed into one thing, which is what says the derivation has the right
-  shape.
+- **`contentRadius` and the ring are now the same circle.** The band reserved
+  for the speed arrow's tip at hull speed _is_ the ring, because the ring is
+  solved from that very statement. The reservation and the mark it was reserving
+  for have collapsed into one thing, which is what says the derivation has the
+  right shape.
 - **Hull speed puts the speed arrow's tip exactly on the ring**, so the ring has
-  become a live hull-speed gauge. It takes a breeze, a beam reach *and* good trim
-  to push the tip past it, which makes the crossing something earned rather than
-  something displayed. Note this sits against the reasoning recorded in
-  [§4.3](#43-the-speed-arrow) for *not* marking hull speed; it is a landmark that
-  arrived by coincidence rather than by drawing, and it is worth revisiting
+  become a live hull-speed gauge. It takes a breeze, a beam reach _and_ good
+  trim to push the tip past it, which makes the crossing something earned rather
+  than something displayed. Note this sits against the reasoning recorded in
+  [§4.3](#43-the-speed-arrow) for _not_ marking hull speed; it is a landmark
+  that arrived by coincidence rather than by drawing, and it is worth revisiting
   deliberately rather than inheriting.
 
 **One coupling to know about**, because nothing else in the drawing has it: the
 radius is now sensitive to hull speed and to §5's wind ceiling. As `V_wind`
 approaches `V_hull` it runs to infinity, and lowering the teaching ceiling from
-20 kt to 15 would resize the boat by 13%. A *pedagogical* decision now moves the
+20 kt to 15 would resize the boat by 13%. A _pedagogical_ decision now moves the
 scale of the drawing, which is principled but must not be a surprise.
 
 #### The coordinate story
@@ -1876,21 +1888,22 @@ in drawing units. No renderer does unit arithmetic.
 
 **The boat frame's origin is the mast; the world frame's is the pivot.** These
 answer different questions and it is worth keeping them apart. The mast is where
-the *rig* is measured from — the boom swings there, so the rig geometry needs no
-offset — while the pivot is where the boat *turns*, which for a keelboat is its
+the _rig_ is measured from — the boom swings there, so the rig geometry needs no
+offset — while the pivot is where the boat _turns_, which for a keelboat is its
 centre of lateral resistance, well aft of the mast. Conflating them makes the
 stern swing an arc no boat ever swings, and wastes scene doing it.
 
 `STATIONS.pivot` is taken as the midpoint of LOA, 9.58 ft aft of the stem. That
 approximates the CLR closely enough for a drawing this abstract, and being
 equidistant from bow and stern it makes the fore-and-aft budget symmetric. The
-drawn hull's *area* centroid was the other candidate and is worse: it sits at
+drawn hull's _area_ centroid was the other candidate and is worse: it sits at
 55% of LOA, which pushes the swept radius back above the mast's and leaves more
 room astern than ahead — backwards for a boat that mostly goes forwards.
 
 The two frames therefore differ by a rotation and a fixed translation, which one
 group carries: `transform="rotate(heading) translate(−pivot)"`. The boat still
-never translates, so the pivot sits on the scene origin for the life of the page.
+never translates, so the pivot sits on the scene origin for the life of the
+page.
 
 The viewBox tracks the drawing surface's real aspect ratio, and the scale is
 pinned to the **shorter** axis: `SHORT_SPAN` metres always exactly span it, so
@@ -1902,14 +1915,14 @@ stealing from the boat.
 
 Inside that, four concentric bands, as radii from the pivot:
 
-| Band | Radius | What it is |
-| --- | --- | --- |
-| `boatRadius` | ≈ 3.59 m | The disc the boat sweeps at any heading and any legal trim |
-| `contentRadius` | 5.2 m | How far the speed indicator reaches clear of the ring |
-| `windRingRadius` | 5.65 m | Centreline of the drawn wind ring |
-| `shortRadius` | 6.0 m | Half the span across the shorter axis |
+| Band             | Radius   | What it is                                                 |
+| ---------------- | -------- | ---------------------------------------------------------- |
+| `boatRadius`     | ≈ 3.59 m | The disc the boat sweeps at any heading and any legal trim |
+| `contentRadius`  | 5.2 m    | How far the speed indicator reaches clear of the ring      |
+| `windRingRadius` | 5.65 m   | Centreline of the drawn wind ring                          |
+| `shortRadius`    | 6.0 m    | Half the span across the shorter axis                      |
 
-`boatRadius` is *measured* rather than declared, and the measurement is not the
+`boatRadius` is _measured_ rather than declared, and the measurement is not the
 obvious one: the binding point is the **jib clew at full ease**, which swings
 out abeam near the bow, further from the pivot than the transom corners.
 Refairing the hull or changing the rig moves it, and deriving it means the scene
@@ -1923,8 +1936,7 @@ case it was when the boat turned about the mast.
 It is a **reservation, not a clamp**, and the speed arrow takes it up on exactly
 that. The arrow is calibrated so that its tip lands on `contentRadius` at hull
 speed, and above hull speed it keeps growing and crosses the ring rather than
-pretending 5.6 kt and 8 kt are the same length
-([§4.3](#43-the-speed-arrow)).
+pretending 5.6 kt and 8 kt are the same length ([§4.3](#43-the-speed-arrow)).
 
 Two consequences follow, and they are different in kind. The wind ring is
 painted **above** the boat group so the overrunning arrow passes behind it
@@ -1937,7 +1949,7 @@ actually guarantees the overlap can never intercept a drag meant for the ring
 
 ### 4.2 The traffic light
 
-Green means **optimal**, and deteriorates through amber to red in *both*
+Green means **optimal**, and deteriorates through amber to red in _both_
 directions — undertrimmed and overtrimmed alike. An overtrimmed sail is smooth,
 quiet, and slow; without this, it would look identical to a well-trimmed one.
 
@@ -1957,8 +1969,8 @@ It is what stops the ratio being 0/0 in irons, and
 [below](#where-the-best-trim-is-itself-worth-nothing) is the whole of why it is
 written as a dimensionless coefficient rather than as a force.
 
-This choice matters pedagogically. Keyed to *angle*, a fixed 10° error would
-look equally bad everywhere. Keyed to *force*, the color falloff is
+This choice matters pedagogically. Keyed to _angle_, a fixed 10° error would
+look equally bad everywhere. Keyed to _force_, the color falloff is
 automatically sharp where the physics is sharp — close hauled, where trim is
 critical — and forgiving where the physics is forgiving. On a run, a wide range
 of sail angles really is fine, and the sail really should stay green across all
@@ -1974,64 +1986,64 @@ Those figures were 6.2/30.0 and 11.5/50.8 — "getting on for five times" — be
 blend. A softer stall leaves more lift either side of the optimum, which widens
 the close-hauled band; the run band is drag-driven, never goes near the blend,
 and did not move. The lesson is unchanged in kind and slightly weaker in degree,
-which is the honest way round: it is the *model* that says how forgiving a run
+which is the honest way round: it is the _model_ that says how forgiving a run
 is, and the model's stall got softer.
 
 Note the two failure modes stay distinguishable even though both are red:
 undertrimmed is red **and fluttering**; overtrimmed is red **and dead still**.
-Since pos-dmg.2 that is drawn rather than promised ([§4.1](#41-whats-drawn)), and
-it is why a viewer who has asked for less motion gets the ripple *held* at a
-fixed phase rather than removed: taking it away would collapse the two red states
-back into one.
+Since pos-dmg.2 that is drawn rather than promised ([§4.1](#41-whats-drawn)),
+and it is why a viewer who has asked for less motion gets the ripple _held_ at a
+fixed phase rather than removed: taking it away would collapse the two red
+states back into one.
 
 One qualification, and it comes from the physics rather than from the ramp:
 **you cannot badly oversheet close hauled.** The best trim there is already
-nearly on the centreline — half a degree off it at an apparent wind angle of
-20° — so the boom hauled all the way in is a small error, and reads amber.
-Sheeted to the centreline, the quality reaches red at **55°** of apparent wind.
-That boundary was 35° before `pos-i4o`, and it moved for the same reason the
-bands above did: a sail at large incidence keeps more of its lift, so hauling
-flat on a close reach is now amber where it used to be red. It is arguably the
-better answer — at 40° the best trim is only some 16° of ease away, so a boom on
-the centreline there is mildly overtrimmed rather than ruinous — but it is a
-real narrowing of what the colour calls a mistake, and the reach between 35° and
-55° now teaches "not ideal" where it taught "wrong".
+nearly on the centreline — half a degree off it at an apparent wind angle of 20°
+— so the boom hauled all the way in is a small error, and reads amber. Sheeted
+to the centreline, the quality reaches red at **55°** of apparent wind. That
+boundary was 35° before `pos-i4o`, and it moved for the same reason the bands
+above did: a sail at large incidence keeps more of its lift, so hauling flat on
+a close reach is now amber where it used to be red. It is arguably the better
+answer — at 40° the best trim is only some 16° of ease away, so a boom on the
+centreline there is mildly overtrimmed rather than ruinous — but it is a real
+narrowing of what the colour calls a mistake, and the reach between 35° and 55°
+now teaches "not ideal" where it taught "wrong".
 
-Past the centreline is not oversheeting at all but *backing*
-the sail ([§3.4](#34-backing-a-sail)), which is red for a different reason: it
-drives the boat astern. So overtrimming is a reaching and running mistake,
-which is where it is a mistake on the water too, and the error available close
-hauled is easing too far — which luffs, and reads red the other way.
+Past the centreline is not oversheeting at all but _backing_ the sail
+([§3.4](#34-backing-a-sail)), which is red for a different reason: it drives the
+boat astern. So overtrimming is a reaching and running mistake, which is where
+it is a mistake on the water too, and the error available close hauled is easing
+too far — which luffs, and reads red the other way.
 
 #### Where the best trim is itself worth nothing
 
 The denominator needs a floor, because in the no-go zone it goes to zero. The
 optimal-trim search reports the honest in-irons answer — a non-positive best
-force, and *exactly* zero below an apparent wind angle of 4.3°: the main is
-still at zero *at* 4.3° and first drives at 4.4°, with 0.06 N, reaching 0.22 N
+force, and _exactly_ zero below an apparent wind angle of 4.3°: the main is
+still at zero _at_ 4.3° and first drives at 4.4°, with 0.06 N, reaching 0.22 N
 at 4.5°, while the jib crosses a tenth of a degree sooner. Not because
 everything luffs there — a boom right out at 4° off the wind is fully attached,
-and pulling 200 N *astern*. Every trim that holds its shape drives backwards,
-so the maximum lands on a luffing trim at exactly zero.
+and pulling 200 N _astern_. Every trim that holds its shape drives backwards, so
+the maximum lands on a luffing trim at exactly zero.
 
-The bare ratio there is 0/0. Worse than undefined: a sail sitting on the
-optimum at 5° off the wind would read fully green while making 1 N and going
-nowhere, then snap to red as the best force crossed zero.
+The bare ratio there is 0/0. Worse than undefined: a sail sitting on the optimum
+at 5° off the wind would read fully green while making 1 N and going nowhere,
+then snap to red as the best force crossed zero.
 
 So the denominator is `max(F_drive(best), 0.05 · q · A)`. The floor is a drive
-*coefficient*, not a force, which is what keeps it from becoming a statement
+_coefficient_, not a force, which is what keeps it from becoming a statement
 about the strength of the wind: `F_drive` scales with dynamic pressure, so a
 floor in newtons would refuse to let a perfectly trimmed sail go green in light
 air. Divided out, 0.05 means the same thing at 2 kt as at 25 kt.
 
-It binds only where the answer is "bear away". The main's peak drive
-coefficient is 0.006 at 5° off the wind, 0.047 at 8°, 0.21 at 15°, 0.59 close
-hauled and 1.57 on a beam reach, first reaching the floor itself at 8.2° — so
-every point of sail a student can actually sail divides by the same number it
-always did, and inside the no-go zone the best trim fades from red rather than
-sitting green: 0.13 of the ramp at 5°, 0.36 at 6°, 0.95 at 8°, full green at
-8.2°. The fade is continuous *through* the boundary, which is the point of
-doing it this way rather than with a threshold.
+It binds only where the answer is "bear away". The main's peak drive coefficient
+is 0.006 at 5° off the wind, 0.047 at 8°, 0.21 at 15°, 0.59 close hauled and
+1.57 on a beam reach, first reaching the floor itself at 8.2° — so every point
+of sail a student can actually sail divides by the same number it always did,
+and inside the no-go zone the best trim fades from red rather than sitting
+green: 0.13 of the ramp at 5°, 0.36 at 6°, 0.95 at 8°, full green at 8.2°. The
+fade is continuous _through_ the boundary, which is the point of doing it this
+way rather than with a threshold.
 
 A flat calm is the one case with no answer at all — every trim ties at zero
 force — and it paints red.
@@ -2053,15 +2065,15 @@ derivation reversed.** It used to be what was left of `contentRadius` once the
 bow and the gap were accounted for — a length chosen to fill a band. It is now
 `VELOCITY_SCALE × hull speed`, because the two velocity arrows share one scale
 ([§4.1](#41-whats-drawn)) and the ring's radius is solved so that hull speed
-lands exactly on it. So a full-length arrow still means *hull speed*, which is a
+lands exactly on it. So a full-length arrow still means _hull speed_, which is a
 thing worth recognising; what changed is that the length now also means
-*comparable to the wind arrow*, which is the more valuable of the two.
+_comparable to the wind arrow_, which is the more valuable of the two.
 
 **The arrow shrank at hull speed**, from 2.08 m to 1.227 m. That is not a
-regression: the boat genuinely *is* several times slower than the top of the wind
-range, and the proportions being true is the entire point. What the drawing lost
-in the boat's arrow it more than got back in the 1.30× zoom the same derivation
-bought.
+regression: the boat genuinely _is_ several times slower than the top of the
+wind range, and the proportions being true is the entire point. What the drawing
+lost in the boat's arrow it more than got back in the 1.30× zoom the same
+derivation bought.
 
 Above hull speed the arrow overruns and crosses the wind ring; see
 [§4.1](#41-whats-drawn) for why that is allowed and what makes it safe.
@@ -2081,12 +2093,12 @@ length  = linear                                        when linear ≤ SPEED_KN
           where H = SPEED_LIMIT − SPEED_KNEE, ≈ 0.25 m
 ```
 
-The guard is not decoration. Below the knee `overrun` is negative, the
-exponent turns positive, and the second line runs away — at 0 kt it evaluates
-to about −6000 m. The bend applies to the overrun and to nothing else.
+The guard is not decoration. Below the knee `overrun` is negative, the exponent
+turns positive, and the second line runs away — at 0 kt it evaluates to about
+−6000 m. The bend applies to the overrun and to nothing else.
 
 The reason is not taste, it is that the drawing is finite and the linear law was
-not. `sceneExtent` maps `shortRadius` onto the *shorter* side of any surface, so
+not. `sceneExtent` maps `shortRadius` onto the _shorter_ side of any surface, so
 a tip past 6 m is off the screen — not overrunning a reservation, which
 [§4.1](#41-whats-drawn) allows, but leaving the viewBox, which nothing here ever
 contemplated. The linear law crossed 6 m at 7.82 kt, and
@@ -2103,7 +2115,7 @@ where the boat actually sails.
 **That argument has been overruled, and by geometry rather than by preference.**
 `SPEED_KNEE` is the length whose tip reaches the ring; the ring is now solved so
 that hull speed's tip reaches it too ([§4.1](#41-whats-drawn)). The two are
-therefore *the same number* and the knee lands exactly on hull speed. The linear
+therefore _the same number_ and the knee lands exactly on hull speed. The linear
 band runs out where the boat starts sailing hard rather than past it.
 
 The cost is real and small: at the model's fastest, 6.38 kt, the arrow draws
@@ -2113,38 +2125,37 @@ for two arrows a student can actually compare, but it is a trade rather than a
 free lunch and the next person to touch this should know which way it went.
 
 One consequence to record before someone finds this and thinks it is dead
-weight. The knee's *purpose* is unchanged: the drawing is finite and the linear
+weight. The knee's _purpose_ is unchanged: the drawing is finite and the linear
 law is not, so something must bound it at any speed including `Infinity`. It
-stays for the same reason it was not tuned to a measured top speed to begin
-with — nothing guarantees a future model, a retuned constant or a raised wind
-control stays inside the box. The drawing declines to depend on the model's range
-at all. Measure the invariant, not the reachable speeds.
+stays for the same reason it was not tuned to a measured top speed to begin with
+— nothing guarantees a future model, a retuned constant or a raised wind control
+stays inside the box. The drawing declines to depend on the model's range at
+all. Measure the invariant, not the reachable speeds.
 
 **And the ring has quietly become a hull-speed gauge.** With the crossing now at
 hull speed rather than at an unreachable 6.87 kt, the tip passes the ring from
-about 11 kt of wind upward — but only on a reach, and only with good trim, so the
-crossing is *earned* rather than displayed. Set against that: the reasoning below
-for declining a hull-speed landmark still stands, and this one arrived by
+about 11 kt of wind upward — but only on a reach, and only with good trim, so
+the crossing is _earned_ rather than displayed. Set against that: the reasoning
+below for declining a hull-speed landmark still stands, and this one arrived by
 coincidence rather than by decision. It is worth taking deliberately.
 
 What the bend guarantees, and why it is a curve rather than a clamp: the length
 is **bounded** at every speed there is, including ones no boat reaches, so no
-future top speed can be a surprise — the 30 kt ceiling of the day was
-throwaway scaffolding rather than anything this document commits to, so "nobody
-can get there" is not something to build on. It is **monotone**, so the arrow
-never stops answering the question. And it leaves the linear law
-**tangentially**, at slope 1, so there is no corner where it crosses the ring.
-The honest cost is that above
-about 10 kt successive speeds differ by fractions of a pixel: up there it is a
-clamp in all but name, which is the right place to give up, since no law can
-keep resolving speed inside a finite box forever.
+future top speed can be a surprise — the 30 kt ceiling of the day was throwaway
+scaffolding rather than anything this document commits to, so "nobody can get
+there" is not something to build on. It is **monotone**, so the arrow never
+stops answering the question. And it leaves the linear law **tangentially**, at
+slope 1, so there is no corner where it crosses the ring. The honest cost is
+that above about 10 kt successive speeds differ by fractions of a pixel: up
+there it is a clamp in all but name, which is the right place to give up, since
+no law can keep resolving speed inside a finite box forever.
 
 The arrow starts **0.2 m clear of the bow**, not at it. Anchored to the stem it
 reads as a bowsprit — part of the boat rather than a thing said about it — and
 at the stern, where the layer paints below the hull, it would appear to slide
-out from under the transom. That clear water is now part of the
-*derivation* rather than a trim taken off a budget: `ARROW_TAIL_RADIUS` — bow to
-pivot, plus the gap — is one of the two lengths the ring's radius is solved from
+out from under the transom. That clear water is now part of the _derivation_
+rather than a trim taken off a budget: `ARROW_TAIL_RADIUS` — bow to pivot, plus
+the gap — is one of the two lengths the ring's radius is solved from
 ([§4.1](#the-rings-radius-is-solved-not-chosen)), which is what makes the tip
 land exactly on the ring at hull speed.
 
@@ -2177,19 +2188,19 @@ Sail color carries meaning, and roughly 8% of boys have some red-green
 deficiency, so the ramp was designed and then checked under simulation rather
 than assumed. Five anchor stops from worst to best:
 
-| Quality | OKLCH | sRGB (reference only) |
-| --- | --- | --- |
-| 0.00 | `oklch(52% 0.19 30deg)` | `#be2517` |
-| 0.25 | `oklch(62% 0.16 52deg)` | `#ce6400` |
-| 0.50 | `oklch(72% 0.13 75deg)` | `#d49838` |
-| 0.75 | `oklch(80% 0.14 110deg)` | `#c3c54f` |
-| 1.00 | `oklch(86% 0.16 145deg)` | `#89ec8d` |
+| Quality | OKLCH                    | sRGB (reference only) |
+| ------- | ------------------------ | --------------------- |
+| 0.00    | `oklch(52% 0.19 30deg)`  | `#be2517`             |
+| 0.25    | `oklch(62% 0.16 52deg)`  | `#ce6400`             |
+| 0.50    | `oklch(72% 0.13 75deg)`  | `#d49838`             |
+| 0.75    | `oklch(80% 0.14 110deg)` | `#c3c54f`             |
+| 1.00    | `oklch(86% 0.16 145deg)` | `#89ec8d`             |
 
 These are anchors, not the palette. Quality is continuous, so the runtime
 interpolates between them **in OKLCH** — which is the point of authoring there.
-Interpolating the same endpoints through sRGB would put a muddy desaturated
-sag in the middle of the ramp, exactly where "getting warmer" needs to read
-clearly. The palette module clamps chroma to gamut on the way out.
+Interpolating the same endpoints through sRGB would put a muddy desaturated sag
+in the middle of the ramp, exactly where "getting warmer" needs to read clearly.
+The palette module clamps chroma to gamut on the way out.
 
 The sRGB column is documentation for this file only; the code emits OKLCH.
 
@@ -2197,23 +2208,23 @@ The sRGB column is documentation for this file only; the code emits OKLCH.
 anchors the registrar app's palette uses (red 30, amber 75, green 145), which
 came out of testing rather than out of deference — the earlier candidate ended
 on a mint green at hue 170, and swapping it for a conventional green at 145
-*improved* the ramp, spacing the perceptual steps more evenly. So it's a free
+_improved_ the ramp, spacing the perceptual steps more evenly. So it's a free
 alignment, not a constraint. The simulator is a drawing of a boat, not a page of
 the site, and it should look like whatever serves the drawing. Where the two
 diverge, the drawing wins.
 
 **What carries this ramp is lightness.** The five anchors run OKLCH `L` 52 → 62
 → 72 → 80 → 86, and that rise survives simulation. Under protanopia,
-deuteranopia *and* tritanopia the simulated relative luminance climbs from one
+deuteranopia _and_ tritanopia the simulated relative luminance climbs from one
 end to the other without a reversal — measured over 200 samples of the
 interpolated ramp, not merely at the five anchors, and with one caveat about
 emitted precision recorded below:
 
-| Deficiency | Simulated relative luminance across the five stops |
-| --- | --- |
-| Protanopia | 0.07 → 0.17 → 0.32 → 0.51 → 0.71 |
-| Deuteranopia | 0.16 → 0.26 → 0.39 → 0.53 → 0.64 |
-| Tritanopia | 0.14 → 0.22 → 0.36 → 0.51 → 0.66 |
+| Deficiency   | Simulated relative luminance across the five stops |
+| ------------ | -------------------------------------------------- |
+| Protanopia   | 0.07 → 0.17 → 0.32 → 0.51 → 0.71                   |
+| Deuteranopia | 0.16 → 0.26 → 0.39 → 0.53 → 0.64                   |
+| Tritanopia   | 0.14 → 0.22 → 0.36 → 0.51 → 0.66                   |
 
 Machado, Oliveira & Fernandes (2009) at severity 1.0. Viénot, Brettel & Mollon
 (1999) agrees on the two red-green cases, which are the ones it models —
@@ -2247,23 +2258,23 @@ thousand of the ramp's range. That is a rounding artifact of emitting a finite
 decimal rather than anything an eye could find, but the honest claim is
 "monotonic to within the emitted precision".
 
-**What the ramp does *not* rest on is the blue–yellow axis.** That is worth
-stating, because it's the obvious argument for a red-to-green ramp —
-blue–yellow is precisely the axis red-green deficiency preserves — and here it
-doesn't work. The quality-¼ anchor is authored a little *outside* sRGB — its
-linear blue is −5.7e-4, so it shows as 0 once clamped and displayed — while the
-red anchor at quality 0 has 23. Every dichromat model preserves the S-cone
-signal, so no honest simulation can make that amber bluer than that red.
-Simulated blue runs 10 → 0 → 59 → 86 → 147 under deuteranopia and
-18 → 0 → 43 → 65 → 134 under protanopia: ordered across the top three quarters,
-reversed across the first. Only tritanopia — the case a blue–yellow argument
-doesn't cover — is monotonic in blue, at 36 → 85 → 132 → 172 → 213.
+**What the ramp does _not_ rest on is the blue–yellow axis.** That is worth
+stating, because it's the obvious argument for a red-to-green ramp — blue–yellow
+is precisely the axis red-green deficiency preserves — and here it doesn't work.
+The quality-¼ anchor is authored a little _outside_ sRGB — its linear blue is
+−5.7e-4, so it shows as 0 once clamped and displayed — while the red anchor at
+quality 0 has 23. Every dichromat model preserves the S-cone signal, so no
+honest simulation can make that amber bluer than that red. Simulated blue runs
+10 → 0 → 59 → 86 → 147 under deuteranopia and 18 → 0 → 43 → 65 → 134 under
+protanopia: ordered across the top three quarters, reversed across the first.
+Only tritanopia — the case a blue–yellow argument doesn't cover — is monotonic
+in blue, at 36 → 85 → 132 → 172 → 213.
 
 **Retuning the amber to make the blue claim true isn't worth attempting**, and
 this is the record of why, because desaturating that anchor is the fix that
 suggests itself and it does not work. Anchor-only monotonicity in both red-green
 cases needs the chroma at 52° inside a narrow window of roughly 0.131–0.146; the
-value that first looks right, around 0.12, makes protanopia *worse* (18 → 54 →
+value that first looks right, around 0.12, makes protanopia _worse_ (18 → 54 →
 43 → 65 → 134). Measured on the interpolated ramp rather than at the five
 anchors, no chroma works at all: the best case anywhere, near 0.1305, still dips
 4.4/255 under protanopia, and it falls just outside the window above, so nothing
@@ -2274,14 +2285,14 @@ would be the weaker of the two guarantees.
 **An earlier version of this section claimed the reverse** — that the ramp "does
 not survive on lightness", and that a first attempt holding a monotonically
 rising `L` inverted under deuteranopia, the amber going brightest and the
-saturated green end darkest, because a chromatic green collapses toward gray when
-the M-cone response is remapped. That mechanism is not general. It appears in no
-ramp reconstructible from what was written down here: the shipped anchors, a
-mint-green end at 170°, the green pushed to chroma 0.30, and a shallower `L` rise
-all keep deuteranopian luminance monotonic with the green end brightest. The
-anchors of the ramp that failed were never recorded, so it can't be ruled out
-that one did invert — but whatever happened there, the shipped ramp holds exactly
-the rising `L` described as failing, and that is what carries it.
+saturated green end darkest, because a chromatic green collapses toward gray
+when the M-cone response is remapped. That mechanism is not general. It appears
+in no ramp reconstructible from what was written down here: the shipped anchors,
+a mint-green end at 170°, the green pushed to chroma 0.30, and a shallower `L`
+rise all keep deuteranopian luminance monotonic with the green end brightest.
+The anchors of the ramp that failed were never recorded, so it can't be ruled
+out that one did invert — but whatever happened there, the shipped ramp holds
+exactly the rising `L` described as failing, and that is what carries it.
 
 An earlier candidate ended on a mint green at hue 170, on the assumption that
 buying CVD separation meant giving up traffic-light green. Testing said
@@ -2303,8 +2314,8 @@ read twice, into two claims it didn't support. Its partner figure, 30/40/31/47,
 matches nothing measurable about either ramp — not hue, not OKLab ΔE, not
 lightness, not any simulated channel series — so it is best treated as
 unattributable rather than as a spacing that came out wrong. For reference, the
-shipped ramp's hue gaps are 22/23/35/35 and its ΔE spacing is the 124/119/114/110
-above.
+shipped ramp's hue gaps are 22/23/35/35 and its ΔE spacing is the
+124/119/114/110 above.
 
 #### OKLCH in SVG: one real constraint
 
@@ -2321,8 +2332,8 @@ module exposes computed colors only as CSS custom properties, which makes the
 rule structural rather than something to remember.
 
 The rule has a boundary worth stating, so nobody over-applies it: it bans
-*colour* presentation attributes. Geometry attributes — `d`, `transform`, `r`,
-`vector-effect` — are unaffected, and two of them are actively *preferable* to
+_colour_ presentation attributes. Geometry attributes — `d`, `transform`, `r`,
+`vector-effect` — are unaffected, and two of them are actively _preferable_ to
 their CSS equivalents. CSS `transform` on an SVG group defaults to rotating
 about the reference box's centre rather than the user-space origin, which for a
 boat that rotates about its mast is simply the wrong point.
@@ -2338,22 +2349,23 @@ Line weights need to survive both a phone in someone's hand and an iPad flat on
 a table viewed by three students at an angle. Weights scale with viewport rather
 than being fixed.
 
-Concretely: **a dimension *of the boat* is in metres** and scales with the
-drawing — the mast dot, a sail's camber. **A *line weight* is in CSS pixels**
+Concretely: **a dimension _of the boat_ is in metres** and scales with the
+drawing — the mast dot, a sail's camber. **A _line weight_ is in CSS pixels**
 and scales with the viewport. What lets the two coexist inside a metre-valued
 viewBox is `vector-effect: non-scaling-stroke`, which takes stroke width out of
-user space. Set it as an *attribute*, not only in CSS: if support for the
-property were ever missing, `1.9px` would be read as 1.9 *metres*, which is a
+user space. Set it as an _attribute_, not only in CSS: if support for the
+property were ever missing, `1.9px` would be read as 1.9 _metres_, which is a
 loud enough failure to be worth the belt as well as the braces.
 
-The weights themselves are `clamp()` on `vmin`, e.g. `clamp(1.9px, 0.54vmin, 7px)`
-for the hull. `vmin` is the viewport rather than the drawing surface, but §6.2
-gives the simulator the whole viewport, so the two differ only by the control
-strip — across real layouts that expression holds at **~0.85% of the drawn
-boat's length** from a 320 px phone to about a 1300 px desktop. (`cqmin` would
-make it exact, but it starts at Safari 16, above our floor.)
+The weights themselves are `clamp()` on `vmin`, e.g.
+`clamp(1.9px, 0.54vmin, 7px)` for the hull. `vmin` is the viewport rather than
+the drawing surface, but §6.2 gives the simulator the whole viewport, so the two
+differ only by the control strip — across real layouts that expression holds at
+**~0.85% of the drawn boat's length** from a 320 px phone to about a 1300 px
+desktop. (`cqmin` would make it exact, but it starts at Safari 16, above our
+floor.)
 
-Worth recording *why* the clamp rather than plain proportional scaling, since
+Worth recording _why_ the clamp rather than plain proportional scaling, since
 proportional is the free behaviour of a scaled viewBox and the two agree within
 about 10% across mainstream devices: the clamp earns its keep at exactly the two
 ends this section names — the floor, so a phone never goes hairline, and the
@@ -2361,26 +2373,26 @@ ceiling, so a classroom TV or projector doesn't turn the boat into a cartoon.
 
 #### Where the ceiling was, and why it was the wrong way round (pos-8pu)
 
-Reported as *lines look thinner on retina displays*, which it was not. Measured
+Reported as _lines look thinner on retina displays_, which it was not. Measured
 in Chrome at DPR 2, a 4 CSS px non-scaling stroke paints **8 device pixels** —
 identical to a plain user-unit stroke of the same intended width — so nothing
 here is being resolved in device pixels, and CSS px are density-independent as
 specified.
 
-What was actually happening is that the old `0.4vmin` hit its 4px cap at
-**vmin 1000**, which is below every desktop. Past the cap the drawing goes on
-growing and the line does not, so the weight decays as a fraction of the boat:
+What was actually happening is that the old `0.4vmin` hit its 4px cap at **vmin
+1000**, which is below every desktop. Past the cap the drawing goes on growing
+and the line does not, so the weight decays as a fraction of the boat:
 
-| viewport (vmin) | hull weight | as % of drawn hull |
-| --- | --- | --- |
-| 320 (phone) | 1.4px, on the floor | 0.69% |
-| 480 – 1000 | on the slope | 0.63% |
-| 1104 | 4px, capped | 0.57% |
-| 1440 | 4px | 0.44% |
-| 1800 | 4px | 0.35% |
+| viewport (vmin) | hull weight         | as % of drawn hull |
+| --------------- | ------------------- | ------------------ |
+| 320 (phone)     | 1.4px, on the floor | 0.69%              |
+| 480 – 1000      | on the slope        | 0.63%              |
+| 1104            | 4px, capped         | 0.57%              |
+| 1440            | 4px                 | 0.44%              |
+| 1800            | 4px                 | 0.35%              |
 
 A ceiling whose stated job is to stop the boat cartooning on a big screen was
-instead making it *fainter* there — the failure this section guards against at
+instead making it _fainter_ there — the failure this section guards against at
 the other end. The ceilings now sit at roughly 13× the slope's own `vmin`, so
 they engage around 1300 rather than 1000, and every weight is up about a third
 on the customer's eye. The earlier "~0.88%" figure in this section was stale on
@@ -2415,88 +2427,89 @@ shape, and is a second thing that has to be kept in step. The early prototype
 was all sliders; they have been removed one at a time, the last of them in this
 section, and none is coming back. That is settled and is not a gap.
 
-**What it costs is a requirement, not a debt.** A drag is now the only gesture in
-the app, and a drag is the most demanding thing a hand can be asked for — far
-more than a tap. Three problems follow from that, they were found separately, and
-they all point the same way:
+**What it costs is a requirement, not a debt.** A drag is now the only gesture
+in the app, and a drag is the most demanding thing a hand can be asked for — far
+more than a tap. Three problems follow from that, they were found separately,
+and they all point the same way:
 
-- **Scale.** Development happens on a big-screen Mac, where there is precision to
-  spare and the problem is invisible. A phone is where many students will meet
-  this, and it is where the precision goes. The measurements in §4.5 are the same
-  story in ink: the drawing shrinks to the short axis, and so does every target
-  on it.
+- **Scale.** Development happens on a big-screen Mac, where there is precision
+  to spare and the problem is invisible. A phone is where many students will
+  meet this, and it is where the precision goes. The measurements in §4.5 are
+  the same story in ink: the drawing shrinks to the short axis, and so does
+  every target on it.
 - **Precision.** The model has structure finer than a fingertip can address. The
   window of trims that drive forward at all is about 1.7° wide at AWA 4.4°
   (`attachedTrimSeed`), and [§3.4](#the-sheet-sets-a-limit-not-an-angle)'s gybe
   rule — by the lee by as much as the boom is eased — is taught by stepping the
   wind a degree at a time and having a student predict where the boom goes. A
-  finger gets "somewhere around there", which is the vagueness the rule exists to
-  replace.
-- **Tremor.** Excellent sailors have tremors, and this school has taught students
-  who do. Essential tremor is the most common movement disorder and gets more
-  common with age, which is squarely the adult-education demographic. **The
-  capability that matters is not "can see and touch a screen" but "can hold a
-  sustained, precise drag on a 22 px target"**, and those are different motor
-  tasks. Adaptive sailing is well established — para sailing was Paralympic
-  through 2016, the Hansa 303 exists as a class, sip-and-puff rigs race — so a
-  student who cannot drag precisely is not a student who cannot sail.
+  finger gets "somewhere around there", which is the vagueness the rule exists
+  to replace.
+- **Tremor.** Excellent sailors have tremors, and this school has taught
+  students who do. Essential tremor is the most common movement disorder and
+  gets more common with age, which is squarely the adult-education demographic.
+  **The capability that matters is not "can see and touch a screen" but "can
+  hold a sustained, precise drag on a 22 px target"**, and those are different
+  motor tasks. Adaptive sailing is well established — para sailing was
+  Paralympic through 2016, the Hansa 303 exists as a class, sip-and-puff rigs
+  race — so a student who cannot drag precisely is not a student who cannot
+  sail.
 
 So the app owes **a second input path that asks for less finger precision.** Not
 a second interface, and emphatically not a keyboard mirror of every control —
 that is the sliders again in another costume. The form is **undecided**; the
-shape currently favoured is a selection step, by Tab *or by a single tap*, that
-makes adjustment controls appear for the selected thing. Tap-to-select matters as
-much as Tab: the primary scenario is an iPad flat on a table, where there is no
-keyboard at all, so a keyboard-only answer would miss the main case.
+shape currently favoured is a selection step, by Tab _or by a single tap_, that
+makes adjustment controls appear for the selected thing. Tap-to-select matters
+as much as Tab: the primary scenario is an iPad flat on a table, where there is
+no keyboard at all, so a keyboard-only answer would miss the main case.
 
 **The wind is the first thing that path should serve**, and the reason is
-pedagogical rather than mechanical. Its two quantities come off one finger, which
-means bearing cannot be changed without disturbing speed unless the hand traces a
-constant-radius arc freehand. That is easy to misadjust, and the design gets away
-with it today only because the points being taught turn on wind *direction* far
-more than on wind *speed*. Decoupling the two is worth more here than smoothing
-either one.
+pedagogical rather than mechanical. Its two quantities come off one finger,
+which means bearing cannot be changed without disturbing speed unless the hand
+traces a constant-radius arc freehand. That is easy to misadjust, and the design
+gets away with it today only because the points being taught turn on wind
+_direction_ far more than on wind _speed_. Decoupling the two is worth more here
+than smoothing either one.
 
-**What is deliberately not claimed.** The app does not support screen readers and
-should not say it does. The pedagogy here *is* the picture — the sail luffing, the
-trim ramp on the cloth — so a spoken version of this tool would be a different
-tool, not this one with labels. Naming the standard rather than gesturing at it:
-the app fails **WCAG 2.1.1 Keyboard** (Level A) today and will keep failing it
-until the path above lands, and what the path above describes is almost exactly
-**WCAG 2.2's 2.5.7 Dragging Movements** (Level AA) — "achievable by a single
-pointer without dragging". Worth knowing that 2.5.7 has an exception for cases
-where dragging is essential, which is arguable here; the decision is to build the
-alternative rather than lean on the exception. Conformance is not the reason for
-any of this. The reason is a student on a phone getting the answer the model
-actually has.
+**What is deliberately not claimed.** The app does not support screen readers
+and should not say it does. The pedagogy here _is_ the picture — the sail
+luffing, the trim ramp on the cloth — so a spoken version of this tool would be
+a different tool, not this one with labels. Naming the standard rather than
+gesturing at it: the app fails **WCAG 2.1.1 Keyboard** (Level A) today and will
+keep failing it until the path above lands, and what the path above describes is
+almost exactly **WCAG 2.2's 2.5.7 Dragging Movements** (Level AA) — "achievable
+by a single pointer without dragging". Worth knowing that 2.5.7 has an exception
+for cases where dragging is essential, which is arguable here; the decision is
+to build the alternative rather than lean on the exception. Conformance is not
+the reason for any of this. The reason is a student on a phone getting the
+answer the model actually has.
 
 ### Gestures
 
-| Element | Gesture | Notes |
-| --- | --- | --- |
-| Hull | Drag to rotate | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
-| Wind | Drag **anywhere the boat is not** | One radial control: round sets the bearing, in and out sets the speed |
-| Main | Drag the clew | Sets how far the **sheet** lets the boom go, not where it is |
-| Jib | Drag the clew | Same; the side you release on chooses the working sheet |
+| Element | Gesture                           | Notes                                                                   |
+| ------- | --------------------------------- | ----------------------------------------------------------------------- |
+| Hull    | Drag to rotate                    | Rotates about `STATIONS.pivot`, near the keel — [§4.1](#41-whats-drawn) |
+| Wind    | Drag **anywhere the boat is not** | One radial control: round sets the bearing, in and out sets the speed   |
+| Main    | Drag the clew                     | Sets how far the **sheet** lets the boom go, not where it is            |
+| Jib     | Drag the clew                     | Same; the side you release on chooses the working sheet                 |
 
 **The wind's is the gesture that changed most, and it is the one worth reading
-the rest of this section against.** It is no longer a bearing on a thin ring plus
-a slider for the speed: the whole water is a single radial control, and the two
-quantities come off one finger.
+the rest of this section against.** It is no longer a bearing on a thin ring
+plus a slider for the speed: the whole water is a single radial control, and the
+two quantities come off one finger.
 
 Two settings sit outside the drawing, in a minimal control strip: **apparent
 wind** ([§3.1](#31-apparent-wind)) and **jib on/off**
 ([§3.7](#37-sailing-under-main-alone)). Both are switches rather than
 manipulations, both are things a student sets once and forgets, and neither
-belongs on the boat. Striking the jib by dragging it overboard would be
-charming and undiscoverable.
+belongs on the boat. Striking the jib by dragging it overboard would be charming
+and undiscoverable.
 
 **The strip is otherwise empty**, and was not always. It carried a wind speed
 slider until the whole water became a radial control — see
 [wind speed](#wind-speed-also-a-manipulation-after-all) — at which point the
 slider was a second way to say a thing the drawing already said.
 
-Striking the jib also *helps* the hardest interaction problem below — with one
+Striking the jib also _helps_ the hardest interaction problem below — with one
 sail there is nothing to disambiguate close hauled — which means the Level 1
 configuration is also the most forgiving one on a phone.
 
@@ -2526,57 +2539,58 @@ the bow holds still. Same number changing, two different events.
 worth saying that no further mechanism is wanted. The arithmetic behind a hull
 drag and a wind drag is deliberately identical — a bearing taken about the scene
 origin in the world frame, differing only in which field it writes — because §1
-says they *are* the same operation. Inventing a difference there would teach the
+says they _are_ the same operation. Inventing a difference there would teach the
 wrong thing. What must differ is which half of the drawing moves, and that falls
 out of the layer split: the heading turns the boat group while the ring holds
-still, and the wind bearing rewrites the arrow and the graduations while the boat
-holds still. The failure mode to guard against is not sharing the bearing code —
-it is orienting the *world* to the wind, drawing the arrow at a fixed bearing and
-turning everything else beneath it, which would make a wind shift and a turn the
-same animation. `input/gestures.test.ts` asserts that the two gestures move
-disjoint halves of the drawing, so that cannot be taken by accident.
+still, and the wind bearing rewrites the arrow and the graduations while the
+boat holds still. The failure mode to guard against is not sharing the bearing
+code — it is orienting the _world_ to the wind, drawing the arrow at a fixed
+bearing and turning everything else beneath it, which would make a wind shift
+and a turn the same animation. `input/gestures.test.ts` asserts that the two
+gestures move disjoint halves of the drawing, so that cannot be taken by
+accident.
 
 ### The ring as a target
 
-The drawn line is a **hairline** — `--pos-rule-wind` clamps it to 1.1 px on a
-phone and 2.5 px on a desktop — and nothing could be dragged by it. **What is
+The drawn line is **thin** — `--pos-rule-wind` puts it at 1.5 px on a phone and
+3.4 px on a desktop — and nothing could be dragged by it. **What is
 draggable is all the water the boat is not standing on.**
 
-An earlier design gave the wind an *annulus*: 22 CSS px outward from the drawn
+An earlier design gave the wind an _annulus_: 22 CSS px outward from the drawn
 ring and inward as far as the arrow's tip, deliberately asymmetric so that the
 arrowhead — the mark a student's first instinct is to grab — fell inside its own
 target. That band was carefully derived and it is gone, so the argument that
 built it is answered here rather than deleted.
 
 **What replaced it.** Arbitration is a fall-through: the clews first, then the
-hull silhouette, then *everything else is the wind*. There is no band because
+hull silhouette, then _everything else is the wind_. There is no band because
 there is no edge — nothing is left over to be nobody's. The display and the
 manipulation come apart: the wind's marks paint **above** the boat and
 translucent, so a strong wind's arrow crosses the sails, while the region a
-finger claims sits conceptually **beneath** it, taking whatever the boat did not.
-That split costs nothing structurally, because hit-testing here is geometric and
-never reads an event's target — paint order and arbitration order were always
-independent facts, and only one of them decides.
+finger claims sits conceptually **beneath** it, taking whatever the boat did
+not. That split costs nothing structurally, because hit-testing here is
+geometric and never reads an event's target — paint order and arbitration order
+were always independent facts, and only one of them decides.
 
 **The palm problem, which the annulus existed to solve, is solved differently.**
 The old reasoning was sound: an iPad flat on a table collects resting palms at
-the screen edges, and *because a target belongs to one pointer at a time*, the
+the screen edges, and _because a target belongs to one pointer at a time_, the
 first palm down would own the wind and every deliberate drag after it would get
 nothing. Claiming the whole surface makes that worse, not better — unless the
 premise goes. **So the premise goes: the wind is not exclusive.** Every pointer
-that asks for it gets it, and only the one that *moves* moves it. A palm that
+that asks for it gets it, and only the one that _moves_ moves it. A palm that
 rests changes nothing; a finger that drags is never blocked. `reapply`
-re-references the still pointers instead of re-applying them, which is what stops
-two fingers fighting over one bearing.
+re-references the still pointers instead of re-applying them, which is what
+stops two fingers fighting over one bearing.
 
 That exception is the wind's alone. The sails and the hull stay exclusive, for
-the reason they always were: two fingers on one heading is not a gesture, it is a
-tug of war.
+the reason they always were: two fingers on one heading is not a gesture, it is
+a tug of war.
 
 **And the arrowhead argument survives its own conclusion.** The band reached
 inward to cover the arrowhead because a student reaches for it. Now the whole
 water is the target, so the arrowhead is inside it trivially — and the arrow's
-tip is also the radial control's *handle*, so reaching for it does exactly what
+tip is also the radial control's _handle_, so reaching for it does exactly what
 reaching for it should.
 
 ### Wind speed: also a manipulation, after all
@@ -2586,41 +2600,41 @@ overturning it deserves stating rather than quietly rewriting.
 
 **The old case.** Dragging the arrow's length puts a one-dimensional target
 inside a two-dimensional one: the same finger on the same ring would mean
-*bearing* going round and *speed* going in and out, which on a phone is the
-pairing guaranteed to make both worse. So the ring kept the bearing and the speed
-went to a slider in the control strip.
+_bearing_ going round and _speed_ going in and out, which on a phone is the
+pairing guaranteed to make both worse. So the ring kept the bearing and the
+speed went to a slider in the control strip.
 
-**What was wrong with it** was not the reasoning but the premise. The conflict is
-real only while the target is a *thin ring*, where the radial axis has almost no
-travel to work in and every drag is mostly tangential by construction. Give the
-gesture the whole water and the radial axis has the full radius, and the coupling
-turns out to be mild in the hand for a reason that is geometric rather than
-lucky: **motion along a circle about the origin is pure bearing, and motion along
-a radius is pure speed.** A hand drawing an arc does the first without being
-asked to. Measured on the running model, a mostly-radial drag moved the speed
-from 6 kt to 15.3 kt while the bearing shifted 200° → 204°.
+**What was wrong with it** was not the reasoning but the premise. The conflict
+is real only while the target is a _thin ring_, where the radial axis has almost
+no travel to work in and every drag is mostly tangential by construction. Give
+the gesture the whole water and the radial axis has the full radius, and the
+coupling turns out to be mild in the hand for a reason that is geometric rather
+than lucky: **motion along a circle about the origin is pure bearing, and motion
+along a radius is pure speed.** A hand drawing an arc does the first without
+being asked to. Measured on the running model, a mostly-radial drag moved the
+speed from 6 kt to 15.3 kt while the bearing shifted 200° → 204°.
 
 **And the imprecision is affordable here in a way it would not be elsewhere.**
 Wind is fickle; a student setting 11 kt rather than 12 has not made an error the
-simulator needs to protect them from. That is a claim about *this* quantity, not
+simulator needs to protect them from. That is a claim about _this_ quantity, not
 a general licence — the same coupling on a sail's trim would be unacceptable,
 which is why the sails keep single-axis gestures.
 
 **Two things about the radial axis that could not be settled on paper.** The
 arrow's tail stays on the ring and its **tip** moves, so the tip is the handle —
-which means *dragging inward makes more wind*. It reverses what a dial teaches,
+which means _dragging inward makes more wind_. It reverses what a dial teaches,
 and the alternative has the arrowhead moving opposite to the hand, which is
 usually the worse mistake.
 
 The argument for it is thinner than it first appeared, and the correction is
 worth recording. "Your finger is the arrowhead" is only true in light air: the
 tip crosses into the boat's swept disc at **3.49 kt**, and a touchdown there is
-claimed by the *hull* — at 10 kt a touch on the arrowhead returns the heading,
+claimed by the _hull_ — at 10 kt a touch on the arrowhead returns the heading,
 not the wind. The control is unharmed, because the whole water is the target and
-the drag is relative, so nobody has to hit the tip. But the honest claim is
-"the tip moves the way the hand moves", not "the tip is under the hand". And
-a drag can reference itself *relatively*, preserving the length it grabbed, or
-*absolutely*, snapping the tail to the finger. Relative is the default, because
+the drag is relative, so nobody has to hit the tip. But the honest claim is "the
+tip moves the way the hand moves", not "the tip is under the hand". And a drag
+can reference itself _relatively_, preserving the length it grabbed, or
+_absolutely_, snapping the tail to the finger. Relative is the default, because
 it matches every other gesture here and because it is what makes a stray touch
 cost nothing — a finger that lands on the water and does not move changes no
 wind at all, which is the old objection to giving the water away, answered.
@@ -2630,12 +2644,12 @@ quantities on one gesture is the whole design now; a second control for one of
 them was a redundancy that had to be kept in step, and the kind that goes stale
 quietly.
 
-**It cost the simulator its only focusable element**, and there are now **zero**:
-every quantity — heading, wind bearing, wind speed, both sheets — is pointer-only,
-and reachable by dragging or not at all. That is not the argument against removing
-the slider, because a slider was never the right answer to it; what the removal
-did was make the real requirement unavoidable. The requirement, its three
-independent reasons, and what is and is not being claimed are all
+**It cost the simulator its only focusable element**, and there are now
+**zero**: every quantity — heading, wind bearing, wind speed, both sheets — is
+pointer-only, and reachable by dragging or not at all. That is not the argument
+against removing the slider, because a slider was never the right answer to it;
+what the removal did was make the real requirement unavoidable. The requirement,
+its three independent reasons, and what is and is not being claimed are all
 [at the head of this section](#the-interface-is-direct-manipulation-and-it-owes-a-low-precision-path);
 the work is `pos-z7p`. **This gesture is the one that path should serve first**,
 for the reason recorded there: its two quantities ride on one finger, and the
@@ -2651,10 +2665,10 @@ not.
 reason for it: above 20 kt, with new sailors, the experience turns bad and
 equipment starts to break. So the top of the range is the top of the range a
 student is being taught to sail in, which is the only range this simulator is
-for. It lands well: [§3.2](#32-sail-forces)'s depowering begins at exactly 13 kt,
-so the top third of the range sits inside the regime where the rig is shedding
-force — run it up and the boat visibly *stops* gaining speed, which is what that
-end of the range is for.
+for. It lands well: [§3.2](#32-sail-forces)'s depowering begins at exactly 13
+kt, so the top third of the range sits inside the regime where the rig is
+shedding force — run it up and the boat visibly _stops_ gaining speed, which is
+what that end of the range is for.
 
 **It is a teaching limit**, not a model limit and not a UI convenience, and the
 distinction is worth keeping because a bare ceiling invites the next person to
@@ -2662,17 +2676,17 @@ raise it. The physics is sound well past 20 kt and
 [§3.6](#36-calibration-targets) is where the question of how far it stays honest
 belongs; what is claimed here is only that a wind the school would not go out in
 is not a wind worth putting under a student's thumb. Recorded because several
-comments across the model appealed to "the wind slider" without this section ever
-saying where it stopped, and for four beads the answer was whatever the throwaway
-scaffolding happened to offer.
+comments across the model appealed to "the wind slider" without this section
+ever saying where it stopped, and for four beads the answer was whatever the
+throwaway scaffolding happened to offer.
 
 The value used to be shown in knots beside the slider, and nothing shows it now
-— which is a real loss and is why the arrow's *length* has to carry it (§4.1).
-Showing it was not the scaffolding
-[§7](#7-deliberately-out-of-scope) rules out: §7 is about not handing the student
-the *answer*, and the wind is the question. A student poses a situation and needs
-to know which one they posed. What stays unlabelled is everything downstream —
-boat speed, trim quality — which is what they are meant to read off the drawing.
+— which is a real loss and is why the arrow's _length_ has to carry it (§4.1).
+Showing it was not the scaffolding [§7](#7-deliberately-out-of-scope) rules out:
+§7 is about not handing the student the _answer_, and the wind is the question.
+A student poses a situation and needs to know which one they posed. What stays
+unlabelled is everything downstream — boat speed, trim quality — which is what
+they are meant to read off the drawing.
 
 ### Grab points: the clews
 
@@ -2691,21 +2705,22 @@ and it swings to the mirror the moment you let go.
 For the jib the release does one thing more. **The side you release on chooses
 the working sheet** — dragging the clew across and letting go on the new side is
 a single gesture that casts off one sheet and hauls the other, which is the real
-foredeck action and needs no second control. That is also why the side is *state*
-rather than something derived from where the clew happens to be: past about half
-a metre of sheet the clew can cross the centreline, which is an ordinary trim,
-and "whichever car the clew is nearest" would then flip every frame.
+foredeck action and needs no second control. That is also why the side is
+_state_ rather than something derived from where the clew happens to be: past
+about half a metre of sheet the clew can cross the centreline, which is an
+ordinary trim, and "whichever car the clew is nearest" would then flip every
+frame.
 
 **No ring is drawn at the clew any more.** One was, on the argument that with no
 labels anywhere the grab points must announce themselves and a small ring reads
-as boat hardware rather than as UI chrome. It came out, and the reason is a units
-mismatch rather than taste: the ring is sized as *hardware*, in metres, while the
-target is sized as a *touch*, in pixels, and the two are nowhere near each other
-— on a phone the invisible disc is several times the visible ring. The mark
-advertised an affordance at a size the geometry never honoured, which is worse
-than not advertising it. The corner of a sail marks its own clew, and with the
-rings gone the deck carries only the mast and the six stay dots — which is what
-makes *those* legible as the hardware they are.
+as boat hardware rather than as UI chrome. It came out, and the reason is a
+units mismatch rather than taste: the ring is sized as _hardware_, in metres,
+while the target is sized as a _touch_, in pixels, and the two are nowhere near
+each other — on a phone the invisible disc is several times the visible ring.
+The mark advertised an affordance at a size the geometry never honoured, which
+is worse than not advertising it. The corner of a sail marks its own clew, and
+with the rings gone the deck carries only the mast and the six stay dots — which
+is what makes _those_ legible as the hardware they are.
 
 This dissolves the overlap problem at any normal trim, because the clews are
 attached to different parts of the boat: the main clew rides the end of the
@@ -2715,30 +2730,30 @@ about 230 px on a 500 px boat** — and with both sails inside ±60° the gap ne
 closes below ~35% of the boat's length. Across the trim a student spends nearly
 all their time in, there is no finger-width ambiguity to arbitrate.
 
-The geometry is worth stating plainly rather than assuming: the main clew
-swings on a 9.7 ft radius about the mast, the jib clew on a 7.5 ft radius about
-the jib's tack 6.5 ft ahead of it, and those two arcs do intersect — but only
-with the main eased to ~129°, well past the ~90° where the boom fetches up on
-the shrouds. **The swing limit is therefore what keeps the grab points apart:**
-with trim clamped to the boom's physical range, the closest the clews ever come
-is ~22% of the boat's length (~109 px on a 500 px boat), comfortably clear of
-two 44 px touch discs. The limit and the clamp live in `model/boat.ts` as
+The geometry is worth stating plainly rather than assuming: the main clew swings
+on a 9.7 ft radius about the mast, the jib clew on a 7.5 ft radius about the
+jib's tack 6.5 ft ahead of it, and those two arcs do intersect — but only with
+the main eased to ~129°, well past the ~90° where the boom fetches up on the
+shrouds. **The swing limit is therefore what keeps the grab points apart:** with
+trim clamped to the boom's physical range, the closest the clews ever come is
+~22% of the boat's length (~109 px on a 500 px boat), comfortably clear of two
+44 px touch discs. The limit and the clamp live in `model/boat.ts` as
 `SWING_LIMIT` and `clampTrim`; every site that sets a sail angle routes through
 the clamp — including backing ([§3.4](#34-backing-a-sail)), which holds the sail
-on the *wrong side of the wind* but never past the shrouds. The measurements are
+on the _wrong side of the wind_ but never past the shrouds. The measurements are
 pinned as tests in that module's suite.
 
 It's also the physically honest choice: the clew is where the sheet attaches, so
 it is quite literally the point through which a sailor's control acts. The
 earlier plan — fat hit paths along the whole boom, arbitrated by nearest grab
-point — would actually have been *worse* than useless here, since the midpoint of
-the main boom sits closer to the jib clew than to its own, and touching the main
-would sometimes have grabbed the jib.
+point — would actually have been _worse_ than useless here, since the midpoint
+of the main boom sits closer to the jib clew than to its own, and touching the
+main would sometimes have grabbed the jib.
 
 What remains:
 
-1. **Generous invisible discs.** ~44 CSS px centered on each clew, independent of
-   the visible handle size.
+1. **Generous invisible discs.** ~44 CSS px centered on each clew, independent
+   of the visible handle size.
 2. **Pointer capture.** A drag owns its pointer until release, so hit-testing
    only happens at touchdown.
 3. **Everything else on the hull rotates the hull.** With only two small discs
@@ -2766,25 +2781,25 @@ the typical one.
 
 The proportions are unaffected — 45% of LOA at normal trim, 22% at the worst
 legal trim — but the pixels are not. On a phone that worst case is ~42 px, which
-is *narrower* than two 44 px discs side by side, so a flat 22 px radius would
+is _narrower_ than two 44 px discs side by side, so a flat 22 px radius would
 put a finger inside both discs at once. **Disc radius is therefore
 `min(22px, gap / 2)`**, and `scene.pixelsToMeters()` exists so the input layer
 can compute that at runtime instead of assuming a scale. At normal trim there is
 no ambiguity anywhere: 45% of a 190 px boat is still ~85 px, so the 22 px cap is
 what binds and the target is the full 44 px.
 
-The 22% figure is **derived rather than sampled**, which is worth stating because
-it is the number the sizing rule leans on. For a fixed main clew, the nearest
-point of the jib's whole circle is `|mainClew − jibTack| − JIB.foot`, and that
-first term is smallest at either end of the boom's legal swing — so the closest
-the two grab points ever come is that one expression, 1.273 m, or 21.8% of LOA.
-A sweep of the whole legal trim square finds nothing under it and gets within
-half a centimetre of it, which is all a sweep can do: it can look for a
+The 22% figure is **derived rather than sampled**, which is worth stating
+because it is the number the sizing rule leans on. For a fixed main clew, the
+nearest point of the jib's whole circle is `|mainClew − jibTack| − JIB.foot`,
+and that first term is smallest at either end of the boom's legal swing — so the
+closest the two grab points ever come is that one expression, 1.273 m, or 21.8%
+of LOA. A sweep of the whole legal trim square finds nothing under it and gets
+within half a centimetre of it, which is all a sweep can do: it can look for a
 counterexample, it cannot establish the bound.
 
 **This demotes the nearer-clew tie-break rather than promoting it**, which is a
 correction to what the paragraph above used to say. `min(22px, gap / 2)` makes
-the two discs *at worst tangent*, so by the triangle inequality no point can lie
+the two discs _at worst tangent_, so by the triangle inequality no point can lie
 strictly inside both, and the tie-break can only ever decide the single point
 where they touch. It is genuinely the cheap defensive rule this section
 originally called it — the **sizing** is the load-bearing part on a phone. Both
@@ -2792,16 +2807,16 @@ are implemented, because they fail differently and only one of them is a
 function of the trim, but `input/gestures.test.ts` has to hand `beginGrab` a
 deliberately oversized disc to exercise the tie-break at all.
 
-**Discoverability.** With no labels, the grab points have to announce themselves.
-A small circle drawn at each clew reads as boat hardware — a shackle, a fitting —
-rather than as UI chrome, so it signals the affordance without violating the
-no-scaffolding position. That rule was about not handing students the answer, not
-about hiding the controls. The opening state helps too: the mistrimmed sail is
-usually luffing, and the motion draws the eye straight to the thing worth
-touching.
+**Discoverability.** With no labels, the grab points have to announce
+themselves. A small circle drawn at each clew reads as boat hardware — a
+shackle, a fitting — rather than as UI chrome, so it signals the affordance
+without violating the no-scaffolding position. That rule was about not handing
+students the answer, not about hiding the controls. The opening state helps too:
+the mistrimmed sail is usually luffing, and the motion draws the eye straight to
+the thing worth touching.
 
 The drawn fitting and the invisible disc are **independent sizes**, and they
-scale with different things. The fitting is a dimension *of the boat*, so it is
+scale with different things. The fitting is a dimension _of the boat_, so it is
 in metres and shrinks with the drawing: at a 0.105 m radius its ring is 6.8 px
 across on a 390 px phone, 14.6 px on an iPad and 15.8 px on a desktop. The disc
 is a touch target, so it is in CSS pixels and does not shrink at all. On a phone
@@ -2809,8 +2824,8 @@ the target is six and a half times the mark, and on a desktop under three.
 
 Those are the ring's **diameter**, not its inked extent — the stroke is another
 1.4–4 px on top, centred on the path — and the distinction is recorded because
-quoting a bounding box here once put 9.5 px in this paragraph against the
-6.8 px the geometry actually gives.
+quoting a bounding box here once put 9.5 px in this paragraph against the 6.8 px
+the geometry actually gives.
 
 One consequence for [§3.4](#34-backing-a-sail): backing the main means dragging
 the clew forward rather than shoving the boom amidships as you would on the
@@ -2827,7 +2842,7 @@ about the mast and writes `mainAngle`, the jib about its tack and writes
 Two things do not generalise, and both matter.
 
 **The frame differs.** A sail angle is measured against the boat, so its bearing
-is taken in the boat frame; a heading is what *relates* the boat frame to the
+is taken in the boat frame; a heading is what _relates_ the boat frame to the
 world, so taking its bearing in the boat frame would feed the rotation back into
 its own input and the boat would run away from the finger. Sails read the boat
 frame at the live heading, the hull reads the world.
@@ -2842,15 +2857,15 @@ rather than unwinding.
 
 Every drag-derived trim goes through `clampTrim`, so the boom cannot be dragged
 through the shrouds. Pushed past the limit the sail simply stops; pushed all the
-way around past *dead ahead of the tack* it changes sides, because that is the
+way around past _dead ahead of the tack_ it changes sides, because that is the
 one bearing genuinely equidistant from both limits.
 
-**A dead zone about each centre.** A pointer at radius *r* turns its target by
-57.3/*r* degrees per pixel it moves across, so the gain grows without bound as
+**A dead zone about each centre.** A pointer at radius _r_ turns its target by
+57.3/_r_ degrees per pixel it moves across, so the gain grows without bound as
 the finger nears the centre — and the pivot sits inside the hull silhouette,
-about a foot abaft the mast, so a student can and will put a finger on it. Inside
-24 px the bearing is treated as absent: the angle is held, and the offset is
-taken afresh on the way out, so leaving the dead zone resumes the drag rather
+about a foot abaft the mast, so a student can and will put a finger on it.
+Inside 24 px the bearing is treated as absent: the angle is held, and the offset
+is taken afresh on the way out, so leaving the dead zone resumes the drag rather
 than snapping the boat to wherever the finger reappeared. Measured without it,
 an 11.2 cm slide across the pivot swings the boat **exactly 135°** — the two
 points sit 7.07 cm from the pivot on bearings 225° apart, and quoting that
@@ -2872,21 +2887,21 @@ another finger already holds is given nothing, rather than a shared claim; the
 same goes for the hull and for the wind, since two fingers fighting over one
 bearing is a tug of war rather than a gesture.
 
-The wind is a target of its own for that rule, which is what makes "drag the ring
-with a second finger already on a sail" work rather than merely not break: the
-band and the clew discs are disjoint by construction, so the second touchdown is
-not competing for anything, and the sail being held does not put the wind out of
-reach.
+The wind is a target of its own for that rule, which is what makes "drag the
+ring with a second finger already on a sail" work rather than merely not break:
+the band and the clew discs are disjoint by construction, so the second
+touchdown is not competing for anything, and the sail being held does not put
+the wind out of reach.
 
 **And a clew's disc is reserved whether or not its sail is available**, which is
-the part that is easy to get wrong, because at ordinary trim *both* clews lie
-over the deck. "Skip the taken sail" and "then try the hull" compose into handing
-the second finger the *heading* from a touch that landed squarely on the sail
-someone else is holding — and turning the boat then drags that student's sail
-around under their own stationary finger, by the live-heading rule below. So a
-touchdown inside any clew disc either gets that sail or gets nothing.
+the part that is easy to get wrong, because at ordinary trim _both_ clews lie
+over the deck. "Skip the taken sail" and "then try the hull" compose into
+handing the second finger the _heading_ from a touch that landed squarely on the
+sail someone else is holding — and turning the boat then drags that student's
+sail around under their own stationary finger, by the live-heading rule below.
+So a touchdown inside any clew disc either gets that sail or gets nothing.
 
-One case falls out of measuring a sail's bearing against the *live* heading, and
+One case falls out of measuring a sail's bearing against the _live_ heading, and
 it is worth having on purpose: with one student turning the hull and another
 holding a clew, the clew stays under its finger while the boat turns beneath it,
 so the trim changes. That is exactly what happens on the water when you hold a
@@ -2904,7 +2919,7 @@ however far the boat turns under it.
 
 One pass suffices, and that is a property rather than optimism: each gesture is
 idempotent in the state it does not write, so no re-application can invalidate
-one already done. Without it, a held clew would sit where the *boat* put it and
+one already done. Without it, a held clew would sit where the _boat_ put it and
 then jump the whole accumulated rotation the instant its finger twitched — both
 halves worse than tracking.
 
@@ -2912,7 +2927,8 @@ Listeners go on `.pos-sim .surface`, **not on the `<svg>`**. An SVG with no
 painted background receives events only over painted geometry, so a drag that
 began on the boat and continued over open water would stop being delivered. The
 host is an ordinary HTML element and receives events over its whole box, and it
-already carries the `touch-action: none` of [§6.2](#62-a-bare-page-owning-the-whole-viewport).
+already carries the `touch-action: none` of
+[§6.2](#62-a-bare-page-owning-the-whole-viewport).
 
 ---
 
@@ -2948,21 +2964,21 @@ src/
 One rule holds the whole thing together:
 
 - **`model/` has no DOM.** Pure functions and plain data. Fully unit-testable,
-  which is what lets us assert the calibration table in [§3.6](#36-calibration-targets)
-  as tests instead of eyeballing it.
+  which is what lets us assert the calibration table in
+  [§3.6](#36-calibration-targets) as tests instead of eyeballing it.
 - **`render/` reads state, never writes it.**
 - **`input/` writes state, never renders.**
 
 **Everything tunable lives in `tuning.ts`.** Resistance constants, the
 acceleration time constant ([§3.5](#35-hull-resistance-and-integration)), stall
-and luff thresholds, the swing-back duration, the upwind jib bonus (§3.7),
-and the color ramp anchors are all feel decisions that will be adjusted against
-the running simulator. Collecting them in one file keeps them out of the physics,
+and luff thresholds, the swing-back duration, the upwind jib bonus (§3.7), and
+the color ramp anchors are all feel decisions that will be adjusted against the
+running simulator. Collecting them in one file keeps them out of the physics,
 makes the calibration phase a matter of turning knobs rather than hunting
 constants, and — since a fudge factor in a named tuning file is visibly a fudge
 factor — keeps us honest about which numbers are physics and which are taste.
 
-That file's remit is the *model*, though. Drawing decisions — the Bézier
+That file's remit is the _model_, though. Drawing decisions — the Bézier
 fractions that fair the hull, the scene's band radii — stay beside the code that
 draws with them. A render module reaching into model tuning for a curve handle
 would blur the very line `tuning.ts` exists to draw.
@@ -2984,9 +3000,9 @@ when the registrar deploy lands. It does not weaken anything below — the
 registrar remains the only thing that serves this to students.
 
 Worth noting because it is the same trap twice with different answers: a Pages
-project site is served from `https://<org>.github.io/point-of-sail/`, so it needs
-`base: '/point-of-sail/'`, which is neither the default nor what the registrar
-wants. The preview therefore passes `--base` on Vite's command line
+project site is served from `https://<org>.github.io/point-of-sail/`, so it
+needs `base: '/point-of-sail/'`, which is neither the default nor what the
+registrar wants. The preview therefore passes `--base` on Vite's command line
 (`npm run build:pages`) rather than setting it in `vite.config.ts`. The config
 keeps its default, and the base-vs-route decision below stays open for whoever
 takes pos-740.5.
@@ -3014,7 +3030,7 @@ is the trap: the natural router entry gives the page a clean URL like
 `/registrar/point-of-sail`, while its assets sit under
 `/registrar/public/point-of-sail/`. Vite's default `base: '/'` emits
 `/assets/index-abc123.js` and 404s immediately. The obvious fix, `base: './'`,
-*also* fails in that arrangement — relative URLs resolve against the clean page
+_also_ fails in that arrangement — relative URLs resolve against the clean page
 URL, not the asset directory. Either set `base` to the explicit absolute asset
 path, or have the route serve `index.html` from the same prefix as the assets.
 Worth deciding when the route is written rather than debugging later.
@@ -3027,8 +3043,8 @@ hashed filenames otherwise accumulate stale bundles on every deploy.
 The page is **not** wrapped in the site's `PageLayout`. Navigation back to the
 lesson is what the browser's back button is for, and giving up the template buys
 something the simulator genuinely needs: complete control of positioning and
-scrolling. That's the difference between feeling solid and feeling fiddly, and on
-a touch device it's not a matter of taste.
+scrolling. That's the difference between feeling solid and feeling fiddly, and
+on a touch device it's not a matter of taste.
 
 A drag on an SVG inside an ordinary scrolling page fights the scroller. On an
 iPad, pulling a boom toward the top of the screen can rubber-band the page,
@@ -3040,7 +3056,8 @@ those failure modes in the first minute. Concretely:
 - `overscroll-behavior: none` to kill rubber-banding and pull-to-refresh
 - `touch-action: none` on the drawing surface, so the browser hands us every
   pointer event instead of speculatively treating it as a scroll or a zoom
-- no double-tap-to-zoom delay to work around, since `touch-action` disposes of it
+- no double-tap-to-zoom delay to work around, since `touch-action` disposes of
+  it
 
 Serving bare also disposes of the CSS-isolation problem from
 [§6.1](#61-deployment-static-assets-in-the-registrar-app) — there's no global
@@ -3050,7 +3067,7 @@ door open to embedding later.
 
 The trade is that pinch-zoom goes away on the drawing surface. For a
 direct-manipulation diagram whose entire content is always on screen by
-construction, that's the right call — there is nothing to zoom *to*. Worth
+construction, that's the right call — there is nothing to zoom _to_. Worth
 revisiting only if the line weights turn out to be too fine on a phone, which is
 a rendering problem to fix at the source rather than by making students pinch.
 
@@ -3061,7 +3078,7 @@ problem the jib toggle exposes. If an instructor sets up a main-only boat for a
 Level 1 group and a student reloads, they're back to a sloop.
 
 The answer is to let **the embedding page carry the configuration**, not the
-session:
+session (planned: pos-740.2):
 
 ```text
 ?jib=on              set the jib (§3.7 — main-only is the default)
@@ -3077,56 +3094,58 @@ allowed to keep.
 **Serialize the whole state, not a random seed.** The original proposal was a
 `?seed=` parameter reproducing a random opening problem, which turns out to
 answer a question nobody asks: an instructor wanting a specific situation
-doesn't hunt for a random one that happens to match, they *build* it and then
+doesn't hunt for a random one that happens to match, they _build_ it and then
 bookmark or share it. So the URL carries the actual state — wind, heading, trim,
-rig — and the page updates it via `history.replaceState` at the end of each drag.
-No affordance, no button, nothing to teach: the address bar just always describes
-what's on screen, so bookmarking and sharing work the way they do everywhere
-else. Debounced to drag-end so the URL doesn't churn mid-gesture, and
+rig — and the page updates it via `history.replaceState` at the end of each
+drag. No affordance, no button, nothing to teach: the address bar just always
+describes what's on screen, so bookmarking and sharing work the way they do
+everywhere else. Debounced to drag-end so the URL doesn't churn mid-gesture, and
 `replaceState` rather than `pushState` so the back button still leaves the page.
 
-This reads as a conflict with the objectives' *"page resets to default settings
-whenever it is reloaded"* and isn't one. The rule exists to keep hidden state out
-of the app; a URL is not hidden state — it's visible, portable, and the user's to
-edit or discard. The bare URL still resets to a fresh random problem, which is
-what the lesson pages link to. A URL carrying parameters restores exactly what it
-says. Reloading after ten minutes of work now returns your boat instead of
-destroying it, which is what a reload should do anyway.
+This reads as a conflict with the objectives' _"page resets to default settings
+whenever it is reloaded"_ and isn't one. The rule exists to keep hidden state
+out of the app; a URL is not hidden state — it's visible, portable, and the
+user's to edit or discard. The bare URL still resets to a fresh random problem,
+which is what the lesson pages link to. A URL carrying parameters restores
+exactly what it says. Reloading after ten minutes of work now returns your boat
+instead of destroying it, which is what a reload should do anyway.
 
 ---
 
 ## 7. Deliberately out of scope
 
 Named here so we can decline them consistently rather than re-litigating each
-one. Several are worth revisiting *after* v1 works.
+one. Several are worth revisiting _after_ v1 works.
 
 **Out for now, plausible later (as toggles):**
 
-- Leeway — the crab angle between heading and track. The *cost* of making side
+- Leeway — the crab angle between heading and track. The _cost_ of making side
   force is charged ([§3.5](#35-hull-resistance-and-integration)); what is out is
-  the boat visibly crabbing, and any separate accounting of where that cost goes.
-  **That reading holds above a knot or two and not below**, which `pos-rem` found
-  and [§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
+  the boat visibly crabbing, and any separate accounting of where that cost
+  goes. **That reading holds above a knot or two and not below**, which
+  `pos-rem` found and
+  [§3.5](#quadratic-drag-has-no-slope-at-rest-and-that-gives-the-no-go-zone-an-edge)
   works through. Keel lift goes as `v²`, so at half a knot close hauled the keel
   is being asked for a `Cl` of 37 and upwards against a foil's 1.5; §3.5's
   `keelStall` duly stops charging for side force it cannot hold — 0.6% of it,
   against 22% when the boat is sailing — and a real boat answers by sliding
   sideways, which this bullet forbids. So down there the exclusion is not the
-  cosmetic one this bullet describes: it is load-bearing, and it is what produces
-  the stalemate at the edge of the no-go zone. This is a statement about the
-  model's domain rather than an argument for modelling leeway — nothing a student
-  does below that speed is anything but stopped — but the bullet should not be
-  read as "leeway costs nothing but a drawing" at every speed, because it does not
+  cosmetic one this bullet describes: it is load-bearing, and it is what
+  produces the stalemate at the edge of the no-go zone. This is a statement
+  about the model's domain rather than an argument for modelling leeway —
+  nothing a student does below that speed is anything but stopped — but the
+  bullet should not be read as "leeway costs nothing but a drawing" at every
+  speed, because it does not
 - **Sail telltales** — yarn at the luff, showing whether the flow is attached.
   Weaker than it first looks: [§4.2](#42-the-traffic-light) already reports trim
-  quality, and it reports it from the *driving force* rather than from a proxy
+  quality, and it reports it from the _driving force_ rather than from a proxy
   for the driving force. A luff telltale would restate the traffic light, less
   accurately, in a second visual language. Revisit only if the colour ramp turns
   out to want corroborating.
 - Heel, which top-down can only hint at symbolically — and which, like leeway,
   is paid for without being shown. **What is out is drawing it, not modelling
   it**, and the distinction is worth spelling out because this bullet has
-  already been read the stronger way once. Heel is paid for *twice*:
+  already been read the stronger way once. Heel is paid for _twice_:
   `RESISTANCE.sideForce` carries the drag it produces, and
   [§3.2](#depowering-the-rig-stops-collecting-force-in-a-breeze)'s depowering is
   the force it costs the rig, which is much the larger effect and the one that
@@ -3136,15 +3155,14 @@ one. Several are worth revisiting *after* v1 works.
   actual heeling moment was tried and makes a worse boat, and had it been the
   better boat nothing here would have forbidden it
 
-**Telltales in the rigging are a different instrument, and are now drawn** —
-see [§4.1](#the-telltale-the-apparent-wind-without-chrome), which is where the
+**Telltales in the rigging are a different instrument, and are now drawn** — see
+[§4.1](#the-telltale-the-apparent-wind-without-chrome), which is where the
 design lives. An earlier draft of this section listed "telltales" flat, which
-collapsed two things that have almost nothing to do with each other.
-Yarn on the port and starboard uppers and on the backstay — which is what the
-school's own boats carry — shows the apparent wind's *direction*, and nothing
-in the drawing shows that today: the wind ring shows the **true** wind, and a
-student reading only that will misjudge every sail on the boat
-([§3.1](#31-apparent-wind)).
+collapsed two things that have almost nothing to do with each other. Yarn on the
+port and starboard uppers and on the backstay — which is what the school's own
+boats carry — shows the apparent wind's _direction_, and nothing in the drawing
+shows that today: the wind ring shows the **true** wind, and a student reading
+only that will misjudge every sail on the boat ([§3.1](#31-apparent-wind)).
 
 It is also the rare addition that costs no scaffolding. There is no label and no
 toggle — it is a physical object on the boat that happens to be an instrument,
@@ -3172,14 +3190,15 @@ the student the answer; the traffic light lets them find it.
 
 - Main blanketing the jib downwind, as a mechanism. It is real, and it is part
   of why a run is slower than a two-independent-sails model says; `pos-fo1.4`
-  folded it into the stalled sail's normal force
-  ([§3.2](#32-sail-forces)) rather than modelling the shadow, which fits the
-  sloop but leaves main-only carrying a penalty it should not have. Worth
-  reopening if [§3.7](#37-sailing-under-main-alone) cannot calibrate around it
-- Slot effect between main and jib, *except* for the single scalar upwind bonus
+  folded it into the stalled sail's normal force ([§3.2](#32-sail-forces))
+  rather than modelling the shadow, which fits the sloop but leaves main-only
+  carrying a penalty it should not have. Worth reopening if
+  [§3.7](#37-sailing-under-main-alone) cannot calibrate around it
+- Slot effect between main and jib, _except_ for the single scalar upwind bonus
   that makes main-only point worse — see [§3.7](#37-sailing-under-main-alone)
 - Weather helm. Unreachable without a rudder, and largely absent from the
-  school's own boats anyway ([§1](#1-the-core-idea), [§3.7](#37-sailing-under-main-alone))
+  school's own boats anyway ([§1](#1-the-core-idea),
+  [§3.7](#37-sailing-under-main-alone))
 - Sail twist, draft position, halyard/outhaul/cunningham controls
 - Spinnaker
 - Crew weight and movement
@@ -3192,16 +3211,16 @@ the student the answer; the traffic light lets them find it.
 Each phase leaves something demonstrable, which is what makes this bead-able.
 Each is an epic in the tracker; its children are branch-sized.
 
-| Epic | Phase | What it delivers |
-| --- | --- | --- |
-| `pos-t9w` | **Foundations** | Vite/TypeScript/Vitest toolchain, the bare full-viewport page shell ([§6.2](#62-a-bare-page-owning-the-whole-viewport)), and the geometry/unit conventions ([§2](#2-state)) |
-| `pos-qmk` | **The drawing** | SVG hull, mast, sails, perimeter wind ring, speed arrow, OKLCH palette — all from a state object. No physics, no interaction |
-| `pos-bwd` | **Direct manipulation** | Clew grabs, hull rotation, wind ring, wind speed. Multi-touch throughout. Still no forces |
-| `pos-fo1` | **Force model** | Apparent wind, foil curves, hull resistance, integration, and the calibration table ([§3.6](#36-calibration-targets)) locked in as tests. Where the simulator becomes true |
-| `pos-dmg` | **Feedback** | Trim-quality color, flutter animation, ghost boat, speed-arrow color |
-| `pos-bql` | **Backing** | Held sails, reversed drive, sailing astern, swing-back |
-| `pos-bh6` | **Main-only rig** | `jibSet` through model, render, and input; the upwind bonus; main-only calibration |
-| `pos-740` | **Ship it** | Opening state, URL serialization, control strip, hardware tuning, deployment |
+| Epic      | Phase                   | What it delivers                                                                                                                                                            |
+| --------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pos-t9w` | **Foundations**         | Vite/TypeScript/Vitest toolchain, the bare full-viewport page shell ([§6.2](#62-a-bare-page-owning-the-whole-viewport)), and the geometry/unit conventions ([§2](#2-state)) |
+| `pos-qmk` | **The drawing**         | SVG hull, mast, sails, perimeter wind ring, speed arrow, OKLCH palette — all from a state object. No physics, no interaction                                                |
+| `pos-bwd` | **Direct manipulation** | Clew grabs, hull rotation, wind ring, wind speed. Multi-touch throughout. Still no forces                                                                                   |
+| `pos-fo1` | **Force model**         | Apparent wind, foil curves, hull resistance, integration, and the calibration table ([§3.6](#36-calibration-targets)) locked in as tests. Where the simulator becomes true  |
+| `pos-dmg` | **Feedback**            | Trim-quality color, flutter animation, ghost boat, speed-arrow color                                                                                                        |
+| `pos-bql` | **Backing**             | Held sails, reversed drive, sailing astern, swing-back                                                                                                                      |
+| `pos-bh6` | **Main-only rig**       | `jibSet` through model, render, and input; the upwind bonus; main-only calibration                                                                                          |
+| `pos-740` | **Ship it**             | Opening state, URL serialization, control strip, hardware tuning, deployment                                                                                                |
 
 Foundations wasn't in the first draft of this list — it's the thing the list
 assumed. It's the only true bottleneck: everything funnels through it, and after
@@ -3232,8 +3251,8 @@ None outstanding. The design is ready to break into beads.
 - Backing a sail = holding the pointer down; release swings it to the mirrored
   trim angle over ~0.4 s, with the model running throughout
 - Acceleration lag is a tuning knob, starting at 10 s
-- Sails are grabbed by their clews, which are ~45% of LOA apart — no
-  arbitration needed
+- Sails are grabbed by their clews, which are ~45% of LOA apart — no arbitration
+  needed
 - All fudge factors collected in `tuning.ts`
 - This repo is the dev/test harness; deployment copies the build into the
   registrar app as static assets plus a small router entry. Served only by

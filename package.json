@@ -9,7 +9,7 @@
     "build:pages": "tsc --noEmit && vite build --base=/point-of-sail/",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "stylelint \"src/**/*.css\" && tsc --noEmit"
+    "lint": "stylelint \"src/**/*.css\" && tsc --noEmit && node scripts/check-design-refs.mjs"
   },
   "devDependencies": {
     "stylelint": "^16.26.1",
