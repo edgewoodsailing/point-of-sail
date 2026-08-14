@@ -58,7 +58,6 @@ const DOCUMENTS = ["DESIGN.md", "MODEL.md"];
  */
 const BACKLOG = [
   "pos-32n",
-  "pos-770",
   "pos-8pu",
   "pos-aa2",
   "pos-aax",

@@ -2807,58 +2807,35 @@ would blur the very line `tuning.ts` exists to draw.
 
 TypeScript + Vite, building to static files.
 
-### 6.1 Deployment: static assets in the registrar app
+### 6.1 Deployment: GitHub Pages, linked from the school site
 
-**This repo is the development and testing harness.** When the simulator reaches
-a deployable state, its build output is added to the `registrar` app
-(`/Volumes/Campfire/Sites/registrar`, Swift 6 / Hummingbird 2) as static assets
-with a small router entry. Nothing else serves it **in production**.
+**GitHub Pages is the production deploy.** `.github/workflows/pages.yml` builds
+`main` and publishes it; the school site links to that URL rather than serving
+the simulator itself.
 
-There is one development-time exception, and it is deliberately not a second
-production target: a **GitHub Pages preview** of `main`
-(`.github/workflows/pages.yml`, pos-770), so instructors can try the simulator
-and give feedback while it is being built. It is temporary and should be retired
-when the registrar deploy lands. It does not weaken anything below — the
-registrar remains the only thing that serves this to students.
+The alternative was to copy the build into the `registrar` app
+(Swift 6 / Hummingbird 2) as static assets with a router entry, so that
+everything lived behind one domain. **A link is simpler and costs nothing that
+matters here.** The simulator is a stateless static page: no accounts, no
+persistence, nothing to authenticate, and nothing to say to a server. Serving it
+from an application server buys integration it has no use for, and charges a
+copy step, a route, a cache-clearing script, and a base-path trap for it. What a
+student needs is a link from the lesson they are on, which works exactly as well
+from the site as from anywhere else.
 
-Worth noting because it is the same trap twice with different answers: a Pages
-project site is served from `https://<org>.github.io/point-of-sail/`, so it
-needs `base: '/point-of-sail/'`, which is neither the default nor what the
-registrar wants. The preview therefore passes `--base` on Vite's command line
-(`npm run build:pages`) rather than setting it in `vite.config.ts`. The config
-keeps its default, and the base-vs-route decision below stays open for whoever
-takes pos-740.5.
+**One consequence is worth stating rather than discovering.** A project site is
+served from `https://<org>.github.io/point-of-sail/`, so following the link
+leaves the school's domain, and the assets need `base: '/point-of-sail/'` — which
+`npm run build:pages` passes on Vite's command line. A custom domain on Pages
+would put it back under a school hostname and change the base to `/`; that is a
+DNS decision rather than a code one, and until it is taken the command-line base
+is what keeps the two arrangements one flag apart (planned: pos-740.5).
 
-Although the ESS site is mid-migration from Drupal 6, that never becomes this
-project's problem: both live behind the same domain, with Nginx ingress routing
-by path to separate K8s containers, and the simulator is served exclusively by
-the registrar side. It's a native page there, not an embedded widget.
-
-Two things about the existing setup are worth pinning down, because both are
-easy to get wrong:
-
-**The static URL prefix is `/registrar/public/`, not `/registrar/`.**
-`FileMiddleware` is mounted at `urlBasePath: "/registrar"` over
-`getStaticFilesPath()`, which resolves to the bundled `Static` directory — so
-`Static/public/css/styles.css` is served at `/registrar/public/css/styles.css`,
-as the existing `PageLayout.swift` and `page.mustache` both confirm. Build
-output landing in `Static/public/point-of-sail/` is therefore served at
-`/registrar/public/point-of-sail/` by the existing middleware, with no route
-needed for the assets themselves. `Package.swift` already declares
-`.copy("Static")`, so adding a subdirectory needs no manifest change either.
-
-**Vite's `base` has to agree with wherever `index.html` is served from.** This
-is the trap: the natural router entry gives the page a clean URL like
-`/registrar/point-of-sail`, while its assets sit under
-`/registrar/public/point-of-sail/`. Vite's default `base: '/'` emits
-`/assets/index-abc123.js` and 404s immediately. The obvious fix, `base: './'`,
-_also_ fails in that arrangement — relative URLs resolve against the clean page
-URL, not the asset directory. Either set `base` to the explicit absolute asset
-path, or have the route serve `index.html` from the same prefix as the assets.
-Worth deciding when the route is written rather than debugging later.
-
-A deploy script should also clear the target directory before copying, since
-hashed filenames otherwise accumulate stale bundles on every deploy.
+**The registrar keeps one relationship with this project and it is not
+deployment.** Its stylelint configuration and shipped palette are cited in
+[§4.4](#44-color) as evidence about what the school's audience can render, and
+that evidence is about browsers rather than about hosting, so it survives this
+decision unchanged.
 
 ### 6.2 A bare page, owning the whole viewport
 
@@ -2881,11 +2858,11 @@ those failure modes in the first minute. Concretely:
 - no double-tap-to-zoom delay to work around, since `touch-action` disposes of
   it
 
-Serving bare also disposes of the CSS-isolation problem from
-[§6.1](#61-deployment-static-assets-in-the-registrar-app) — there's no global
-`styles.css` in the document to leak in. Scoping the simulator's styles under a
-single root class stays worthwhile anyway, since it costs nothing and keeps the
-door open to embedding later.
+Serving the page on its own also disposes of CSS isolation as a question — there
+is no host document whose global stylesheet could leak in. Scoping the
+simulator's styles under a single root class stays worthwhile anyway, since it
+costs nothing and keeps the door open to embedding later
+([§6.1](#61-deployment-github-pages-linked-from-the-school-site)).
 
 The trade is that pinch-zoom goes away on the drawing surface. For a
 direct-manipulation diagram whose entire content is always on screen by
@@ -3076,9 +3053,8 @@ None outstanding. The design is ready to break into beads.
 - Sails are grabbed by their clews, which are ~45% of LOA apart — no arbitration
   needed
 - All fudge factors collected in `tuning.ts`
-- This repo is the dev/test harness; deployment copies the build into the
-  registrar app as static assets plus a small router entry. Served only by
-  registrar, never by Drupal
+- This repo builds and publishes the simulator itself, to GitHub Pages; the
+  school site links to it rather than serving it
 - Trim ramp ends on a conventional green (hue 145); it need not match the rest
   of the site, and where the drawing and the site's look diverge, the drawing
   wins

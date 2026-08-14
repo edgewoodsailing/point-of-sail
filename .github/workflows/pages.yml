@@ -1,17 +1,16 @@
-# Publishes a preview of `main` to GitHub Pages, so instructors can try the
-# simulator and give feedback during development (pos-770).
+# Publishes `main` to GitHub Pages. **This is the production deploy**
+# (DESIGN.md §6.1): the school site links to the published URL rather than
+# serving the simulator itself, because a stateless static page has no use for
+# an application server.
 #
-# This is NOT the production deploy. DESIGN.md §6.1 puts the build output into
-# the registrar app and says nothing else serves it; that remains the plan of
-# record, and pos-740.5 owns it. This workflow is a development-time preview and
-# should be retired when the registrar deploy lands.
+# It began as a temporary preview for instructor feedback and outlived that
+# framing, which is the only reason the name says "preview" — worth renaming the
+# next time this file is touched for another reason.
 #
 # Why `build:pages` rather than `build`: a project site is served from
 # https://<org>.github.io/point-of-sail/, so the assets need that prefix. The
-# base is passed on Vite's command line rather than set in `vite.config.ts`,
-# whose comment reserves the base-vs-route decision for pos-740.5 — the registrar
-# needs a *different* base again, and hard-coding either one there would settle a
-# question this preview has no business settling.
+# base is passed here rather than set in `vite.config.ts` because a custom domain
+# would need "/" again — it follows a DNS decision, not a code one (pos-740.5).
 
 name: Pages preview
 

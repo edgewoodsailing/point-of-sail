@@ -3,9 +3,13 @@ import { defineConfig } from "vite";
 import { configDefaults } from "vitest/config";
 
 export default defineConfig({
-  // `base` stays at the default "/" — the deploy bead (pos-740.5) owns the
-  // base-vs-route decision, since the page URL and the asset URL differ in the
-  // registrar app (DESIGN.md §6.1).
+  // `base` stays at the default "/", and the deploy passes its own on the
+  // command line (`npm run build:pages`). Not indecision: GitHub Pages serves a
+  // project site from a subpath and needs "/point-of-sail/", while a custom
+  // domain would need "/" again, so the base follows a DNS decision rather than
+  // a code one (DESIGN.md §6.1, pos-740.5). Keeping it out of here leaves the
+  // two arrangements one flag apart, and leaves `npm run preview` serving from
+  // the root the way `npm run dev` does.
   build: {
     // DESIGN.md §4.4 support floor. Vite 7's default baseline is Safari 16,
     // which would silently raise the floor — pin it explicitly.
