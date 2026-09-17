@@ -75,3 +75,11 @@ bd.db
 # They would override fork protection in .git/info/exclude.
 # Config files (metadata.json, config.yaml) are tracked by git by default
 # since no pattern above ignores them.
+
+# Added by bd (missing required patterns)
+*.gate.lock*
+
+# Dolt server config (machine-local: absolute cfg_dir path and a
+# machine-chosen listener.port). bd generates it in server mode but omits
+# it from doctor requiredPatterns, which lists five dolt-server.* siblings.
+dolt-server-config.yaml

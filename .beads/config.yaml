@@ -70,3 +70,5 @@ export:
     auto: false
 backup:
     git-push: false
+dolt:
+    auto-push: false

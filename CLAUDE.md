@@ -100,3 +100,28 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+<!-- bd-doctor-divergence: ok -->
+
+The divergence `bd doctor` reports between this file and `CLAUDE.md` is
+intentional. `CLAUDE.md` is the project's own instruction file; this file is
+bd's generated agent primer. They are not two copies of one document, so do
+not reconcile them by symlinking or by regenerating `CLAUDE.md` from this
+file -- either would destroy the project instructions.
+
+## Memory: beads vs. Claude Code auto-memory
+
+`bd prime` is injected at every SessionStart and PreCompact, and its Core Rules
+say *"Do NOT use MEMORY.md files — they fragment across accounts."* Disregard
+that blanket rule and split by what the fact is *about*:
+
+- **`bd remember`** — knowledge about this repo: conventions, gotchas,
+  decisions, why something is built the way it is. It lives in the project's
+  Dolt database and travels to the git remote on `refs/dolt/data`, so any agent
+  on any machine can read it. Keep the count low — `bd prime` injects every
+  memory in full, every session, with no relevance filtering.
+- **Claude Code auto-memory** (`~/.claude/projects/<project>/memory/`) — facts
+  about the user and about how they want you to work. Machine-scoped is correct
+  for those, and they would be noise in a shared repo.
+
+Explicit user instructions override the beads block, as beads itself concedes.

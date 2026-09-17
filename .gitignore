@@ -17,3 +17,6 @@ dist/
 # `vite.config.ts` excludes the same path from the test glob, for the related
 # reason that vitest would otherwise run a second suite from another branch.
 .claude/worktrees/
+
+# Beads / Dolt files (added by bd init)
+*.gate.lock*
